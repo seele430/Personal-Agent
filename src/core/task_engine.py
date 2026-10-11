@@ -1,0 +1,123 @@
+import sqlite3
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+DB_PATH = BASE_DIR / "tasks.db"
+
+
+def init_task_db():
+    """初始化任务状态数据库。"""
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS monitor_state (
+                monitor_id TEXT PRIMARY KEY,
+                initialized_at TEXT NOT NULL
+                    DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS seen_items (
+                monitor_id TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                title TEXT,
+                link TEXT,
+                seen_at TEXT NOT NULL
+                    DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (monitor_id, item_id)
+            )
+        """)
+
+        conn.execute("""
+             CREATE TABLE IF NOT EXISTS notification_outbox (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 monitor_id TEXT NOT NULL,
+                 item_id TEXT NOT NULL,
+                 message TEXT NOT NULL,
+                 status TEXT NOT NULL DEFAULT 'pending',
+                 attempts INTEGER NOT NULL DEFAULT 0,
+                 next_attempt_at TEXT,
+                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                 sent_at TEXT,
+                 UNIQUE (monitor_id, item_id)
+    )
+""")
+
+
+def detect_new_items(
+    monitor_id: str,
+    articles: list[dict]
+) -> list[dict]:
+    """
+    首次检查建立基线。
+    后续发现新文章时，将通知保存到 Outbox。
+    """
+
+    if not monitor_id.strip():
+        raise ValueError("monitor_id 不能为空")
+
+    if not articles:
+        raise ValueError("文章列表不能为空")
+
+    init_task_db()
+
+    new_articles = []
+
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+
+        initialized = conn.execute(
+            """
+            SELECT 1 FROM monitor_state
+            WHERE monitor_id = ?
+            """,
+            (monitor_id,)
+        ).fetchone() is not None
+
+        for article in articles:
+            item_id = article.get("id")
+
+            if not isinstance(item_id, str) or not item_id:
+                continue
+
+            cursor = conn.execute(
+                """
+                INSERT OR IGNORE INTO seen_items
+                (monitor_id, item_id, title, link)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    monitor_id,
+                    item_id,
+                    article.get("title", ""),
+                    article.get("link", "")
+                )
+            )
+
+            if initialized and cursor.rowcount == 1:
+                title = article.get("title") or "新文章"
+                link = article.get("link") or ""
+
+                message = f"RSS 更新：{title}\n{link}"
+
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO notification_outbox
+                    (monitor_id, item_id, message, status)
+                    VALUES (?, ?, ?, 'pending')
+                    """,
+                    (monitor_id, item_id, message)
+                )
+
+                new_articles.append(article)
+
+        if not initialized:
+            conn.execute(
+                """
+                INSERT INTO monitor_state (monitor_id)
+                VALUES (?)
+                """,
+                (monitor_id,)
+            )
+
+    return new_articles

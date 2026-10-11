@@ -1,0 +1,66 @@
+
+# =====================================
+# Personal Agent - Git Ignore
+# =====================================
+
+# Secrets and environment variables
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# SQLite databases and backups
+*.db
+*.db-*
+*.db.*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.bak
+
+# Node.js dependencies
+node_modules/
+.npm/
+*.tsbuildinfo
+
+# Frontend build files
+dist/
+.vite/
+
+# Playwright results
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Local IDE configuration
+.vscode/
+.idea/
+
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Accidentally created nested frontend
+/frontend/frontend/
