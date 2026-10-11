@@ -1,0 +1,453 @@
+
+/* Personal Agent - Login Preview */
+
+.pa-auth-page {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 32px;
+  background: #f0f3f8;
+  color: #243148;
+  font-family:
+    "Microsoft YaHei UI",
+    "Segoe UI",
+    sans-serif;
+}
+
+.pa-auth-page *,
+.pa-auth-page *::before,
+.pa-auth-page *::after {
+  box-sizing: border-box;
+}
+
+.pa-auth-layout {
+  width: min(1100px, 100%);
+  min-height: 670px;
+  display: grid;
+  grid-template-columns: 46% 54%;
+  background: #fff;
+  border: 1px solid #e0e6ef;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 24px 65px rgba(24, 39, 63, 0.08);
+}
+
+/* 左侧品牌区 */
+
+.pa-auth-hero {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  min-height: 670px;
+  padding: 38px;
+  color: #fff;
+  background: linear-gradient(
+    155deg,
+    #1b2a43 0%,
+    #273e63 65%,
+    #344d7c 100%
+  );
+}
+
+.pa-auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  z-index: 1;
+}
+
+.pa-auth-brand-icon {
+  width: 47px;
+  height: 47px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 30px;
+  color: #fff;
+}
+
+.pa-auth-brand strong {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.pa-auth-brand span {
+  display: block;
+  margin-top: 5px;
+  color: #b3c3df;
+  font-size: 12px;
+}
+
+.pa-auth-hero-content {
+  position: relative;
+  z-index: 1;
+  padding-bottom: 32px;
+}
+
+.pa-auth-hero-label {
+  margin-bottom: 22px;
+  color: #a5bbdf;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.pa-auth-hero-content h1 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(32px, 3.5vw, 46px);
+  font-weight: 700;
+  line-height: 1.45;
+  letter-spacing: -1px;
+}
+
+.pa-auth-hero-content p {
+  margin: 20px 0 0;
+  color: #c4d1e5;
+  font-size: 15px;
+  line-height: 2;
+}
+
+.pa-auth-hero-footer {
+  position: relative;
+  z-index: 1;
+  color: #91a8ca;
+  font-size: 11px;
+}
+
+.pa-auth-decoration {
+  position: absolute;
+  z-index: 0;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.pa-auth-decoration-one {
+  width: 430px;
+  height: 430px;
+  right: -250px;
+  top: 90px;
+}
+
+.pa-auth-decoration-two {
+  width: 340px;
+  height: 340px;
+  right: -130px;
+  bottom: -180px;
+  background: rgba(133, 169, 231, 0.07);
+}
+
+/* 右侧表单区 */
+
+.pa-auth-form-side {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 45px 48px;
+  background: #fff;
+}
+
+.pa-auth-form-container {
+  width: min(390px, 100%);
+}
+
+.pa-auth-mobile-brand {
+  display: none;
+}
+
+.pa-auth-eyebrow {
+  margin-bottom: 13px;
+  color: #8ca0bd;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.pa-auth-form-container h2 {
+  margin: 0 0 12px;
+  color: #1d2a40;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.pa-auth-subtitle {
+  margin: 0 0 36px;
+  color: #8a98ad;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.pa-auth-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.pa-auth-form label {
+  margin-bottom: 9px;
+  color: #34445e;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pa-auth-form input {
+  width: 100%;
+  min-width: 0;
+  height: 49px;
+  padding: 0 15px;
+  border: 1px solid #dfe6ef;
+  border-radius: 11px;
+  outline: none;
+  background: #f8fafd;
+  color: #1d2a40;
+  font: inherit;
+  font-size: 14px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.pa-auth-form input:focus {
+  border-color: #6c8bec;
+  box-shadow: 0 0 0 3px rgba(71, 111, 240, 0.10);
+}
+
+.pa-auth-form input::placeholder {
+  color: #acb7c8;
+}
+
+.pa-auth-form input:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+.pa-auth-password-label {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 24px;
+}
+
+.pa-auth-password-field {
+  position: relative;
+}
+
+.pa-auth-password-field input {
+  padding-right: 70px;
+}
+
+.pa-auth-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  padding: 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #72829a;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pa-auth-password-toggle:hover {
+  color: #426cf5;
+}
+
+.pa-auth-password-toggle:disabled {
+  cursor: not-allowed;
+}
+
+.pa-auth-password-help {
+  margin: 10px 0 0;
+  color: #9ba9bb;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.pa-auth-error {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid #f0ced2;
+  border-radius: 10px;
+  background: #fff5f5;
+  color: #b73f4d;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.pa-auth-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 50px;
+  margin-top: 25px;
+  border: none;
+  border-radius: 11px;
+  background: #263a5b;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.pa-auth-submit:hover:not(:disabled) {
+  background: #34517f;
+}
+
+.pa-auth-submit:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.pa-auth-submit:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.pa-auth-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: pa-auth-spin 0.8s linear infinite;
+}
+
+@keyframes pa-auth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pa-auth-note {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 25px;
+  color: #8594aa;
+  font-size: 12px;
+}
+
+.pa-auth-preview-note {
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid #edf0f5;
+  color: #9ba7b8;
+  font-size: 11px;
+  text-align: center;
+  line-height: 1.8;
+}
+
+/* 登录后临时的退出操作区 */
+
+.pa-auth-session-panel {
+  position: fixed;
+  top: 12px;
+  right: 175px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 400px;
+  padding: 7px 12px;
+  border: 1px solid #dfe6ef;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 5px 22px rgba(0, 0, 0, 0.09);
+  color: #34445e;
+  font-family: "Microsoft YaHei UI", sans-serif;
+  font-size: 12px;
+}
+
+.pa-auth-session-user {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pa-auth-logout-button {
+  padding: 7px 10px;
+  border: 1px solid #e1e6ee;
+  border-radius: 7px;
+  background: #f7f9fc;
+  color: #34445e;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pa-auth-logout-button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.pa-auth-logout-error {
+  color: #b73f4d;
+  font-size: 11px;
+}
+
+/* 移动端与窄屏适配 */
+
+@media (max-width: 760px) {
+  .pa-auth-page {
+    padding: 15px;
+    align-items: flex-start;
+  }
+
+  .pa-auth-layout {
+    display: block;
+    min-height: auto;
+    margin: auto;
+    border-radius: 18px;
+  }
+
+  .pa-auth-hero {
+    display: none;
+  }
+
+  .pa-auth-form-side {
+    min-height: 530px;
+    padding: 38px 24px;
+  }
+
+  .pa-auth-mobile-brand {
+    display: block;
+    margin-bottom: 35px;
+    color: #263a5b;
+    font-size: 17px;
+    font-weight: 700;
+  }
+
+  .pa-auth-form-container h2 {
+    font-size: 26px;
+  }
+
+  .pa-auth-session-panel {
+    top: 8px;
+    right: 8px;
+    flex-wrap: wrap;
+    max-width: calc(100vw - 16px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pa-auth-page *,
+  .pa-auth-page *::before,
+  .pa-auth-page *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
