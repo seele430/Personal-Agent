@@ -7,7 +7,11 @@ import {
   type KeyboardEvent,
 } from "react";
 
-type MessageStatus = "pending" | "sent" | "unknown";
+type MessageStatus =
+  | "pending"
+  | "sent"
+  | "unknown"
+  | "rejected";
 
 type Message = {
   id: string;
@@ -22,6 +26,8 @@ type ChatResponse = {
   request_id?: string;
   status?: string;
   reply?: string | null;
+  code?: string;
+  detail?: string;
 };
 
 const CHAT_KEY = "personal-agent-dev-chat";
@@ -32,16 +38,23 @@ type AppProps = {
   userId?: string;
 };
 
-// 已登录用户使用独立的浏览器缓存；旧版开发页面保留原缓存。
+// 已登录用户使用独立的浏览器缓存。
 function chatStorageKey(userId?: string): string {
-  return userId ? `personal-agent-user-${userId}-chat` : CHAT_KEY;
+  return userId
+    ? `personal-agent-user-${userId}-chat`
+    : CHAT_KEY;
 }
 
 function draftStorageKey(userId?: string): string {
-  return userId ? `personal-agent-user-${userId}-draft` : DRAFT_KEY;
+  return userId
+    ? `personal-agent-user-${userId}-draft`
+    : DRAFT_KEY;
 }
 
-function saveMessages(messages: Message[], userId?: string) {
+function saveMessages(
+  messages: Message[],
+  userId?: string
+) {
   try {
     sessionStorage.setItem(
       chatStorageKey(userId),
@@ -54,7 +67,9 @@ function saveMessages(messages: Message[], userId?: string) {
 
 function loadMessages(userId?: string): Message[] {
   try {
-    const raw = sessionStorage.getItem(chatStorageKey(userId));
+    const raw = sessionStorage.getItem(
+      chatStorageKey(userId)
+    );
 
     if (!raw) return [];
 
@@ -71,9 +86,12 @@ function loadMessages(userId?: string): Message[] {
           typeof item.content === "string" &&
           (item.role === "user" ||
             item.role === "assistant") &&
-          ["pending", "sent", "unknown"].includes(
-            item.status
-          )
+          [
+            "pending",
+            "sent",
+            "unknown",
+            "rejected",
+          ].includes(item.status)
       )
       .slice(-100)
       .map((item) => ({
@@ -90,7 +108,11 @@ function loadMessages(userId?: string): Message[] {
 
 function loadDraft(userId?: string): string {
   try {
-    return sessionStorage.getItem(draftStorageKey(userId)) ?? "";
+    return (
+      sessionStorage.getItem(
+        draftStorageKey(userId)
+      ) ?? ""
+    );
   } catch {
     return "";
   }
@@ -108,27 +130,27 @@ async function readJson(
   return value as ChatResponse;
 }
 
-export default function App({ authToken, userId }: AppProps = {}) {
+export default function App(
+  { authToken, userId }: AppProps = {}
+) {
   const [messages, setMessages] =
     useState<Message[]>(() => loadMessages(userId));
 
-  const [input, setInput] = useState(() => loadDraft(userId));
+  const [input, setInput] =
+    useState(() => loadDraft(userId));
 
   const [sending, setSending] = useState(false);
-
   const [error, setError] = useState("");
 
   const [checkingId, setCheckingId] =
     useState<string | null>(null);
 
   const sendingLock = useRef(false);
-
   const checkingIds = useRef(new Set<string>());
-
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // ========================================
-  // 保存聊天记录
+  // 保存聊天记录和草稿
   // ========================================
 
   useEffect(() => {
@@ -137,7 +159,10 @@ export default function App({ authToken, userId }: AppProps = {}) {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(draftStorageKey(userId), input);
+      sessionStorage.setItem(
+        draftStorageKey(userId),
+        input
+      );
     } catch {
       // 草稿缓存失败不影响输入
     }
@@ -150,7 +175,7 @@ export default function App({ authToken, userId }: AppProps = {}) {
   }, [messages, sending]);
 
   // ========================================
-  // 标记未知结果
+  // 请求结果未知
   // ========================================
 
   function markUnknown(
@@ -167,6 +192,47 @@ export default function App({ authToken, userId }: AppProps = {}) {
     );
 
     setError(`请求结果尚未确认：${detail}`);
+  }
+
+  // ========================================
+  // 已被明确拒绝：没有调用模型
+  // ========================================
+
+  function markRejected(
+    requestId: string,
+    originalText: string,
+    code?: string
+  ) {
+    setMessages((previous) =>
+      previous.map((item) =>
+        item.requestId === requestId &&
+        item.role === "user"
+          ? { ...item, status: "rejected" }
+          : item
+      )
+    );
+
+    // 恢复草稿，不自动重发。
+    setInput(originalText);
+
+    if (code === "daily_quota_exceeded") {
+      setError(
+        "过去 24 小时的新请求额度已用完。" +
+          "这条消息没有调用 AI，已恢复到输入框，可稍后手动发送。"
+      );
+    } else if (
+      code === "concurrency_limit_exceeded"
+    ) {
+      setError(
+        "当前正在处理的请求过多。" +
+          "这条消息没有调用 AI，已恢复到输入框，可稍后手动发送。"
+      );
+    } else {
+      setError(
+        "服务器拒绝接收本次新请求。" +
+          "这条消息没有调用 AI，已恢复到输入框。"
+      );
+    }
   }
 
   // ========================================
@@ -239,7 +305,10 @@ export default function App({ authToken, userId }: AppProps = {}) {
           {
             cache: "no-store",
             headers: authToken
-              ? { Authorization: `Bearer ${authToken}` }
+              ? {
+                  Authorization:
+                    `Bearer ${authToken}`,
+                }
               : {},
           }
         );
@@ -265,7 +334,6 @@ export default function App({ authToken, userId }: AppProps = {}) {
             requestId,
             "服务器无法确定之前的模型调用结果，请不要直接重发。"
           );
-
           return;
         }
 
@@ -336,11 +404,9 @@ export default function App({ authToken, userId }: AppProps = {}) {
     }
 
     sendingLock.current = true;
-
     setSending(true);
     setError("");
 
-    // 每次用户操作生成唯一 ID
     const requestId = crypto.randomUUID();
 
     const userMessage: Message = {
@@ -351,7 +417,7 @@ export default function App({ authToken, userId }: AppProps = {}) {
       requestId,
     };
 
-    // 先保存请求 ID，再发送网络请求
+    // 先持久保存原请求 ID，再发送请求。
     const updated = [...messages, userMessage];
 
     saveMessages(updated, userId);
@@ -372,7 +438,10 @@ export default function App({ authToken, userId }: AppProps = {}) {
         headers: {
           "Content-Type": "application/json",
           ...(authToken
-            ? { Authorization: `Bearer ${authToken}` }
+            ? {
+                Authorization:
+                  `Bearer ${authToken}`,
+              }
             : {}),
         },
 
@@ -386,15 +455,36 @@ export default function App({ authToken, userId }: AppProps = {}) {
 
       const result = await readJson(response);
 
-      // 已有相同请求正在处理
+      // ====================================
+      // HTTP 429：明确拒绝，没有调用模型
+      // ====================================
+
       if (
+        response.status === 429 &&
+        result.status === "rejected"
+      ) {
+        markRejected(
+          requestId,
+          text,
+          result.code
+        );
+      }
+
+      // ====================================
+      // 原请求仍在处理中
+      // ====================================
+
+      else if (
         response.status === 202 &&
         result.status === "processing"
       ) {
         await queryStatus(requestId, true);
       }
 
-      // 成功返回模型回复
+      // ====================================
+      // 成功收到回复
+      // ====================================
+
       else if (
         response.ok &&
         typeof result.reply === "string"
@@ -402,29 +492,32 @@ export default function App({ authToken, userId }: AppProps = {}) {
         finishRequest(requestId, result.reply);
       }
 
-      // 其他状态，不自动重新执行
+      // ====================================
+      // 其他无法确认的状态
+      // ====================================
+
       else {
         markUnknown(
           requestId,
           "服务没有返回确认的结果，请先查询状态。"
         );
       }
+
     } catch {
       markUnknown(
         requestId,
         "网络异常或等待超时，模型可能已执行，请先查询状态。"
       );
+
     } finally {
       window.clearTimeout(timeout);
-
       sendingLock.current = false;
-
       setSending(false);
     }
   }
 
   // ========================================
-  // Enter 发送，Shift+Enter 换行
+  // Enter 发送，Shift + Enter 换行
   // ========================================
 
   function handleKeyDown(
@@ -436,7 +529,6 @@ export default function App({ authToken, userId }: AppProps = {}) {
       !event.nativeEvent.isComposing
     ) {
       event.preventDefault();
-
       event.currentTarget.form?.requestSubmit();
     }
   }
@@ -566,9 +658,18 @@ export default function App({ authToken, userId }: AppProps = {}) {
                     </div>
                   )}
 
+                  {message.status === "rejected" && (
+                    <div className="message-status warning">
+                      未发送成功 · AI 未执行
+                    </div>
+                  )}
+
                   {message.role === "user" &&
                     message.requestId &&
-                    message.status !== "sent" && (
+                    (
+                      message.status === "pending" ||
+                      message.status === "unknown"
+                    ) && (
                       <button
                         type="button"
                         onClick={() =>
@@ -577,7 +678,8 @@ export default function App({ authToken, userId }: AppProps = {}) {
                           )
                         }
                         disabled={
-                          checkingId === message.requestId
+                          checkingId ===
+                          message.requestId
                         }
                         aria-label="查询结果"
                       >

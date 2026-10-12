@@ -3,31 +3,106 @@ import {
   test,
   expect,
   type Page,
+  type Route,
 } from "@playwright/test";
 
 const CHAT_API = "**/api/chat";
 const STATUS_API = "**/api/chat/requests/*";
+const LOGIN_API = "**/api/auth/login";
+
+// 全部使用模拟账户，不涉及真实密码
+const TEST_TOKEN = "playwright-idempotency-token";
+const TEST_USER_ID = "playwright-idempotency-user";
+
+const CHAT_STORAGE_KEY =
+  `personal-agent-user-${TEST_USER_ID}-chat`;
 
 type ChatPayload = {
   message: string;
   request_id: string;
 };
 
+type StoredMessage = {
+  role: string;
+  requestId?: string;
+};
+
+// ==========================================
+// 模拟登录
+// ==========================================
+
+async function installLoginMock(
+  page: Page
+): Promise<void> {
+  await page.route(LOGIN_API, async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        token: TEST_TOKEN,
+        token_type: "bearer",
+        user: {
+          id: TEST_USER_ID,
+          username: "playwright",
+          role: "member",
+          active: true,
+        },
+      }),
+    });
+  });
+}
+
+async function signIn(
+  page: Page
+): Promise<void> {
+  await expect(
+    page.locator("#pa-login-username")
+  ).toBeVisible();
+
+  await page.locator(
+    "#pa-login-username"
+  ).fill("playwright");
+
+  await page.locator(
+    "#pa-login-password"
+  ).fill("PlaywrightTestPassword2026!");
+
+  await page.getByRole("button", {
+    name: /登录工作空间/,
+  }).click();
+
+  await expect(
+    page.getByRole("textbox", {
+      name: "输入聊天消息",
+    })
+  ).toBeVisible();
+}
+
+async function openAuthenticatedChat(
+  page: Page
+): Promise<void> {
+  await installLoginMock(page);
+
+  await page.goto("/login");
+
+  await signIn(page);
+}
+
+// ==========================================
+// 聊天测试工具
+// ==========================================
+
 async function send(
   page: Page,
   message: string
 ): Promise<void> {
-  await page
-    .getByRole("textbox", {
-      name: "输入聊天消息",
-    })
-    .fill(message);
+  await page.getByRole("textbox", {
+    name: "输入聊天消息",
+  }).fill(message);
 
-  await page
-    .getByRole("button", {
-      name: "发送 ↑",
-    })
-    .click();
+  await page.getByRole("button", {
+    name: "发送 ↑",
+  }).click();
 }
 
 function getRequestId(url: string): string {
@@ -36,13 +111,30 @@ function getRequestId(url: string): string {
   );
 }
 
+function checkAuth(route: Route): void {
+  expect(
+    route.request().headers()["authorization"]
+  ).toBe(`Bearer ${TEST_TOKEN}`);
+}
+
+// ==========================================
+// Chat Idempotency
+// ==========================================
+
 test.describe("Chat Idempotency", () => {
+
+  // ----------------------------------------
+  // 1. 每条新消息有独立 request_id
+  // ----------------------------------------
+
   test(
     "每条新消息都有独立 request_id",
     async ({ page }) => {
       const requests: ChatPayload[] = [];
 
       await page.route(CHAT_API, async (route) => {
+        checkAuth(route);
+
         const data =
           route.request().postDataJSON() as ChatPayload;
 
@@ -59,7 +151,7 @@ test.describe("Chat Idempotency", () => {
         });
       });
 
-      await page.goto("/");
+      await openAuthenticatedChat(page);
 
       await send(page, "第一条消息");
 
@@ -75,19 +167,23 @@ test.describe("Chat Idempotency", () => {
 
       expect(requests).toHaveLength(2);
 
-      expect(requests[0].request_id).toMatch(
-        /^[A-Za-z0-9_-]{8,128}$/
-      );
+      expect(
+        requests[0].request_id
+      ).toMatch(/^[A-Za-z0-9_-]{8,128}$/);
 
-      expect(requests[1].request_id).toMatch(
-        /^[A-Za-z0-9_-]{8,128}$/
-      );
-
-      expect(requests[0].request_id).not.toBe(
+      expect(
         requests[1].request_id
-      );
+      ).toMatch(/^[A-Za-z0-9_-]{8,128}$/);
+
+      expect(
+        requests[0].request_id
+      ).not.toBe(requests[1].request_id);
     }
   );
+
+  // ----------------------------------------
+  // 2. 断网后查询原 request_id
+  // ----------------------------------------
 
   test(
     "断网后使用原 request_id 查询回复",
@@ -98,6 +194,8 @@ test.describe("Chat Idempotency", () => {
       const queriedIds: string[] = [];
 
       await page.route(CHAT_API, async (route) => {
+        checkAuth(route);
+
         postCount += 1;
 
         const data =
@@ -105,30 +203,34 @@ test.describe("Chat Idempotency", () => {
 
         originalId = data.request_id;
 
-        // 模拟请求没有收到响应
+        // 模拟网络断开
         await route.abort("failed");
       });
 
-      await page.route(STATUS_API, async (route) => {
-        const requestId = getRequestId(
-          route.request().url()
-        );
+      await page.route(
+        STATUS_API,
+        async (route) => {
+          checkAuth(route);
 
-        queriedIds.push(requestId);
+          const requestId = getRequestId(
+            route.request().url()
+          );
 
-        // 模拟服务器已经完成请求
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            request_id: requestId,
-            status: "completed",
-            reply: "服务器已保存的原始回复",
-          }),
-        });
-      });
+          queriedIds.push(requestId);
 
-      await page.goto("/");
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              request_id: requestId,
+              status: "completed",
+              reply: "服务器已保存的原始回复",
+            }),
+          });
+        }
+      );
+
+      await openAuthenticatedChat(page);
 
       await send(page, "断网恢复测试");
 
@@ -139,11 +241,9 @@ test.describe("Chat Idempotency", () => {
       expect(postCount).toBe(1);
       expect(originalId).toBeTruthy();
 
-      await page
-        .getByRole("button", {
-          name: "查询结果",
-        })
-        .click();
+      await page.getByRole("button", {
+        name: "查询结果",
+      }).click();
 
       await expect(
         page.getByText("服务器已保存的原始回复")
@@ -151,7 +251,7 @@ test.describe("Chat Idempotency", () => {
 
       expect(queriedIds).toEqual([originalId]);
 
-      // 查询不能重新发送 POST
+      // 查询不能再次发送 POST
       expect(postCount).toBe(1);
 
       await expect(
@@ -159,6 +259,10 @@ test.describe("Chat Idempotency", () => {
       ).toBeVisible();
     }
   );
+
+  // ----------------------------------------
+  // 3. 刷新后重新登录，恢复请求
+  // ----------------------------------------
 
   test(
     "刷新页面恢复处理中请求且不重复 POST",
@@ -170,6 +274,8 @@ test.describe("Chat Idempotency", () => {
       let allowCompletion = false;
 
       await page.route(CHAT_API, async (route) => {
+        checkAuth(route);
+
         postCount += 1;
 
         const data =
@@ -177,7 +283,7 @@ test.describe("Chat Idempotency", () => {
 
         requestId = data.request_id;
 
-        // 模拟服务端正在处理请求
+        // 模拟服务器正在处理
         await route.fulfill({
           status: 202,
           contentType: "application/json",
@@ -188,29 +294,34 @@ test.describe("Chat Idempotency", () => {
         });
       });
 
-      await page.route(STATUS_API, async (route) => {
-        queryCount += 1;
+      await page.route(
+        STATUS_API,
+        async (route) => {
+          checkAuth(route);
 
-        const queriedId = getRequestId(
-          route.request().url()
-        );
+          queryCount += 1;
 
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            request_id: queriedId,
-            status: allowCompletion
-              ? "completed"
-              : "processing",
-            reply: allowCompletion
-              ? "刷新后成功恢复的回复"
-              : null,
-          }),
-        });
-      });
+          const queriedId = getRequestId(
+            route.request().url()
+          );
 
-      await page.goto("/");
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              request_id: queriedId,
+              status: allowCompletion
+                ? "completed"
+                : "processing",
+              reply: allowCompletion
+                ? "刷新后成功恢复的回复"
+                : null,
+            }),
+          });
+        }
+      );
+
+      await openAuthenticatedChat(page);
 
       await send(page, "刷新恢复测试");
 
@@ -218,36 +329,45 @@ test.describe("Chat Idempotency", () => {
         .poll(() => postCount)
         .toBe(1);
 
-      // 确认前端已经开始查询原请求
       await expect
         .poll(() => queryCount)
         .toBeGreaterThan(0);
 
-      // 检查请求 ID 已保存到浏览器
-      const storedId = await page.evaluate(() => {
-        const raw = sessionStorage.getItem(
-          "personal-agent-dev-chat"
-        );
+      // request_id 必须保存到用户自己的缓存
+      await expect
+        .poll(async () => {
+          return page.evaluate((key) => {
+            const raw = sessionStorage.getItem(key);
 
-        if (!raw) return null;
+            if (!raw) {
+              return null;
+            }
 
-        const messages = JSON.parse(raw) as Array<{
-          role: string;
-          requestId?: string;
-        }>;
+            const messages =
+              JSON.parse(raw) as StoredMessage[];
 
-        return messages.find(
-          (item) => item.role === "user"
-        )?.requestId ?? null;
-      });
+            const userMessage = messages.find(
+              (item) => item.role === "user"
+            );
 
-      expect(storedId).toBe(requestId);
+            return userMessage?.requestId ?? null;
+          }, CHAT_STORAGE_KEY);
+        })
+        .toBe(requestId);
 
-      // 模拟用户刷新浏览器
+      // 刷新后，因为 Token 仅保存在内存，
+      // 页面应重新显示登录表单
       await page.reload();
 
-      // 模拟服务器后来完成了原请求
+      await expect(
+        page.locator("#pa-login-username")
+      ).toBeVisible();
+
+      // 模拟服务器在刷新期间完成回复
       allowCompletion = true;
+
+      // 使用相同的模拟用户重新登录
+      await signIn(page);
 
       await expect(
         page.getByText("刷新后成功恢复的回复")
@@ -259,10 +379,11 @@ test.describe("Chat Idempotency", () => {
         page.getByText("刷新恢复测试")
       ).toBeVisible();
 
-      // 刷新后不应重新执行模型请求
+      // 刷新和重新登录都不能重新 POST
       expect(postCount).toBe(1);
 
       expect(queryCount).toBeGreaterThan(1);
     }
   );
+
 });

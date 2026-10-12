@@ -7,6 +7,65 @@ import {
 } from "@playwright/test";
 
 const CHAT_API = "**/api/chat";
+const LOGIN_API = "**/api/auth/login";
+
+// 测试专用身份，不是真实账户
+const TEST_USER_ID = "playwright-e2e-user";
+const TEST_TOKEN = "playwright-test-only-token";
+
+const CHAT_STORAGE_KEY =
+  `personal-agent-user-${TEST_USER_ID}-chat`;
+
+
+// ==========================================
+// 模拟登录并进入聊天界面
+// ==========================================
+
+async function openAuthenticatedChat(
+  page: Page
+): Promise<void> {
+
+  // 拦截登录请求，不使用真实密码或账户数据库
+  await page.route(
+    LOGIN_API,
+    async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          token: TEST_TOKEN,
+          token_type: "bearer",
+          user: {
+            id: TEST_USER_ID,
+            username: "playwright",
+            role: "member",
+            active: true,
+          },
+        }),
+      });
+    }
+  );
+
+  await page.goto("/login");
+
+  await page.locator(
+    "#pa-login-username"
+  ).fill("playwright");
+
+  await page.locator(
+    "#pa-login-password"
+  ).fill("PlaywrightTestPassword2026!");
+
+  await page.getByRole("button", {
+    name: /登录工作空间/,
+  }).click();
+
+  await expect(
+    page.getByRole("textbox", {
+      name: "输入聊天消息",
+    })
+  ).toBeVisible();
+}
 
 
 // ==========================================
@@ -44,8 +103,6 @@ async function mockReply(
 }
 
 
-// 分别验证消息状态和错误区域。
-// 避免 getByText 同时匹配两个元素。
 async function expectUnconfirmed(
   page: Page
 ): Promise<void> {
@@ -70,26 +127,36 @@ async function expectUnconfirmed(
 
 
 // ==========================================
-// Personal Agent 浏览器测试
+// Personal Agent 已登录聊天测试
 // ==========================================
 
 test.describe("Personal Agent Chat", () => {
 
   // ----------------------------------------
-  // 测试 1：正常聊天
+  // 1. 正常聊天及身份信息
   // ----------------------------------------
 
   test("正常聊天能够收到回复", async ({
     page,
   }) => {
-    await page.route(CHAT_API, async (route) => {
-      await mockReply(
-        route,
-        "你好，我是测试助手。"
-      );
-    });
 
-    await page.goto("/");
+    await page.route(
+      CHAT_API,
+      async (route) => {
+
+        // 验证聊天请求确实携带当前身份
+        expect(
+          route.request().headers()["authorization"]
+        ).toBe(`Bearer ${TEST_TOKEN}`);
+
+        await mockReply(
+          route,
+          "你好，我是测试助手。"
+        );
+      }
+    );
+
+    await openAuthenticatedChat(page);
 
     await sendMessage(page, "你好");
 
@@ -106,14 +173,14 @@ test.describe("Personal Agent Chat", () => {
 
 
   // ----------------------------------------
-  // 测试 2：连续点击防重复发送
+  // 2. 连续点击防重复发送
   // ----------------------------------------
 
   test("连续点击不会重复发送请求", async ({
     page,
   }) => {
-    let requestCount = 0;
 
+    let requestCount = 0;
     let pendingRoute: Route | undefined;
 
     await page.route(CHAT_API, (route) => {
@@ -121,7 +188,7 @@ test.describe("Personal Agent Chat", () => {
       pendingRoute = route;
     });
 
-    await page.goto("/");
+    await openAuthenticatedChat(page);
 
     await sendMessage(
       page,
@@ -147,7 +214,6 @@ test.describe("Personal Agent Chat", () => {
       throw new Error("发送按钮不存在");
     }
 
-    // 用户等待时连续点击五次
     for (let index = 0; index < 5; index++) {
       await page.mouse.click(
         box.x + box.width / 2,
@@ -177,24 +243,29 @@ test.describe("Personal Agent Chat", () => {
 
 
   // ----------------------------------------
-  // 测试 3：慢响应
+  // 3. 慢响应
   // ----------------------------------------
 
   test("慢响应时显示等待状态", async ({
     page,
   }) => {
-    await page.route(CHAT_API, async (route) => {
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 1500);
-      });
 
-      await mockReply(
-        route,
-        "慢响应测试完成"
-      );
-    });
+    await page.route(
+      CHAT_API,
+      async (route) => {
 
-    await page.goto("/");
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 1500);
+        });
+
+        await mockReply(
+          route,
+          "慢响应测试完成"
+        );
+      }
+    );
+
+    await openAuthenticatedChat(page);
 
     await sendMessage(
       page,
@@ -220,38 +291,40 @@ test.describe("Personal Agent Chat", () => {
 
 
   // ----------------------------------------
-  // 测试 4：HTTP 500 错误
+  // 4. HTTP 500 错误
   // ----------------------------------------
 
   test("HTTP 500 不应丢失用户消息", async ({
     page,
   }) => {
-    await page.route(CHAT_API, async (route) => {
-      await route.fulfill({
-        status: 500,
-        contentType: "application/json",
-        body: JSON.stringify({
-          detail: "Test server error",
-        }),
-      });
-    });
 
-    await page.goto("/");
+    await page.route(
+      CHAT_API,
+      async (route) => {
+
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({
+            detail: "Test server error",
+          }),
+        });
+      }
+    );
+
+    await openAuthenticatedChat(page);
 
     await sendMessage(
       page,
       "测试服务器故障"
     );
 
-    // 用户原始消息必须保留
     await expect(
       page.getByText("测试服务器故障")
     ).toBeVisible();
 
-    // 需要同时检查两个错误显示区域
     await expectUnconfirmed(page);
 
-    // 不允许失败后一直锁死输入框
     await expect(
       page.getByRole("textbox", {
         name: "输入聊天消息",
@@ -261,17 +334,21 @@ test.describe("Personal Agent Chat", () => {
 
 
   // ----------------------------------------
-  // 测试 5：网络中断
+  // 5. 网络中断
   // ----------------------------------------
 
   test("网络中断时保留消息", async ({
     page,
   }) => {
-    await page.route(CHAT_API, async (route) => {
-      await route.abort("failed");
-    });
 
-    await page.goto("/");
+    await page.route(
+      CHAT_API,
+      async (route) => {
+        await route.abort("failed");
+      }
+    );
+
+    await openAuthenticatedChat(page);
 
     await sendMessage(
       page,
@@ -284,7 +361,6 @@ test.describe("Personal Agent Chat", () => {
 
     await expectUnconfirmed(page);
 
-    // 应提供查询原请求的入口
     await expect(
       page.getByRole("button", {
         name: "查询结果",
@@ -294,20 +370,24 @@ test.describe("Personal Agent Chat", () => {
 
 
   // ----------------------------------------
-  // 测试 6：刷新恢复聊天记录
+  // 6. 刷新后重新登录，恢复本人聊天记录
   // ----------------------------------------
 
   test("刷新页面能够恢复聊天记录", async ({
     page,
   }) => {
-    await page.route(CHAT_API, async (route) => {
-      await mockReply(
-        route,
-        "这是需要保留的回复"
-      );
-    });
 
-    await page.goto("/");
+    await page.route(
+      CHAT_API,
+      async (route) => {
+        await mockReply(
+          route,
+          "这是需要保留的回复"
+        );
+      }
+    );
+
+    await openAuthenticatedChat(page);
 
     await sendMessage(
       page,
@@ -318,13 +398,11 @@ test.describe("Personal Agent Chat", () => {
       page.getByText("这是需要保留的回复")
     ).toBeVisible();
 
-    // 验证聊天记录已保存至 sessionStorage
+    // 现在使用用户专属的缓存名称
     await expect
       .poll(async () => {
-        return page.evaluate(() => {
-          const raw = sessionStorage.getItem(
-            "personal-agent-dev-chat"
-          );
+        return page.evaluate((key) => {
+          const raw = sessionStorage.getItem(key);
 
           if (!raw) return 0;
 
@@ -333,11 +411,19 @@ test.describe("Personal Agent Chat", () => {
           return Array.isArray(data)
             ? data.length
             : 0;
-        });
+        }, CHAT_STORAGE_KEY);
       })
       .toBe(2);
 
     await page.reload();
+
+    // 当前登录凭证只保存在内存中，
+    // 刷新后必须重新登录。
+    await expect(
+      page.locator("#pa-login-username")
+    ).toBeVisible();
+
+    await openAuthenticatedChat(page);
 
     await expect(
       page.getByText("记住这条消息")
@@ -350,38 +436,42 @@ test.describe("Personal Agent Chat", () => {
 
 
   // ----------------------------------------
-  // 测试 7：错误后继续聊天
+  // 7. 错误后继续聊天
   // ----------------------------------------
 
   test("请求失败后仍能继续聊天", async ({
     page,
   }) => {
+
     let attempts = 0;
 
-    await page.route(CHAT_API, async (route) => {
-      attempts += 1;
+    await page.route(
+      CHAT_API,
+      async (route) => {
 
-      if (attempts === 1) {
-        await route.fulfill({
-          status: 500,
-          contentType: "application/json",
-          body: JSON.stringify({
-            detail: "Simulated error",
-          }),
-        });
+        attempts += 1;
 
-        return;
+        if (attempts === 1) {
+          await route.fulfill({
+            status: 500,
+            contentType: "application/json",
+            body: JSON.stringify({
+              detail: "Simulated error",
+            }),
+          });
+
+          return;
+        }
+
+        await mockReply(
+          route,
+          "服务已恢复正常"
+        );
       }
+    );
 
-      await mockReply(
-        route,
-        "服务已恢复正常"
-      );
-    });
+    await openAuthenticatedChat(page);
 
-    await page.goto("/");
-
-    // 第一次请求模拟服务器失败
     await sendMessage(
       page,
       "第一次请求"
@@ -389,7 +479,6 @@ test.describe("Personal Agent Chat", () => {
 
     await expectUnconfirmed(page);
 
-    // 第二次发送一条新消息
     await sendMessage(
       page,
       "第二次请求"
@@ -401,7 +490,6 @@ test.describe("Personal Agent Chat", () => {
 
     expect(attempts).toBe(2);
 
-    // 原先失败的消息不应被删除
     await expect(
       page.getByText("第一次请求")
     ).toBeVisible();

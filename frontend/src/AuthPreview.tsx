@@ -1,13 +1,10 @@
-
 import {
   useEffect,
   useRef,
   useState,
 } from 'react'
 
-import type {
-  FormEvent,
-} from 'react'
+import type { FormEvent } from 'react'
 
 import App from './App.tsx'
 import './AuthPreview.css'
@@ -27,38 +24,120 @@ type AuthSession = {
 
 
 const LOGIN_URL = '/api/auth/login'
+const ME_URL = '/api/auth/me'
 const LOGOUT_URL = '/api/auth/logout'
 
+const SESSION_KEY = 'personal-agent-auth-token'
 const REQUEST_TIMEOUT_MS = 20000
 
 
-function isAuthSession(value: unknown): value is AuthSession {
+function parseAuthUser(value: unknown): AuthUser | null {
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+
+  const data = value as Record<string, unknown>
+
+  const id =
+    typeof data.id === 'string'
+      ? data.id
+      : data.user_id
+
+  const active =
+    data.active === true ||
+    data.is_active === true
+
   if (
-    typeof value !== 'object' ||
-    value === null
+    typeof id !== 'string' ||
+    !id ||
+    typeof data.username !== 'string' ||
+    !data.username ||
+    typeof data.role !== 'string' ||
+    !active
   ) {
-    return false
+    return null
+  }
+
+  return {
+    id,
+    username: data.username,
+    role: data.role,
+    active: true,
+  }
+}
+
+
+function parseLoginSession(value: unknown): AuthSession | null {
+  if (typeof value !== 'object' || value === null) {
+    return null
   }
 
   const data = value as Record<string, unknown>
 
   if (
     typeof data.token !== 'string' ||
-    data.token.length === 0 ||
-    typeof data.user !== 'object' ||
-    data.user === null
+    !data.token
   ) {
-    return false
+    return null
   }
 
-  const user = data.user as Record<string, unknown>
+  const user = parseAuthUser(data.user)
 
-  return (
-    typeof user.id === 'string' &&
-    typeof user.username === 'string' &&
-    typeof user.role === 'string' &&
-    user.active === true
-  )
+  if (!user) {
+    return null
+  }
+
+  return {
+    token: data.token,
+    user,
+  }
+}
+
+
+function parseMeResponse(value: unknown): AuthUser | null {
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+
+  const data = value as Record<string, unknown>
+
+  // 兼容直接返回用户对象，或者 { user: ... }。
+  return parseAuthUser(data.user ?? data)
+}
+
+
+function getSavedToken(): string | null {
+  try {
+    return window.sessionStorage.getItem(SESSION_KEY)
+  } catch {
+    return null
+  }
+}
+
+
+function saveToken(token: string): boolean {
+  try {
+    window.sessionStorage.setItem(SESSION_KEY, token)
+    return true
+  } catch {
+    return false
+  }
+}
+
+
+function clearSavedToken(): void {
+  try {
+    window.sessionStorage.removeItem(SESSION_KEY)
+  } catch {
+    // 浏览器禁止存储时，不应导致页面崩溃。
+  }
+}
+
+
+function replacePath(path: '/login' | '/'): void {
+  if (window.location.pathname !== path) {
+    window.history.replaceState(null, '', path)
+  }
 }
 
 
@@ -82,6 +161,12 @@ export default function AuthPreview() {
   const [session, setSession] =
     useState<AuthSession | null>(null)
 
+  const [checkingSession, setCheckingSession] =
+    useState(true)
+
+  const [restoreError, setRestoreError] = useState('')
+  const [restoreAttempt, setRestoreAttempt] = useState(0)
+
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -92,19 +177,143 @@ export default function AuthPreview() {
   const [loggingOut, setLoggingOut] = useState(false)
   const [logoutError, setLogoutError] = useState('')
 
-  // 同步锁：阻止重复提交
   const loginLocked = useRef(false)
   const logoutLocked = useRef(false)
 
-  const requestRef = useRef<AbortController | null>(null)
+  const loginRequestRef =
+    useRef<AbortController | null>(null)
 
-  // 页面卸载时取消仍在等待的登录请求
+
+  // ==========================================
+  // 启动时恢复登录状态
+  // ==========================================
+
+  useEffect(() => {
+    const token = getSavedToken()
+
+    if (!token) {
+      setSession(null)
+      setCheckingSession(false)
+      replacePath('/login')
+      return
+    }
+
+    let active = true
+
+    const controller = new AbortController()
+
+    const timeout = window.setTimeout(() => {
+      controller.abort()
+    }, REQUEST_TIMEOUT_MS)
+
+    async function restoreSession() {
+      try {
+        const response = await fetch(ME_URL, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+          credentials: 'omit',
+          signal: controller.signal,
+        })
+
+        if (!active) {
+          return
+        }
+
+        if (
+          response.status === 401 ||
+          response.status === 403
+        ) {
+          clearSavedToken()
+          setSession(null)
+          setRestoreError('')
+          setError('登录已过期，请重新登录')
+          replacePath('/login')
+          return
+        }
+
+        if (!response.ok) {
+          throw new Error('无法验证登录状态')
+        }
+
+        const result: unknown = await response.json()
+
+        if (!active) {
+          return
+        }
+
+        const user = parseMeResponse(result)
+
+        if (!user) {
+          throw new Error('身份接口返回的数据格式不正确')
+        }
+
+        setSession({
+          token,
+          user,
+        })
+
+        setRestoreError('')
+        setError('')
+
+        replacePath('/')
+
+      } catch (reason) {
+        if (!active) {
+          return
+        }
+
+        // 网络故障不等于令牌失效。
+        // 不清除 token，也不允许进入工作空间。
+        setSession(null)
+
+        if (
+          reason instanceof Error &&
+          reason.name === 'AbortError'
+        ) {
+          setRestoreError(
+            '验证登录状态超时，请检查后端服务。',
+          )
+        } else {
+          setRestoreError(
+            '暂时无法验证上次登录状态，请重试。',
+          )
+        }
+
+        replacePath('/login')
+
+      } finally {
+        window.clearTimeout(timeout)
+
+        if (active) {
+          setCheckingSession(false)
+        }
+      }
+    }
+
+    void restoreSession()
+
+    return () => {
+      active = false
+      controller.abort()
+      window.clearTimeout(timeout)
+    }
+  }, [restoreAttempt])
+
+
+  // 页面卸载时取消登录请求。
   useEffect(() => {
     return () => {
-      requestRef.current?.abort()
+      loginRequestRef.current?.abort()
     }
   }, [])
 
+
+  // ==========================================
+  // 登录
+  // ==========================================
 
   async function handleLogin(
     event: FormEvent<HTMLFormElement>,
@@ -130,9 +339,10 @@ export default function AuthPreview() {
     loginLocked.current = true
     setSending(true)
     setError('')
+    setRestoreError('')
 
     const controller = new AbortController()
-    requestRef.current = controller
+    loginRequestRef.current = controller
 
     const timeout = window.setTimeout(() => {
       controller.abort()
@@ -143,7 +353,7 @@ export default function AuthPreview() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
+          Accept: 'application/json',
         },
         credentials: 'omit',
         signal: controller.signal,
@@ -168,17 +378,26 @@ export default function AuthPreview() {
       }
 
       const result: unknown = await response.json()
+      const validSession = parseLoginSession(result)
 
-      if (!isAuthSession(result)) {
-        setError('服务器返回的数据格式不正确')
+      if (!validSession) {
+        setError('服务器返回的登录数据格式不正确')
         return
       }
 
-      // 清除密码，不保存至浏览器持久存储
-      setPassword('')
+      if (!saveToken(validSession.token)) {
+        setError(
+          '浏览器无法保存当前标签页的登录状态，请检查存储权限。',
+        )
+        return
+      }
 
-      // 只在内存里保存当前登录状态
-      setSession(result)
+      setPassword('')
+      setSession(validSession)
+      setError('')
+
+      // 登录成功后切换工作空间地址。
+      replacePath('/')
 
     } catch (reason) {
       if (
@@ -192,12 +411,16 @@ export default function AuthPreview() {
 
     } finally {
       window.clearTimeout(timeout)
-      requestRef.current = null
+      loginRequestRef.current = null
       loginLocked.current = false
       setSending(false)
     }
   }
 
+
+  // ==========================================
+  // 退出登录
+  // ==========================================
 
   async function handleLogout() {
     if (!session || logoutLocked.current) {
@@ -225,10 +448,18 @@ export default function AuthPreview() {
         signal: controller.signal,
       })
 
-      if (response.ok || response.status === 401) {
+      if (
+        response.ok ||
+        response.status === 401
+      ) {
+        clearSavedToken()
+
         setSession(null)
         setPassword('')
         setError('')
+        setRestoreError('')
+
+        replacePath('/login')
         return
       }
 
@@ -236,7 +467,7 @@ export default function AuthPreview() {
 
     } catch {
       setLogoutError(
-        '网络异常，无法确认服务端会话已撤销',
+        '网络异常，无法确认服务端会话已撤销，请重试。',
       )
 
     } finally {
@@ -247,9 +478,31 @@ export default function AuthPreview() {
   }
 
 
-  // ====================================
-  // 已登录：显示已有 AI 工作空间
-  // ====================================
+  // ==========================================
+  // 正在验证已保存的会话
+  // ==========================================
+
+  if (checkingSession) {
+    return (
+      <main className="pa-auth-page">
+        <div
+          role="status"
+          style={{
+            margin: 'auto',
+            padding: 32,
+            textAlign: 'center',
+          }}
+        >
+          正在验证登录状态，请稍候…
+        </div>
+      </main>
+    )
+  }
+
+
+  // ==========================================
+  // 已登录：显示原有聊天工作空间
+  // ==========================================
 
   if (session) {
     return (
@@ -290,17 +543,15 @@ export default function AuthPreview() {
   }
 
 
-  // ====================================
-  // 未登录：显示登录页面
-  // ====================================
+  // ==========================================
+  // 未登录：显示原有登录页面
+  // ==========================================
 
   return (
     <main className="pa-auth-page">
-
       <section className="pa-auth-layout">
 
         <aside className="pa-auth-hero">
-
           <div className="pa-auth-brand">
             <div className="pa-auth-brand-icon">
               ✳
@@ -347,7 +598,6 @@ export default function AuthPreview() {
 
 
         <section className="pa-auth-form-side">
-
           <div className="pa-auth-form-container">
 
             <div className="pa-auth-mobile-brand">
@@ -363,6 +613,25 @@ export default function AuthPreview() {
             <p className="pa-auth-subtitle">
               登录你的 Personal Agent 工作空间
             </p>
+
+
+            {restoreError && (
+              <div className="pa-auth-error" role="alert">
+                <p>{restoreError}</p>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCheckingSession(true)
+                    setRestoreError('')
+                    setRestoreAttempt((value) => value + 1)
+                  }}
+                >
+                  重新验证上次登录
+                </button>
+              </div>
+            )}
+
 
             <form
               className="pa-auth-form"
@@ -391,6 +660,7 @@ export default function AuthPreview() {
                 }}
               />
 
+
               <div className="pa-auth-password-label">
                 <label htmlFor="pa-login-password">
                   密码
@@ -401,11 +671,7 @@ export default function AuthPreview() {
                 <input
                   id="pa-login-password"
                   name="password"
-                  type={
-                    showPassword
-                      ? 'text'
-                      : 'password'
-                  }
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   spellCheck={false}
                   autoCapitalize="none"
@@ -422,9 +688,7 @@ export default function AuthPreview() {
                   type="button"
                   className="pa-auth-password-toggle"
                   aria-label={
-                    showPassword
-                      ? '隐藏密码'
-                      : '显示密码'
+                    showPassword ? '隐藏密码' : '显示密码'
                   }
                   aria-pressed={showPassword}
                   disabled={sending}
@@ -440,6 +704,7 @@ export default function AuthPreview() {
                 密码默认隐藏。请留意中文输入法的候选窗口。
               </p>
 
+
               {error && (
                 <div
                   className="pa-auth-error"
@@ -448,6 +713,7 @@ export default function AuthPreview() {
                   {error}
                 </div>
               )}
+
 
               <button
                 type="submit"
@@ -466,21 +732,22 @@ export default function AuthPreview() {
 
             </form>
 
+
             <div className="pa-auth-note">
               <span aria-hidden="true">◇</span>
               邀请制访问 · 安全身份验证
             </div>
 
             <div className="pa-auth-preview-note">
-              当前为本地登录预览。
-              账号注册与邀请码功能将在后续开放。
+              本地开发版本。
+              登录状态仅保存在当前浏览器标签页，
+              刷新时会重新向服务器验证。
             </div>
 
           </div>
         </section>
 
       </section>
-
     </main>
   )
 }

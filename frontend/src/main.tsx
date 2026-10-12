@@ -1,16 +1,14 @@
-
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import './index.css'
-
-import App from './App.tsx'
 import AuthPreview from './AuthPreview.tsx'
 
-const path = window.location.pathname.replace(/\/+$/, '') || '/'
+// 页面入口不直接决定用户是否已登录。
+// 由 AuthPreview 向后端验证会话，再决定显示哪个页面。
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {path === '/login' ? <AuthPreview /> : <App />}
+    <AuthPreview />
   </StrictMode>,
 )

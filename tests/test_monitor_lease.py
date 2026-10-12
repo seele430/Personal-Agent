@@ -9,6 +9,8 @@ from unittest.mock import patch
 
 from src.core import monitor_registry
 from src.core import monitor_dispatcher
+from src.core import task_engine
+from src.core import task_run_history
 
 
 RSS_URL = "https://blog.python.org/rss.xml"
@@ -24,6 +26,13 @@ class TestMonitorLease(unittest.TestCase):
             db_path = Path(temp_dir) / "test_lease.db"
 
             with (
+                # DB_PATH 的源头是 src.core.task_engine。
+                # 使用 `from ... import DB_PATH` 的模块各自绑定了
+                # 一份引用，因此必须逐个替换，否则
+                # claim_due_tasks() -> init_dispatcher_db()
+                # -> init_run_history() 仍会指向项目 tasks.db。
+                patch.object(task_engine, "DB_PATH", db_path),
+                patch.object(task_run_history, "DB_PATH", db_path),
                 patch.object(monitor_registry, "DB_PATH", db_path),
                 patch.object(monitor_dispatcher, "DB_PATH", db_path),
             ):
@@ -116,6 +125,9 @@ class TestMonitorLease(unittest.TestCase):
             db_path = Path(temp_dir) / "test_inactive.db"
 
             with (
+                # 同上：每个模块各持一份 DB_PATH 引用。
+                patch.object(task_engine, "DB_PATH", db_path),
+                patch.object(task_run_history, "DB_PATH", db_path),
                 patch.object(monitor_registry, "DB_PATH", db_path),
                 patch.object(monitor_dispatcher, "DB_PATH", db_path),
             ):
