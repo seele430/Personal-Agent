@@ -254,7 +254,11 @@ export default function AuthPreview() {
   if (session) {
     return (
       <>
-        <App />
+        <App
+          key={session.user.id}
+          authToken={session.token}
+          userId={session.user.id}
+        />
 
         <div className="pa-auth-session-panel">
           <span className="pa-auth-session-user">

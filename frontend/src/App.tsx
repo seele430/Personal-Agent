@@ -27,10 +27,24 @@ type ChatResponse = {
 const CHAT_KEY = "personal-agent-dev-chat";
 const DRAFT_KEY = "personal-agent-dev-draft";
 
-function saveMessages(messages: Message[]) {
+type AppProps = {
+  authToken?: string;
+  userId?: string;
+};
+
+// 已登录用户使用独立的浏览器缓存；旧版开发页面保留原缓存。
+function chatStorageKey(userId?: string): string {
+  return userId ? `personal-agent-user-${userId}-chat` : CHAT_KEY;
+}
+
+function draftStorageKey(userId?: string): string {
+  return userId ? `personal-agent-user-${userId}-draft` : DRAFT_KEY;
+}
+
+function saveMessages(messages: Message[], userId?: string) {
   try {
     sessionStorage.setItem(
-      CHAT_KEY,
+      chatStorageKey(userId),
       JSON.stringify(messages.slice(-100))
     );
   } catch {
@@ -38,9 +52,9 @@ function saveMessages(messages: Message[]) {
   }
 }
 
-function loadMessages(): Message[] {
+function loadMessages(userId?: string): Message[] {
   try {
-    const raw = sessionStorage.getItem(CHAT_KEY);
+    const raw = sessionStorage.getItem(chatStorageKey(userId));
 
     if (!raw) return [];
 
@@ -74,9 +88,9 @@ function loadMessages(): Message[] {
   }
 }
 
-function loadDraft(): string {
+function loadDraft(userId?: string): string {
   try {
-    return sessionStorage.getItem(DRAFT_KEY) ?? "";
+    return sessionStorage.getItem(draftStorageKey(userId)) ?? "";
   } catch {
     return "";
   }
@@ -94,11 +108,11 @@ async function readJson(
   return value as ChatResponse;
 }
 
-export default function App() {
+export default function App({ authToken, userId }: AppProps = {}) {
   const [messages, setMessages] =
-    useState<Message[]>(loadMessages);
+    useState<Message[]>(() => loadMessages(userId));
 
-  const [input, setInput] = useState(loadDraft);
+  const [input, setInput] = useState(() => loadDraft(userId));
 
   const [sending, setSending] = useState(false);
 
@@ -118,16 +132,16 @@ export default function App() {
   // ========================================
 
   useEffect(() => {
-    saveMessages(messages);
-  }, [messages]);
+    saveMessages(messages, userId);
+  }, [messages, userId]);
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(DRAFT_KEY, input);
+      sessionStorage.setItem(draftStorageKey(userId), input);
     } catch {
       // 草稿缓存失败不影响输入
     }
-  }, [input]);
+  }, [input, userId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({
@@ -224,6 +238,9 @@ export default function App() {
           )}`,
           {
             cache: "no-store",
+            headers: authToken
+              ? { Authorization: `Bearer ${authToken}` }
+              : {},
           }
         );
 
@@ -286,7 +303,7 @@ export default function App() {
   // ========================================
 
   useEffect(() => {
-    const unfinished = loadMessages().filter(
+    const unfinished = loadMessages(userId).filter(
       (item) =>
         item.role === "user" &&
         item.status === "pending" &&
@@ -337,7 +354,7 @@ export default function App() {
     // 先保存请求 ID，再发送网络请求
     const updated = [...messages, userMessage];
 
-    saveMessages(updated);
+    saveMessages(updated, userId);
     setMessages(updated);
     setInput("");
 
@@ -354,6 +371,9 @@ export default function App() {
 
         headers: {
           "Content-Type": "application/json",
+          ...(authToken
+            ? { Authorization: `Bearer ${authToken}` }
+            : {}),
         },
 
         body: JSON.stringify({
