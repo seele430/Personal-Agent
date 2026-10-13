@@ -1,13 +1,21 @@
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 DB_PATH = BASE_DIR / "tasks.db"
 
 
+# 连接写法说明：
+#   with closing(sqlite3.connect(...)) as conn, conn:
+# 内层 conn 负责事务（成功提交、异常回滚），
+# 外层 closing 在退出时关闭连接，释放 Windows 文件句柄。
+# 单独使用 `with sqlite3.connect(...) as conn` 只会提交，不会关闭连接。
+
+
 def init_task_db():
     """初始化任务状态数据库。"""
-    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn, conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS monitor_state (
                 monitor_id TEXT PRIMARY KEY,
@@ -29,19 +37,19 @@ def init_task_db():
         """)
 
         conn.execute("""
-             CREATE TABLE IF NOT EXISTS notification_outbox (
-                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                 monitor_id TEXT NOT NULL,
-                 item_id TEXT NOT NULL,
-                 message TEXT NOT NULL,
-                 status TEXT NOT NULL DEFAULT 'pending',
-                 attempts INTEGER NOT NULL DEFAULT 0,
-                 next_attempt_at TEXT,
-                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                 sent_at TEXT,
-                 UNIQUE (monitor_id, item_id)
-    )
-""")
+            CREATE TABLE IF NOT EXISTS notification_outbox (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                monitor_id TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                message TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                next_attempt_at TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                sent_at TEXT,
+                UNIQUE (monitor_id, item_id)
+            )
+        """)
 
 
 def detect_new_items(
@@ -63,7 +71,7 @@ def detect_new_items(
 
     new_articles = []
 
-    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
 
         initialized = conn.execute(
