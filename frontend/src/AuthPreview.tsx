@@ -206,12 +206,14 @@ export default function AuthPreview() {
       controller.abort()
     }, REQUEST_TIMEOUT_MS)
 
-    async function restoreSession() {
+    // token 通过参数传入：函数声明会被提升，
+    // TypeScript 不会把外层的非空判断带进函数体。
+    async function restoreSession(savedToken: string) {
       try {
         const response = await fetch(ME_URL, {
           method: 'GET',
           headers: {
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${savedToken}`,
             Accept: 'application/json',
           },
           credentials: 'omit',
@@ -251,7 +253,7 @@ export default function AuthPreview() {
         }
 
         setSession({
-          token,
+          token: savedToken,
           user,
         })
 
@@ -293,7 +295,7 @@ export default function AuthPreview() {
       }
     }
 
-    void restoreSession()
+    void restoreSession(token)
 
     return () => {
       active = false

@@ -1,0 +1,84 @@
+import { expect, type Page, type Route } from "@playwright/test";
+
+/**
+ * 前端测试的认证 mock 与网络兜底。
+ *
+ * 用法（顺序很重要）：
+ *   const unexpected = await blockUnmockedApi(page);   // 1. 先注册兜底
+ *   await installAuthMocks(page, TEST_TOKEN, TEST_USER); // 2. 再注册具体 mock
+ *   await page.route(CHAT_API, ...);                     // 3. 用例自己的 mock
+ *   ...
+ *   expectNoUnmockedApi(unexpected);                     // 4. 结尾断言
+ *
+ * Playwright 按注册的逆序匹配路由：后注册的具体 mock 优先，
+ * 没被任何 mock 处理的 /api/* 请求落到兜底，被中止并记录。
+ * 这样请求不会经过 Vite 代理到达 127.0.0.1:8000 的真实后端。
+ */
+
+export type MockUser = {
+  id: string;
+  username: string;
+  role: string;
+  active: boolean;
+};
+
+export const TEST_TOKEN = "personal-agent-test-token";
+
+export const TEST_USER: MockUser = {
+  id: "test-user-1",
+  username: "tester",
+  role: "member",
+  active: true,
+};
+
+export async function blockUnmockedApi(page: Page): Promise<string[]> {
+  const unexpected: string[] = [];
+
+  await page.route("**/api/**", async (route: Route) => {
+    const request = route.request();
+    unexpected.push(`${request.method()} ${request.url()}`);
+    await route.abort("connectionrefused");
+  });
+
+  return unexpected;
+}
+
+export async function installAuthMocks(
+  page: Page,
+  token: string = TEST_TOKEN,
+  user: MockUser = TEST_USER,
+): Promise<void> {
+  // 与后端一致：登录返回 { token, token_type, user }
+  await page.route("**/api/auth/login", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ token, token_type: "bearer", user }),
+    }),
+  );
+
+  // 与后端一致：/auth/me 返回 { user }；token 不匹配返回 401
+  await page.route("**/api/auth/me", (route) => {
+    // Playwright 返回的 header 名是小写
+    const ok =
+      route.request().headers()["authorization"] === `Bearer ${token}`;
+
+    return route.fulfill({
+      status: ok ? 200 : 401,
+      contentType: "application/json",
+      body: JSON.stringify(ok ? { user } : { detail: "请先登录" }),
+    });
+  });
+
+  await page.route("**/api/auth/logout", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "ok" }),
+    }),
+  );
+}
+
+export function expectNoUnmockedApi(unexpected: string[]): void {
+  expect(unexpected, "存在未 mock 的 API 请求").toEqual([]);
+}
