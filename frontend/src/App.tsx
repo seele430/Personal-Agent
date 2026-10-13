@@ -198,7 +198,7 @@ export default function App(
   // 已被明确拒绝：没有调用模型
   // ========================================
 
-  function markRejected(
+    function markRejected(
     requestId: string,
     originalText: string,
     code?: string
@@ -225,6 +225,16 @@ export default function App(
     ) {
       setError(
         "当前正在处理的请求过多。" +
+          "这条消息没有调用 AI，已恢复到输入框，可稍后手动发送。"
+      );
+    } else if (code === "user_budget_exceeded") {
+      setError(
+        "你过去 24 小时的个人 AI 预算已用完。" +
+          "这条消息没有调用 AI，已恢复到输入框，可稍后手动发送。"
+      );
+    } else if (code === "global_budget_exceeded") {
+      setError(
+        "全站过去 24 小时的 AI 预算已用完。" +
           "这条消息没有调用 AI，已恢复到输入框，可稍后手动发送。"
       );
     } else {
