@@ -379,8 +379,9 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
-    # L2：聊天请求幂等（CHAT_DB_PATH 指向临时目录）
-    "test_api_idempotency.py": TestSchema(
+    # L2：聊天库重启恢复（init_chat_db，CHAT_DB_PATH 指向临时目录）
+    # 旧入口 src.api:app 下线后替代 test_api_idempotency.py 的重启用例。
+    "test_chat_db_restart.py": TestSchema(
         layer="integration",
         domain="chat",
         database="temporary_sqlite",
@@ -421,16 +422,6 @@ TEST_SCHEMAS = {
         authentication="mocked",
         external_network="mocked",
         risk="high",
-    ),
-
-    # L3：聊天 HTTP 接口基础行为
-    "test_api_http.py": TestSchema(
-        layer="api",
-        domain="chat",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="mocked",
-        risk="medium",
     ),
 
     # L3：登录与会话 API
@@ -501,6 +492,17 @@ TEST_SCHEMAS = {
         authentication="mocked",
         external_network="mocked",
         risk="high",
+    ),
+
+    # L3：正式聊天 API 的 request_id 校验（模型被 patch）
+    # 旧入口 src.api:app 下线后替代 test_api_http.py 的 400 用例。
+    "test_chat_request_validation_http.py": TestSchema(
+        layer="api",
+        domain="chat",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="mocked",
+        risk="medium",
     ),
 }
 
