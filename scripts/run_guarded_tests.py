@@ -1,10 +1,12 @@
 """Personal Agent protected test runner.
 
-Pilot mode:
-- Reuse the existing Schema-based test runner.
-- Enable the Python runtime safety guard before loading tests.
-- Replace model credentials with a deliberately invalid key.
-- Do not change the existing test.ps1 or run_tests.py.
+- Reuses the existing Schema-based test runner (scripts/run_tests.py).
+- Enables the Python runtime safety guard (SQLite + socket) before
+  loading tests.
+- Replaces model credentials, provider settings and ntfy settings with
+  fixed fake values, so real values from .env never reach the test
+  process (load_dotenv does not override variables that already exist).
+- scripts/test.ps1 calls this runner for every backend layer.
 
 This is not an operating-system sandbox.
 """
@@ -36,11 +38,23 @@ LAYERS = (
 )
 
 
+# Keep this mapping in sync with $TestEnvironment in scripts/test.ps1.
+SAFE_ENVIRONMENT = {
+    "PERSONAL_AGENT_TEST_MODE": "1",
+    "OPENAI_API_KEY": "personal-agent-invalid-test-key",
+    # Fixed to a priced host/model so results do not depend on the
+    # local .env. Real network access is still blocked by the socket guard.
+    "OPENAI_BASE_URL": "https://api.deepseek.com",
+    "MODEL": "deepseek-flash",
+    "NTFY_SERVER": "http://127.0.0.1:1",
+    # An ntfy topic works like an access credential; never reuse the real one.
+    "NTFY_TOPIC": "personal-agent-test-topic",
+}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description=(
-            "Personal Agent protected test runner"
-        )
+        description="Personal Agent protected test runner"
     )
 
     parser.add_argument(
@@ -50,16 +64,6 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    # These values are set before importing test modules.
-    # Their original values are restored after execution.
-    safe_environment = {
-        "PERSONAL_AGENT_TEST_MODE": "1",
-        "OPENAI_API_KEY": (
-            "personal-agent-invalid-test-key"
-        ),
-        "NTFY_SERVER": "http://127.0.0.1:1",
-    }
-
     print()
     print("=" * 48)
     print("Personal Agent Protected Test Runner")
@@ -68,6 +72,7 @@ def main() -> int:
     print("Python SQLite guard: enabled")
     print("Python socket guard: enabled")
     print("Real model API key: replaced")
+    print("Provider / model / ntfy settings: replaced with fake values")
     print()
     print(
         "Note: this is a Python runtime guard, "
@@ -77,29 +82,20 @@ def main() -> int:
     print(flush=True)
 
     try:
-        # Restore environment variables automatically.
-        with patch.dict(
-            os.environ,
-            safe_environment,
-        ):
+        # patch.dict restores the original environment on exit.
+        with patch.dict(os.environ, SAFE_ENVIRONMENT):
 
-            # Activate protection before the existing
-            # runner imports and executes test modules.
+            # Activate protection before the existing runner
+            # imports and executes test modules.
             with guarded_test_runtime(ROOT):
-
                 result = run(args.layer)
 
+        print()
+
         if result == 0:
-            print()
-            print(
-                f"PROTECTED TEST PASS: {args.layer}"
-            )
+            print(f"PROTECTED TEST PASS: {args.layer}")
         else:
-            print()
-            print(
-                f"PROTECTED TEST FAILED: "
-                f"{args.layer}"
-            )
+            print(f"PROTECTED TEST FAILED: {args.layer}")
 
         return result
 
