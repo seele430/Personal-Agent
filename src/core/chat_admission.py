@@ -1,8 +1,8 @@
-
 """聊天准入：在同一个 SQLite 事务里检查次数、并发和预算。
 
-当前只提供数据层。正式 API 尚未切换到此函数。
+正式聊天 API（src/chat_secure_api.py）通过 admit_chat_request 准入新请求。
 初始预留 US$0.05 / 新请求，全站滚动 24 小时 US$1。
+目前只检查全站预算，不检查个人预算。
 """
 
 import sqlite3
