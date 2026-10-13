@@ -1,4 +1,3 @@
-
 """原子限制每用户新聊天次数与并发；只提供数据层，不直接更改 API。"""
 
 import sqlite3
@@ -10,8 +9,10 @@ from src.core.chat_ownership import (
     RequestOwnerMismatch,
 )
 
+# 过去 24 小时内每个角色可发起的新请求次数。
+# member 按 DEVELOPMENT_PLAN.md 定为每天 10 次。
 DAILY_REQUEST_LIMITS = {
-    "member": 20,
+    "member": 10,
     "trusted": 40,
     "admin": 80,
     "owner": 100,

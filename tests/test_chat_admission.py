@@ -1,4 +1,3 @@
-
 """统一聊天准入的原子性测试，不调用任何模型。"""
 
 import sqlite3
@@ -22,6 +21,7 @@ from src.core.chat_ownership import (
     update_owned_status,
 )
 from src.core.chat_quota import (
+    DAILY_REQUEST_LIMITS,
     ChatConcurrencyLimitExceeded,
     ChatDailyLimitExceeded,
 )
@@ -171,7 +171,10 @@ class TestChatAdmission(unittest.TestCase):
         )
 
     def test_daily_quota_denial_does_not_reserve(self):
-        for index in range(20):
+        # 读取当前配置，额度调整后无需修改测试。
+        limit = DAILY_REQUEST_LIMITS["member"]
+
+        for index in range(limit):
             request_id = f"req_{index:03d}"
             self.admit(
                 request_id,
@@ -189,12 +192,14 @@ class TestChatAdmission(unittest.TestCase):
 
         self.assertEqual(
             self.counts(),
-            (20, 20),
+            (limit, limit),
         )
 
     def test_one_dollar_global_budget_denies_21st(
         self,
     ):
+        # 这里的 20 是全局预算边界（owner 角色，两个用户各 10 次），
+        # 与 member 每日额度无关。
         for index in range(20):
             request_id = f"req_{index:03d}"
             user = (
