@@ -17,11 +17,16 @@ Personal Agent 测试工程化整理报告
 
 | 文件 | 类型 | 改动 |
 |---|---|---|
-| `tests/registry.py` | 改 | Schema 6 → 39 条（100% 覆盖）；新增 `status`、`KNOWN_ISOLATION_GAPS`（当前为空）、`schema_status()` / `expected_status()` / `summarize()` |
-| `scripts/run_tests.py` | 改 | 输出补 `Duration` / `Result`；`audit` 命令接入静态隔离审计（分层判定与加载逻辑未动） |
-| `scripts/audit_test_isolation.py` | **新增** | 只读静态隔离审计（真实 DB 写入 / 网络出口 / Schema 一致性 / 登记完整性） |
+| `tests/registry.py` | 改 | Schema 6 → 39 条（100% 覆盖）；新增 `status`、`LAYER_MEMBERSHIP` / `layer_of()` / `members()` / `validate_membership()` / `membership_digest()`、`KNOWN_ISOLATION_GAPS`（当前为空） |
+| `scripts/run_tests.py` | 改 | 输出补 `Duration` / `Result`；`audit` 接入隔离审计 + 层归属校验 + 文档同步校验；新增 `list [layer] [--doc]` 子命令（分层判定与加载逻辑未动） |
+| `scripts/audit_test_isolation.py` | **新增** | 只读静态隔离审计（真实 DB 写入 / 网络出口 / Schema 一致性） |
+| `tests/TEST_LAYERS.md` | **新增** | 分层索引文档（由 `list --doc` 生成，audit 比对摘要防止手工漂移） |
 | `tests/test_monitor_lease.py` | 改 | +12 行 / 0 删除：补 `task_engine`、`task_run_history` 的 `DB_PATH` patch，闭合隔离缺口（断言与业务代码未动） |
 | `TEST_ENGINEERING_REPORT.md` | **新增** | 本报告 |
+
+> 说明：除 `test_monitor_lease.py`（隔离修复，见 §4.1）外，**没有修改任何测试文件**；
+> 层归属以元数据形式登记，`tests/` 目录结构保持原样（35 个文件仍平铺在根目录）。
+> 为什么不搬迁、搬迁会有什么后果，见 §3.4。
 
 ---
 
@@ -135,6 +140,8 @@ Registry 侧口径：
 | `audit` 命令接入隔离审计 | `scripts/run_tests.py` `audit_isolation()` | **本次新增** |
 | KNOWN_ISOLATION_GAPS 登记机制 | `tests/registry.py` | **本次新增**（当前为空） |
 | 监控租约测试的临时库隔离修复 | `tests/test_monitor_lease.py` | **本次修复**（见 §4.1） |
+| **显式层归属契约** | `tests/registry.py` `LAYER_MEMBERSHIP` | **本次新增**（见 §3.4） |
+| **层查询与索引文档** | `scripts/run_tests.py list` / `tests/TEST_LAYERS.md` | **本次新增**（见 §3.4） |
 
 ### 3.1 本次对 `run_tests.py` 的改动（行为兼容）
 
@@ -162,6 +169,54 @@ Registry 侧口径：
    且该守卫只覆盖 SQLite 与 Python socket，**不是操作系统级沙箱**（其 docstring 已声明）。
 3. `tests/registry.py` 的元数据**不参与**任何强制隔离，只用于分类与报告。
 4. 审计的「提示」与「违例」判定是启发式的；本报告中的每一条提示都能在矩阵里对应到具体文件与行号。
+
+### 3.4 层归属契约与「为什么不搬目录」
+
+**问题**：35 个测试文件平铺在 `tests/` 根目录，只有 4 个在子目录里。只看目录，看不出分层。
+
+**处理**：把层归属从「目录约定的隐含信息」升级为「注册表里的显式契约」：
+
+| 能力 | 位置 | 说明 |
+|---|---|---|
+| 显式层归属 | `tests/registry.py` `LAYER_MEMBERSHIP` | 层 → 文件集合；由 Schema 派生，单一事实来源仍是 `TEST_SCHEMAS` |
+| 查询 | `python scripts/run_tests.py list [layer]` | 列出层归属，并标注每个文件当前**物理位置**（`tests/ 根` 或 `tests/xxx/`） |
+| 索引文档 | `tests/TEST_LAYERS.md` | 由 `list --doc` 生成；含 `membership-digest` 摘要 |
+| 漂移校验 | `run_tests.py audit` | 摘要不一致 → `VIOLATION [document]` → audit FAIL（已实测） |
+| 缺登记告警 | `registry.validate_membership(files)` | 磁盘上存在却未登记的文件 → `warning [membership]`；已登记但磁盘上不存在 → `VIOLATION` |
+
+示例（`list unit` 实测输出）：
+
+```
+unit — L1 单元测试 (5 files)
+  test_agent_bounds.py                             [tests/ 根]
+  test_agent_call_count.py                         [tests/ 根]
+  test_agent_usage.py                              [tests/ 根]
+  test_rss_errors.py                               [tests/ 根]
+  unit/test_agent_tool_limits.py                   [tests/unit/]
+```
+
+**为什么不直接搬目录**：任务报告明令「不要大规模移动测试文件」。为评估「搬了会怎样」，做了一次**副本干跑**
+（在临时目录复制整个 `tests/` + `scripts/`，把 35 个文件按层真实搬入，再跑全量）：
+
+| 观测项 | 搬迁前 | 搬迁后（干跑实测） |
+|---|---|---|
+| 物理布局 | 根 35 / unit 1 / integration 3 / api 0 | 根 0 / unit 5 / integration 24 / api 10 |
+| 用例总数 | 253 | 253（类型无丢失） |
+| audit | PASS | PASS |
+| 受保护全量 | 253 OK | **253 中 1 个 failure** ❌ |
+
+唯一失败点：`integration/test_test_safety.py::test_non_temporary_path_blocked`。
+它用 `ROOT = Path(__file__).resolve().parents[2]` 推导项目根，再用 `ROOT.parent / "safety_example.db"`
+构造一个「项目外且非临时」的路径来断言守卫会拦截。文件下移一层后，`ROOT` 变成上层目录，
+`ROOT.parent` 恰好落在系统临时目录内，守卫不再拦截，断言失败。
+
+其它搬迁成本（均已核实）：`parents[N]` 深度敏感改动（2 处，均在守卫测试内）、registry 35 个键名同步、
+新建 `tests/api/__init__.py`、audit 输出与文档路径全面更新、git 里 35 条 rename。
+因为收益（目录整齐）能用上述契约以**零测试改动**拿到，故本轮**不搬迁**。
+
+> 顺带记录一个已发现的系统性陷阱：`monitor_registry` / `monitor_dispatcher` / `task_run_history`
+> 都写 `from src.core.task_engine import DB_PATH`，各模块**各绑一份引用**，
+> 因此测试只 patch 源头或只 patch 部分模块会**静默失效**（§4.1 就是这么来的）。见 R10。
 
 ---
 
@@ -286,9 +341,11 @@ Registry 侧口径：
 | `python scripts/run_tests.py audit` | **PASS** | 39 | —（不运行用例） | 0.06s |
 | `python scripts/run_guarded_tests.py unit` | **PASS** | 5 | 32 | 0.34s |
 | `python scripts/run_guarded_tests.py integration` | **PASS** | 24 | 154 | 14.48s |
-| `python scripts/run_guarded_tests.py api` | **PASS** | 10 | 67 | 29.39s |
-| **`python scripts/run_guarded_tests.py backend`（全量受保护）** | **PASS** | 39 | **253** | 43.66s |
+| `python scripts/run_guarded_tests.py api` | **PASS** | 10 | 67 | 26.38s |
+| **`python scripts/run_guarded_tests.py backend`（全量受保护）** | **PASS** | 39 | **253** | 40.38s |
 | `python scripts/run_tests.py backend`（未加守卫，对照） | PASS | 39 | 253 | 43.72s |
+| `python scripts/run_tests.py list [layer]` | PASS | 39 | — | — |
+| `python scripts/run_tests.py list --doc` | PASS | 39 | — | —（写入 `tests/TEST_LAYERS.md`） |
 | `python scripts/run_guarded_tests.py legacy` | n/a | 0 | 0 | — |
 
 > `legacy` 现在是**空桶**，守卫运行器会按设计打印 `ERROR: legacy has no tests.` 并返回 2。

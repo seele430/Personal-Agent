@@ -549,6 +549,118 @@ ORIGINAL_SCHEMAS = frozenset({
 
 
 # ----------------------------------------------------------------
+# 显式层归属
+# ----------------------------------------------------------------
+#
+# 分层契约 = TEST_SCHEMAS 里的 layer 字段。
+#
+# 本表把它按层展开成「层 -> 文件名集合」，用于：
+#   1. 查询：`python scripts/run_tests.py list integration`
+#   2. 索引：`tests/TEST_LAYERS.md`（与代码同步校验）
+#   3. 运行：run_tests.py 的分层选择直接查本表，
+#      而不是靠目录约定推断（目录只作为未登记文件的兜底）
+#
+# 重要说明：
+#   物理目录不是契约。tests/ 根目录下平铺的测试同样属于某一层，
+#   迁移文件位置不会改变层归属，只会改变文件所在路径。
+#
+# 单一事实来源仍是 TEST_SCHEMAS；本表由它派生，并由
+# validate_membership() 强制一致性，任何漂移都会在 audit 时报错。
+
+LAYER_MEMBERSHIP = {
+    layer: frozenset(
+        filename
+        for filename, schema in TEST_SCHEMAS.items()
+        if schema.layer == layer
+    )
+    for layer in LAYER_ORDER
+}
+
+
+def layer_of(filename: str):
+    """Return the registered layer of a test file, if any."""
+
+    for layer, members_ in LAYER_MEMBERSHIP.items():
+        if filename in members_:
+            return layer
+
+    return None
+
+
+def members(layer: str) -> list:
+    """Return the sorted file list of one layer."""
+
+    if layer not in LAYER_MEMBERSHIP:
+        raise ValueError(f"未定义的测试层：{layer}")
+
+    return sorted(LAYER_MEMBERSHIP[layer])
+
+
+def validate_membership(files=None) -> dict:
+    """Check layer membership against the files actually on disk.
+
+    Returns {"violations": [...], "warnings": [...]}.
+
+    violations
+        已登记但磁盘上找不到的文件（注册表过期，会直接打断运行）
+    warnings
+        磁盘上存在、却既没有登记也没有落在 layer 目录里的文件
+        （会静默落入 legacy，无人过问）
+    """
+
+    violations = []
+    warnings = []
+
+    if files is None:
+        return {"violations": violations, "warnings": warnings}
+
+    on_disk = {path.as_posix() for path in files}
+
+    for filename in sorted(TEST_SCHEMAS):
+        if filename not in on_disk:
+            violations.append(
+                f"{filename}: 已登记但磁盘上不存在"
+            )
+
+    for filename in sorted(on_disk):
+        if layer_of(filename) is not None:
+            continue
+
+        top = filename.split("/")[0] if "/" in filename else ""
+
+        if top in LAYER_ORDER:
+            # 目录约定仍然生效，只是没有 Schema 元数据。
+            warnings.append(
+                f"{filename}: 位于 {top}/ 但未登记 Schema，"
+                "元数据缺失（层归属靠目录兜底）"
+            )
+        else:
+            warnings.append(
+                f"{filename}: 未登记且不在 layer 目录，"
+                "将归入 legacy"
+            )
+
+    return {"violations": violations, "warnings": warnings}
+
+
+
+def membership_digest() -> str:
+    """Stable digest of the layer membership, for document sync."""
+
+    import hashlib
+
+    payload = "\n".join(
+        f"{layer}:{','.join(sorted(LAYER_MEMBERSHIP[layer]))}"
+        for layer in LAYER_ORDER
+    )
+
+    return hashlib.sha256(
+        payload.encode("utf-8")
+    ).hexdigest()[:16]
+
+
+
+# ----------------------------------------------------------------
 # 已知隔离缺口
 # ----------------------------------------------------------------
 #

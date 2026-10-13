@@ -1,14 +1,15 @@
 """Personal Agent Schema-driven Test Runner.
 
 支持：
-    audit        检查测试分类、Schema 与隔离审计，不运行测试
+    audit        检查测试分类、Schema、层归属与隔离审计，不运行测试
     unit         L1 单元测试
     integration  L2 数据集成测试
     api          L3 API 集成测试
     legacy       尚未分类的测试
     backend      全部后端测试
+    list [layer] 列出层归属（来自注册表的显式契约），--doc 生成/校验索引
 
-无需移动现有测试文件。
+无需移动现有测试文件；层归属由 tests/registry.py 决定，与目录无关。
 
 输出统一包含：
     Layer / Files / Cases / Duration / Result
@@ -16,6 +17,7 @@
 
 import argparse
 import os
+import re
 import sys
 import time
 import unittest
@@ -37,7 +39,18 @@ TEST_LAYERS = (
 COMMANDS = TEST_LAYERS + (
     "backend",
     "audit",
+    "list",
 )
+
+LAYER_TITLES = {
+    "unit": "L1 单元测试",
+    "integration": "L2 数据集成测试",
+    "api": "L3 HTTP/API 测试",
+    "legacy": "未分类测试",
+}
+
+LAYERS_DOC = TEST_ROOT / "TEST_LAYERS.md"
+DIGEST_PREFIX = "membership-digest:"
 
 
 # ==========================================
@@ -112,11 +125,22 @@ def discover_files() -> list[Path]:
 def load_registry():
 
     from registry import (
+        LAYER_MEMBERSHIP,
         TEST_SCHEMAS,
         TestSchema,
+        layer_of,
+        membership_digest,
+        validate_membership,
     )
 
-    return TEST_SCHEMAS, TestSchema
+    return {
+        "schemas": TEST_SCHEMAS,
+        "schema_type": TestSchema,
+        "layer_of": layer_of,
+        "membership": LAYER_MEMBERSHIP,
+        "digest": membership_digest,
+        "validate": validate_membership,
+    }
 
 
 def validate_registry(
@@ -183,6 +207,8 @@ def classify_file(
     filename = relative.as_posix()
 
     # 注册表具有明确的分类信息。
+    # 层归属是 tests/registry.py 里的显式契约，
+    # 与文件所在目录无关。
     if filename in schemas:
         return schemas[filename].layer
 
@@ -472,22 +498,259 @@ def audit_isolation(
 
 
 # ==========================================
+# 层归属查询与索引文档
+# ==========================================
+
+def render_layers_doc(registry: dict, files: list) -> str:
+    """Render tests/TEST_LAYERS.md from the registry."""
+
+    schemas = registry["schemas"]
+
+    known = {path.as_posix() for path in files}
+
+    lines = [
+        "# 测试分层索引（TEST_LAYERS.md）",
+        "",
+        "> 本文件由 `python scripts/run_tests.py list --doc` 生成，请勿手工编辑。",
+        "> 校验：`python scripts/run_tests.py audit` 会比对摘要，文档过期将报 FAIL。",
+        "",
+        "## 层与物理位置的关系",
+        "",
+        "- **层归属由 `tests/registry.py` 的 Schema 决定，与文件所在目录无关。**",
+        "- 因此 `tests/` 根目录下平铺的测试同样属于某一层；迁移文件位置不改变层归属。",
+        "- 目录约定只作为未登记文件的兜底：`unit/`、`integration/`、`api/`，其余归 `legacy`。",
+        "",
+        "## 检索命令",
+        "",
+        "```",
+        "python scripts/run_tests.py list              # 列出全部层",
+        "python scripts/run_tests.py list integration  # 只列某一层",
+        "python scripts/run_tests.py integration       # 运行该层",
+        "```",
+        "",
+        f"<!-- membership-digest: {registry['digest']()} -->",
+        "",
+    ]
+
+    for layer in ("unit", "integration", "api", "legacy"):
+        members = (
+            sorted(registry["membership"][layer])
+            if layer in registry["membership"]
+            else []
+        )
+
+        title = LAYER_TITLES.get(layer, layer)
+
+        lines.append(f"## {layer} — {title} ({len(members)} files)")
+        lines.append("")
+
+        if not members:
+            lines.append("（无）")
+            lines.append("")
+            continue
+
+        lines.append("| File | 物理位置 | Domain | DB | Network | Risk | Status |")
+        lines.append("|---|---|---|---|---|---|---|")
+
+        for filename in members:
+            schema = schemas.get(filename)
+
+            physical = (
+                "tests/ 根"
+                if "/" not in filename
+                else f"tests/{filename.split('/')[0]}/"
+            )
+
+            if schema is None:
+                lines.append(
+                    f"| `{filename}` | {physical} | - | - | - | - | "
+                    f"未登记 |"
+                )
+                continue
+
+            status = (
+                "registered"
+                if filename in ORIGINAL_SCHEMA_NAMES
+                else "registered-inferred"
+            )
+
+            present = "" if filename in known else " ⚠缺失"
+
+            lines.append(
+                f"| `{filename}`{present} | {physical} | {schema.domain} | "
+                f"{schema.database} | {schema.external_network} | "
+                f"{schema.risk} | {status} |"
+            )
+
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+# 由 run_tests 使用的原始登记集合（与 registry.ORIGINAL_SCHEMAS 保持同步的只读副本）
+ORIGINAL_SCHEMA_NAMES = frozenset({
+    "unit/test_agent_tool_limits.py",
+    "integration/test_reminder_store.py",
+    "test_ai_budget.py",
+    "test_ai_budget_reconcile.py",
+    "test_reminder_api.py",
+    "test_reminder_chat_http.py",
+})
+
+
+def check_doc(registry: dict) -> str | None:
+    """Return a problem string when TEST_LAYERS.md is out of date."""
+
+    if not LAYERS_DOC.is_file():
+        return (
+            "tests/TEST_LAYERS.md 不存在，请运行 "
+            "`python scripts/run_tests.py list --doc`"
+        )
+
+    text = LAYERS_DOC.read_text(encoding="utf-8", errors="replace")
+
+    marker = re.search(
+        rf"{DIGEST_PREFIX}\s*([0-9a-f]+)",
+        text,
+    )
+
+    if not marker:
+        return "tests/TEST_LAYERS.md 缺少 membership-digest 标记"
+
+    expected = registry["digest"]()
+
+    if marker.group(1) != expected:
+        return (
+            "tests/TEST_LAYERS.md 已过期"
+            f"（文档 {marker.group(1)} != 代码 {expected}），"
+            "请运行 `python scripts/run_tests.py list --doc`"
+        )
+
+    return None
+
+
+def list_layers(
+    registry: dict,
+    files: list,
+    write_doc: bool,
+    target: str = None,
+) -> int:
+    """Print layer membership; optionally write the index document."""
+
+    if write_doc:
+        LAYERS_DOC.write_text(
+            render_layers_doc(registry, files) + "\n",
+            encoding="utf-8",
+        )
+
+        print()
+        print(f"Wrote: {LAYERS_DOC}")
+
+    print()
+    print("Personal Agent Test Layers")
+    print("=" * 48)
+
+    selected = (
+        (target,)
+        if target
+        else ("unit", "integration", "api", "legacy")
+    )
+
+    total = 0
+
+    for layer in selected:
+        members = (
+            sorted(registry["membership"][layer])
+            if layer in registry["membership"]
+            else []
+        )
+
+        total += len(members)
+
+        print()
+        print(
+            f"{layer} — {LAYER_TITLES.get(layer, layer)} "
+            f"({len(members)} files)"
+        )
+
+        for filename in members:
+            physical = (
+                "tests/ 根"
+                if "/" not in filename
+                else f"tests/{filename.split('/')[0]}/"
+            )
+
+            print(f"  {filename:<48} [{physical}]")
+
+    print()
+    print(f"Total registered: {total}")
+    print(
+        "Note: layer comes from tests/registry.py, "
+        "not from the directory layout."
+    )
+
+    if not write_doc:
+        problem = check_doc(registry)
+
+        if problem:
+            print()
+            print(f"Document check: {problem}")
+
+    return 0
+
+
+# ==========================================
 # 主入口
 # ==========================================
 
-def run(layer: str) -> int:
+def run(layer: str, write_doc: bool = False, target: str = None) -> int:
 
     prepare_environment()
 
-    schemas, schema_type = load_registry()
+    registry = load_registry()
+
+    schemas = registry["schemas"]
 
     files = discover_files()
 
-    validate_registry(
-        files,
-        schemas,
-        schema_type,
-    )
+    try:
+        validate_registry(
+            files,
+            schemas,
+            registry["schema_type"],
+        )
+
+    except RuntimeError as exc:
+
+        # 注册表过期会直接打断运行。这里先打印层归属体检，
+        # 让告警（例如新测试未登记、将落入 legacy）也能被看到。
+        if layer == "audit":
+            membership = registry["validate"](files)
+
+            print()
+            print("Layer membership")
+            print("-" * 48)
+
+            print(f"  VIOLATION [registry] {exc}")
+
+            for problem in membership["violations"]:
+                if "已登记但磁盘上不存在" in problem:
+                    continue
+
+                print()
+                print(f"  VIOLATION [membership] {problem}")
+
+            for problem in membership["warnings"]:
+                print()
+                print(f"  warning [membership] {problem}")
+
+            print()
+            print("Result: FAIL")
+
+        raise
+
+    if layer == "list":
+        return list_layers(registry, files, write_doc, target)
 
     categories = build_categories(
         files,
@@ -505,6 +768,37 @@ def run(layer: str) -> int:
             duration=time.monotonic() - started,
         )
 
+        membership = registry["validate"](files)
+
+        print()
+        print("Layer membership")
+        print("-" * 48)
+
+        for name in ("unit", "integration", "api"):
+            print(
+                f"  {name:<14} "
+                f"{len(registry['membership'][name])} files"
+            )
+
+        print(
+            "  source: schema layer in tests/registry.py "
+            "(not the directory layout)"
+        )
+
+        for problem in membership["violations"]:
+            print()
+            print(f"  VIOLATION [membership] {problem}")
+
+        for problem in membership["warnings"]:
+            print()
+            print(f"  warning [membership] {problem}")
+
+        doc_problem = check_doc(registry)
+
+        if doc_problem:
+            print()
+            print(f"  VIOLATION [document] {doc_problem}")
+
         outcome = audit_isolation(files, schemas)
 
         if outcome is None:
@@ -514,9 +808,22 @@ def run(layer: str) -> int:
 
             return 2
 
+        ok = (
+            outcome["ok"]
+            and not membership["violations"]
+            and doc_problem is None
+        )
+
         print()
         print(f"Duration: {outcome['duration']:.2f}s")
-        print(f"Result: {'PASS' if outcome['ok'] else 'FAIL'}")
+        print(f"Result: {'PASS' if ok else 'FAIL'}")
+
+        if not ok:
+            print()
+            print("FAIL: Test Schema audit")
+
+            return 2
+
         print()
         print("PASS: Test Schema audit")
 
@@ -540,13 +847,29 @@ def main() -> int:
 
     parser.add_argument(
         "layer",
+        nargs="?",
+        default="backend",
         choices=COMMANDS,
+    )
+
+    parser.add_argument(
+        "target",
+        nargs="?",
+        default=None,
+        choices=("unit", "integration", "api", "legacy"),
+        help="与 list 同用：只显示指定层",
+    )
+
+    parser.add_argument(
+        "--doc",
+        action="store_true",
+        help="与 list 同用：写入或校验 tests/TEST_LAYERS.md",
     )
 
     args = parser.parse_args()
 
     try:
-        return run(args.layer)
+        return run(args.layer, args.doc, args.target)
 
     except Exception as exc:
 
