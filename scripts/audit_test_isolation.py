@@ -7,7 +7,8 @@ Checks:
 
 1. Database
    A test must not open the real project databases
-   (chat_requests.db, tasks.db, auth_users.db, reminders.db).
+   (chat_requests.db, tasks.db, auth_users.db, reminders.db,
+   ai_usage.db).
    A database file created under a temporary root is fine.
    A project database path used only to prove that the safety
    guard blocks it is reported as a warning, not a violation.
@@ -23,6 +24,10 @@ Checks:
 4. Layer directory registration
    A test inside tests/unit, tests/integration or tests/api
    should have a registered schema. Missing ones are warnings.
+
+Lines are checked after removing trailing # comments, so code
+lines that carry Chinese comments or Chinese string literals are
+audited too.
 
 Schema metadata describes tests. This audit is a static source
 review, not an operating-system sandbox.
@@ -47,6 +52,7 @@ REAL_DATABASE_FILES = (
     "tasks.db",
     "auth_users.db",
     "reminders.db",
+    "ai_usage.db",
 )
 
 TEMP_MARKERS = (
@@ -125,8 +131,38 @@ def temp_roots(lines) -> set:
     return names
 
 
+def strip_inline_comment(line: str) -> str:
+    """Remove a trailing # comment that is not inside a string literal."""
+
+    quote = None
+    escaped = False
+
+    for index, char in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+
+        if quote:
+            if char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+
+        if char in ("'", '"'):
+            quote = char
+        elif char == "#":
+            return line[:index]
+
+    return line
+
+
 def code_lines(lines):
-    """Yield (number, line) outside comments and docstrings."""
+    """Yield (number, code) outside comments and docstrings.
+
+    Trailing # comments are removed; the remaining code is always
+    audited, including code that contains Chinese text.
+    """
 
     in_docstring = False
 
@@ -148,11 +184,12 @@ def code_lines(lines):
         if stripped.startswith("#"):
             continue
 
-        # Skip Chinese prose that mentions a database name.
-        if any("\u4e00" <= char <= "\u9fff" for char in line):
+        code = strip_inline_comment(line)
+
+        if not code.strip():
             continue
 
-        yield number, line
+        yield number, code
 
 
 def audit_database(lines) -> list:
@@ -292,9 +329,11 @@ def audit_imports(lines) -> list:
     if not match:
         return findings
 
+    # A temporary directory says nothing about network isolation,
+    # so only mocks, guards and TestClient count here.
     guarded = bool(GUARD_WORDS.search(text)) or bool(
-        TEMP_MARKERS[0] in text
-    ) or bool(re.search(r"TestClient", text))
+        re.search(r"TestClient", text)
+    )
 
     if not guarded:
         findings.append(
@@ -345,7 +384,7 @@ def audit_schema(schemas: dict) -> list:
 
 
 def dedupe(findings: list) -> list:
-    """Keep one finding per (kind, file, database name, line)."""
+    """Keep one finding per (kind, file, line)."""
 
     seen = set()
     result = []

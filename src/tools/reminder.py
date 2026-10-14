@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -6,8 +7,13 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 DB_PATH = BASE_DIR / "reminders.db"
 
 
+# 连接写法说明：
+#   with closing(sqlite3.connect(...)) as conn, conn:
+# 内层 conn 负责事务，外层 closing 在退出时关闭连接。
+
+
 def init_db():
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn, conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS reminders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,7 +32,7 @@ def create_reminder(message: str, minutes: int):
         minutes=minutes
     )
 
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn, conn:
         cursor = conn.execute(
             """
             INSERT INTO reminders

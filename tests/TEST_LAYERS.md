@@ -17,7 +17,7 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: b11750217d59a52a -->
+<!-- membership-digest: 5c5380be41fae738 -->
 
 ## unit — L1 单元测试 (5 files)
 
@@ -42,10 +42,10 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_ai_budget_reconcile.py` | tests/ 根 | billing | temporary_sqlite | none | high | registered |
 | `test_ai_pricing.py` | tests/ 根 | billing | temporary_sqlite | none | high | registered-inferred |
 | `test_ai_usage.py` | tests/ 根 | billing | temporary_sqlite | none | high | registered-inferred |
-| `test_api_idempotency.py` | tests/ 根 | chat | temporary_sqlite | none | medium | registered-inferred |
 | `test_auth_store.py` | tests/ 根 | auth | temporary_sqlite | none | high | registered-inferred |
 | `test_bootstrap_owner.py` | tests/ 根 | auth | temporary_sqlite | none | high | registered-inferred |
 | `test_chat_admission.py` | tests/ 根 | chat | temporary_sqlite | none | medium | registered-inferred |
+| `test_chat_db_restart.py` | tests/ 根 | chat | temporary_sqlite | none | medium | registered-inferred |
 | `test_chat_ownership.py` | tests/ 根 | chat | temporary_sqlite | none | medium | registered-inferred |
 | `test_chat_quota.py` | tests/ 根 | chat | temporary_sqlite | none | medium | registered-inferred |
 | `test_dispatcher_history.py` | tests/ 根 | dispatcher | temporary_sqlite | none | medium | registered-inferred |
@@ -62,11 +62,11 @@ python scripts/run_tests.py integration       # 运行该层
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
-| `test_api_http.py` | tests/ 根 | chat | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_auth_api.py` | tests/ 根 | auth | temporary_sqlite | mocked | high | registered-inferred |
 | `test_chat_budget_http.py` | tests/ 根 | billing | temporary_sqlite | mocked | high | registered-inferred |
 | `test_chat_quota_http.py` | tests/ 根 | chat | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_chat_reconciliation_http.py` | tests/ 根 | billing | temporary_sqlite | mocked | high | registered-inferred |
+| `test_chat_request_validation_http.py` | tests/ 根 | chat | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_chat_secure_api.py` | tests/ 根 | chat | temporary_sqlite | mocked | high | registered-inferred |
 | `test_chat_usage_http.py` | tests/ 根 | chat | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_login_rate_limit.py` | tests/ 根 | auth | temporary_sqlite | mocked | high | registered-inferred |

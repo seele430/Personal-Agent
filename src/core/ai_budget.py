@@ -1,7 +1,12 @@
-
 """Conservative budget reservation ledger.
 
-只提供预算数据层，暂不接入正式聊天 API。
+预算数据层：
+- 正式聊天 API 的新请求由 chat_admission.admit_chat_request 在同一事务内
+  检查个人与全站预算，并直接写入 ai_budget_reservations。
+- 模型调用结束后，正式聊天 API 调用 settle_budget 结算。
+- reserve_budget 提供独立的预留接口，
+  目前未被 admit_chat_request 使用。
+
 所有金额均为美元，内部使用整数 nano-USD。
 未知调用结果不会被当成免费。
 """

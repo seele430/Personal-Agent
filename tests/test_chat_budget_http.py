@@ -1,4 +1,3 @@
-
 """正式聊天 HTTP 预算准入测试。
 
 使用临时数据库、模拟认证及模拟 AI。
@@ -20,6 +19,7 @@ from fastapi.testclient import TestClient
 from src import agent
 from src import api
 from src.auth_api import get_current_user
+from src.core import chat_admission
 from src.main import app
 
 
@@ -191,7 +191,17 @@ class TestChatBudgetHTTP(unittest.TestCase):
     def test_global_budget_blocks_twenty_first_request(
         self,
     ):
-        with patch.object(
+        # 假模型不返回 usage，每次锁定 US$0.05。
+        # 临时把 owner 个人上限调到全站预算的 2 倍，
+        # 确保拦下第 21 次的是全站预算，而不是个人预算。
+        relaxed_owner = {
+            "owner": 2 * chat_admission.GLOBAL_BUDGET_UNITS,
+        }
+
+        with patch.dict(
+            chat_admission.USER_BUDGET_LIMIT_UNITS,
+            relaxed_owner,
+        ), patch.object(
             api,
             "chat",
             return_value="模拟回复",
@@ -311,6 +321,48 @@ class TestChatBudgetHTTP(unittest.TestCase):
         self.assertEqual(row[2], 50_000_000)
         self.assertEqual(row[3], "uncertain")
 
+
+    # ======================================
+    # 7. 个人预算不足返回 user_budget_exceeded
+    # ======================================
+
+    def test_user_budget_returns_distinct_code(self):
+        # owner 个人上限临时设为正好一次预留：
+        # 第 1 次通过，第 2 次被个人预算拦下。
+        one_reserve = {
+            "owner": chat_admission.RESERVE_UNITS,
+        }
+
+        with patch.dict(
+            chat_admission.USER_BUDGET_LIMIT_UNITS,
+            one_reserve,
+        ), patch.object(
+            api,
+            "chat",
+            return_value="模拟回复",
+        ) as model:
+
+            accepted = self.send(self.new_id())
+            self.assertEqual(accepted.status_code, 200)
+
+            denied_id = self.new_id()
+            denied = self.send(denied_id)
+
+        self.assertEqual(denied.status_code, 429)
+
+        self.assertEqual(
+            denied.json()["status"],
+            "rejected",
+        )
+
+        self.assertEqual(
+            denied.json()["code"],
+            "user_budget_exceeded",
+        )
+
+        self.assertEqual(model.call_count, 1)
+        self.assertEqual(self.record_counts(), (1, 1))
+        self.assertIsNone(self.db_row(denied_id))
 
 if __name__ == "__main__":
     unittest.main()

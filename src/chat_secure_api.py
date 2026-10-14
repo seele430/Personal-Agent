@@ -38,7 +38,7 @@ from src.core.ai_budget_reconcile import (
     reconcile_recorded_request,
 )
 from src.core.ai_pricing import PricingUnavailable
-from src.core.chat_admission import admit_chat_request
+from src.core.chat_admission import UserBudgetExceeded, admit_chat_request
 
 from src.core.chat_ownership import (
     RequestMessageConflict,
@@ -381,6 +381,15 @@ def chat_endpoint(
             code="concurrency_limit_exceeded",
             detail="正在处理的请求过多，请稍后再试",
             retry_after="15",
+        )
+
+    except UserBudgetExceeded:
+        return _rejected(
+            request_id,
+            code="user_budget_exceeded",
+            detail=(
+                "你今天的个人 AI 预算已用完，请稍后再试"
+            ),
         )
 
     except BudgetExceeded:

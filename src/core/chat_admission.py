@@ -1,13 +1,16 @@
-
 """聊天准入：在同一个 SQLite 事务里检查次数、并发和预算。
 
-当前只提供数据层。正式 API 尚未切换到此函数。
-初始预留 US$0.05 / 新请求，全站滚动 24 小时 US$1。
+正式聊天 API（src/chat_secure_api.py）通过 admit_chat_request 准入新请求。
+初始预留 US$0.05 / 新请求。
+预算检查分两层，都按滚动 24 小时计算：
+- 个人预算：按角色设定上限（USER_BUDGET_LIMIT_UNITS）
+- 全站预算：US$1
 """
 
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Mapping
 
 from src.core.ai_budget import BudgetExceeded
 from src.core.ai_pricing import validate_provider
@@ -30,6 +33,21 @@ RESERVE_PER_REQUEST_USD = Decimal("0.05")
 GLOBAL_BUDGET_UNITS = 1_000_000_000
 RESERVE_UNITS = 50_000_000
 
+# 每个用户过去 24 小时的个人预算上限（十亿分之一美元）。
+# member：DEVELOPMENT_PLAN 的 20,000 tokens 按 deepseek-flash
+# 输出费率折算约 US$0.024，再加一次 US$0.05 预留余量，取 US$0.075。
+# 其他角色按次数额度等比例（×4、×8、×10）。
+USER_BUDGET_LIMIT_UNITS = {
+    "member": 75_000_000,     # US$0.075
+    "trusted": 300_000_000,   # US$0.30
+    "admin": 600_000_000,     # US$0.60
+    "owner": 750_000_000,     # US$0.75
+}
+
+
+class UserBudgetExceeded(BudgetExceeded):
+    """该用户过去 24 小时的个人预算不足。"""
+
 
 def admit_chat_request(
     conn: sqlite3.Connection,
@@ -41,12 +59,16 @@ def admit_chat_request(
     provider_host: str,
     model: str,
     now: datetime | None = None,
+    user_budget_limits: Mapping[str, int] | None = None,
 ) -> dict:
     """原子准入新聊天请求。
 
     返回：
         admitted=True  新请求已获得预算预留
         admitted=False 原请求已存在，不能重复调用模型
+
+    超出个人预算抛出 UserBudgetExceeded，
+    超出全站预算抛出 BudgetExceeded，均不写入记录。
 
     要求：
         1. 使用本次操作专用的 SQLite 连接
@@ -65,6 +87,20 @@ def admit_chat_request(
 
     if role not in DAILY_REQUEST_LIMITS:
         raise ValueError("未知用户角色")
+
+    budget_limits = (
+        user_budget_limits
+        if user_budget_limits is not None
+        else USER_BUDGET_LIMIT_UNITS
+    )
+
+    if role not in budget_limits:
+        raise ValueError("未知用户角色")
+
+    user_budget_limit = budget_limits[role]
+
+    if type(user_budget_limit) is not int or user_budget_limit < 1:
+        raise ValueError("个人预算上限必须是正整数")
 
     # 未核实价格的服务商或模型不允许新调用。
     validate_provider(provider_host, model)
@@ -169,6 +205,32 @@ def admit_chat_request(
 
         # 已结算请求按实际记录金额计入预算；
         # 未结算、用量未知请求按预留额度计入预算。
+        user_budget_used = conn.execute(
+            """
+            SELECT COALESCE(
+                SUM(
+                    COALESCE(
+                        charged_nano_usd,
+                        reserved_nano_usd
+                    )
+                ),
+                0
+            )
+            FROM ai_budget_reservations
+            WHERE user_id = ?
+              AND created_at > ?
+            """,
+            (user_id, cutoff),
+        ).fetchone()[0]
+
+        if (
+            user_budget_used + RESERVE_UNITS
+            > user_budget_limit
+        ):
+            raise UserBudgetExceeded(
+                "个人过去24小时预算不足"
+            )
+
         budget_used = conn.execute(
             """
             SELECT COALESCE(

@@ -1,4 +1,3 @@
-
 """统一聊天准入的原子性测试，不调用任何模型。"""
 
 import sqlite3
@@ -13,18 +12,29 @@ from tempfile import TemporaryDirectory
 from src.core.ai_budget import (
     BudgetExceeded,
     init_budget_schema,
+    settle_budget,
 )
 from src.core.ai_pricing import PricingUnavailable
-from src.core.chat_admission import admit_chat_request
+from src.core.chat_admission import (
+    GLOBAL_BUDGET_UNITS,
+    UserBudgetExceeded,
+    admit_chat_request,
+)
 from src.core.chat_ownership import (
     RequestOwnerMismatch,
     migrate_chat_ownership,
     update_owned_status,
 )
 from src.core.chat_quota import (
+    DAILY_REQUEST_LIMITS,
     ChatConcurrencyLimitExceeded,
     ChatDailyLimitExceeded,
 )
+
+# 次数额度类用例使用：个人上限足够大，只测次数。
+UNLIMITED_USER_BUDGET = {
+    role: GLOBAL_BUDGET_UNITS for role in DAILY_REQUEST_LIMITS
+}
 
 
 class TestChatAdmission(unittest.TestCase):
@@ -74,6 +84,7 @@ class TestChatAdmission(unittest.TestCase):
         user="alice",
         role="owner",
         model="deepseek-flash",
+        user_budget_limits=None,
     ):
         with closing(self.connect()) as conn:
             return admit_chat_request(
@@ -85,6 +96,7 @@ class TestChatAdmission(unittest.TestCase):
                 provider_host="api.deepseek.com",
                 model=model,
                 now=self.NOW,
+                user_budget_limits=user_budget_limits,
             )
 
     def finish(self, request_id, user="alice"):
@@ -96,6 +108,15 @@ class TestChatAdmission(unittest.TestCase):
                 "completed",
                 "模拟回复",
                 self.NOW.isoformat(),
+            )
+
+    def settle(self, request_id, actual_usd, user="alice"):
+        with closing(self.connect()) as conn:
+            return settle_budget(
+                conn,
+                request_id=request_id,
+                user_id=user,
+                actual_usd=actual_usd,
             )
 
     def counts(self):
@@ -171,11 +192,16 @@ class TestChatAdmission(unittest.TestCase):
         )
 
     def test_daily_quota_denial_does_not_reserve(self):
-        for index in range(20):
+        # 读取当前配置，额度调整后无需修改测试。
+        # 个人预算放宽，确保拦截来自次数额度。
+        limit = DAILY_REQUEST_LIMITS["member"]
+
+        for index in range(limit):
             request_id = f"req_{index:03d}"
             self.admit(
                 request_id,
                 role="member",
+                user_budget_limits=UNLIMITED_USER_BUDGET,
             )
             self.finish(request_id)
 
@@ -185,16 +211,69 @@ class TestChatAdmission(unittest.TestCase):
             self.admit(
                 "req_denied",
                 role="member",
+                user_budget_limits=UNLIMITED_USER_BUDGET,
             )
 
         self.assertEqual(
             self.counts(),
-            (20, 20),
+            (limit, limit),
+        )
+
+    def test_user_budget_denial_does_not_write(self):
+        # member 上限 US$0.075：一次未结算预留 US$0.05 后，
+        # 第二次预留会超过上限。
+        self.admit("req_001", role="member")
+        self.finish("req_001")
+
+        with self.assertRaises(UserBudgetExceeded) as caught:
+            self.admit("req_002", role="member")
+
+        # 现有捕获 BudgetExceeded 的代码仍能接住
+        self.assertIsInstance(caught.exception, BudgetExceeded)
+
+        self.assertEqual(
+            self.counts(),
+            (1, 1),
+        )
+
+    def test_user_budget_is_per_user(self):
+        self.admit("req_001", user="alice", role="member")
+        self.finish("req_001", user="alice")
+
+        with self.assertRaises(UserBudgetExceeded):
+            self.admit("req_002", user="alice", role="member")
+
+        result = self.admit("req_003", user="bob", role="member")
+
+        self.assertTrue(result["admitted"])
+        self.assertEqual(
+            self.counts(),
+            (2, 2),
+        )
+
+    def test_settled_cost_releases_user_budget(self):
+        # 按实际费用结算后，未使用的预留被释放。
+        self.admit("req_001", role="member")
+        self.finish("req_001")
+
+        self.assertEqual(
+            self.settle("req_001", "0.001"),
+            "settled",
+        )
+
+        result = self.admit("req_002", role="member")
+
+        self.assertTrue(result["admitted"])
+        self.assertEqual(
+            self.counts(),
+            (2, 2),
         )
 
     def test_one_dollar_global_budget_denies_21st(
         self,
     ):
+        # 这里的 20 是全局预算边界（owner 角色，两个用户各 10 次），
+        # 与 member 每日额度无关。每人 US$0.50，未达 owner 个人上限。
         for index in range(20):
             request_id = f"req_{index:03d}"
             user = (
@@ -205,8 +284,14 @@ class TestChatAdmission(unittest.TestCase):
             self.admit(request_id, user=user)
             self.finish(request_id, user=user)
 
-        with self.assertRaises(BudgetExceeded):
+        with self.assertRaises(BudgetExceeded) as caught:
             self.admit("req_21")
+
+        # 必须是全站预算，而不是个人预算
+        self.assertNotIsInstance(
+            caught.exception,
+            UserBudgetExceeded,
+        )
 
         self.assertEqual(
             self.counts(),

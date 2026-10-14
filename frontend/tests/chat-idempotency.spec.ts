@@ -1,21 +1,26 @@
+import { test, expect, type Page, type Route } from "@playwright/test";
 
 import {
-  test,
-  expect,
-  type Page,
-  type Route,
-} from "@playwright/test";
+  blockUnmockedApi,
+  expectNoUnmockedApi,
+  installAuthMocks,
+  type MockUser,
+} from "./support/mockAuth";
 
 const CHAT_API = "**/api/chat";
 const STATUS_API = "**/api/chat/requests/*";
-const LOGIN_API = "**/api/auth/login";
 
 // 全部使用模拟账户，不涉及真实密码
 const TEST_TOKEN = "playwright-idempotency-token";
-const TEST_USER_ID = "playwright-idempotency-user";
 
-const CHAT_STORAGE_KEY =
-  `personal-agent-user-${TEST_USER_ID}-chat`;
+const TEST_USER: MockUser = {
+  id: "playwright-idempotency-user",
+  username: "playwright",
+  role: "member",
+  active: true,
+};
+
+const CHAT_STORAGE_KEY = `personal-agent-user-${TEST_USER.id}-chat`;
 
 type ChatPayload = {
   message: string;
@@ -27,95 +32,59 @@ type StoredMessage = {
   requestId?: string;
 };
 
+
 // ==========================================
-// 模拟登录
+// 页面准备与登录
 // ==========================================
 
-async function installLoginMock(
-  page: Page
-): Promise<void> {
-  await page.route(LOGIN_API, async (route: Route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        token: TEST_TOKEN,
-        token_type: "bearer",
-        user: {
-          id: TEST_USER_ID,
-          username: "playwright",
-          role: "member",
-          active: true,
-        },
-      }),
-    });
-  });
+/**
+ * 顺序：先兜底拦截，再认证 mock。
+ * 用例随后注册的 CHAT_API / STATUS_API mock 优先级最高。
+ */
+async function setupPage(page: Page): Promise<string[]> {
+  const unexpected = await blockUnmockedApi(page);
+  await installAuthMocks(page, TEST_TOKEN, TEST_USER);
+  return unexpected;
 }
 
-async function signIn(
-  page: Page
-): Promise<void> {
-  await expect(
-    page.locator("#pa-login-username")
-  ).toBeVisible();
+async function signIn(page: Page): Promise<void> {
+  await expect(page.locator("#pa-login-username")).toBeVisible();
 
-  await page.locator(
-    "#pa-login-username"
-  ).fill("playwright");
+  await page.locator("#pa-login-username").fill("playwright");
+  await page.locator("#pa-login-password").fill("PlaywrightTestPassword2026!");
 
-  await page.locator(
-    "#pa-login-password"
-  ).fill("PlaywrightTestPassword2026!");
-
-  await page.getByRole("button", {
-    name: /登录工作空间/,
-  }).click();
+  await page.getByRole("button", { name: /登录工作空间/ }).click();
 
   await expect(
-    page.getByRole("textbox", {
-      name: "输入聊天消息",
-    })
+    page.getByRole("textbox", { name: "输入聊天消息" }),
   ).toBeVisible();
 }
 
-async function openAuthenticatedChat(
-  page: Page
-): Promise<void> {
-  await installLoginMock(page);
-
+async function openAuthenticatedChat(page: Page): Promise<void> {
   await page.goto("/login");
-
   await signIn(page);
 }
+
 
 // ==========================================
 // 聊天测试工具
 // ==========================================
 
-async function send(
-  page: Page,
-  message: string
-): Promise<void> {
-  await page.getByRole("textbox", {
-    name: "输入聊天消息",
-  }).fill(message);
-
-  await page.getByRole("button", {
-    name: "发送 ↑",
-  }).click();
+async function send(page: Page, message: string): Promise<void> {
+  await page.getByRole("textbox", { name: "输入聊天消息" }).fill(message);
+  await page.getByRole("button", { name: "发送 ↑" }).click();
 }
 
 function getRequestId(url: string): string {
-  return decodeURIComponent(
-    new URL(url).pathname.split("/").pop() ?? ""
-  );
+  return decodeURIComponent(new URL(url).pathname.split("/").pop() ?? "");
 }
 
 function checkAuth(route: Route): void {
-  expect(
-    route.request().headers()["authorization"]
-  ).toBe(`Bearer ${TEST_TOKEN}`);
+  expect(route.request().headers()["authorization"]).toBe(
+    `Bearer ${TEST_TOKEN}`,
+  );
 }
+
 
 // ==========================================
 // Chat Idempotency
@@ -123,267 +92,212 @@ function checkAuth(route: Route): void {
 
 test.describe("Chat Idempotency", () => {
 
-  // ----------------------------------------
   // 1. 每条新消息有独立 request_id
-  // ----------------------------------------
+  test("每条新消息都有独立 request_id", async ({ page }) => {
+    const unexpected = await setupPage(page);
 
-  test(
-    "每条新消息都有独立 request_id",
-    async ({ page }) => {
-      const requests: ChatPayload[] = [];
+    const requests: ChatPayload[] = [];
 
-      await page.route(CHAT_API, async (route) => {
-        checkAuth(route);
+    await page.route(CHAT_API, async (route) => {
+      checkAuth(route);
 
-        const data =
-          route.request().postDataJSON() as ChatPayload;
+      const data = route.request().postDataJSON() as ChatPayload;
 
-        requests.push(data);
+      requests.push(data);
 
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            request_id: data.request_id,
-            status: "completed",
-            reply: `已回复：${data.message}`,
-          }),
-        });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          request_id: data.request_id,
+          status: "completed",
+          reply: `已回复：${data.message}`,
+        }),
       });
+    });
 
-      await openAuthenticatedChat(page);
+    await openAuthenticatedChat(page);
 
-      await send(page, "第一条消息");
+    await send(page, "第一条消息");
+    await expect(page.getByText("已回复：第一条消息")).toBeVisible();
 
-      await expect(
-        page.getByText("已回复：第一条消息")
-      ).toBeVisible();
+    await send(page, "第二条消息");
+    await expect(page.getByText("已回复：第二条消息")).toBeVisible();
 
-      await send(page, "第二条消息");
+    expect(requests).toHaveLength(2);
 
-      await expect(
-        page.getByText("已回复：第二条消息")
-      ).toBeVisible();
+    expect(requests[0].request_id).toMatch(/^[A-Za-z0-9_-]{8,128}$/);
+    expect(requests[1].request_id).toMatch(/^[A-Za-z0-9_-]{8,128}$/);
 
-      expect(requests).toHaveLength(2);
+    expect(requests[0].request_id).not.toBe(requests[1].request_id);
 
-      expect(
-        requests[0].request_id
-      ).toMatch(/^[A-Za-z0-9_-]{8,128}$/);
+    expectNoUnmockedApi(unexpected);
+  });
 
-      expect(
-        requests[1].request_id
-      ).toMatch(/^[A-Za-z0-9_-]{8,128}$/);
 
-      expect(
-        requests[0].request_id
-      ).not.toBe(requests[1].request_id);
-    }
-  );
-
-  // ----------------------------------------
   // 2. 断网后查询原 request_id
-  // ----------------------------------------
+  test("断网后使用原 request_id 查询回复", async ({ page }) => {
+    const unexpected = await setupPage(page);
 
-  test(
-    "断网后使用原 request_id 查询回复",
-    async ({ page }) => {
-      let postCount = 0;
-      let originalId = "";
+    let postCount = 0;
+    let originalId = "";
 
-      const queriedIds: string[] = [];
+    const queriedIds: string[] = [];
 
-      await page.route(CHAT_API, async (route) => {
-        checkAuth(route);
+    await page.route(CHAT_API, async (route) => {
+      checkAuth(route);
 
-        postCount += 1;
+      postCount += 1;
 
-        const data =
-          route.request().postDataJSON() as ChatPayload;
+      const data = route.request().postDataJSON() as ChatPayload;
 
-        originalId = data.request_id;
+      originalId = data.request_id;
 
-        // 模拟网络断开
-        await route.abort("failed");
+      // 模拟网络断开（显式模拟，不算作漏 mock）
+      await route.abort("failed");
+    });
+
+    await page.route(STATUS_API, async (route) => {
+      checkAuth(route);
+
+      const requestId = getRequestId(route.request().url());
+
+      queriedIds.push(requestId);
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          request_id: requestId,
+          status: "completed",
+          reply: "服务器已保存的原始回复",
+        }),
       });
+    });
 
-      await page.route(
-        STATUS_API,
-        async (route) => {
-          checkAuth(route);
+    await openAuthenticatedChat(page);
 
-          const requestId = getRequestId(
-            route.request().url()
-          );
+    await send(page, "断网恢复测试");
 
-          queriedIds.push(requestId);
+    await expect(page.getByRole("alert")).toContainText("请求结果尚未确认");
 
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({
-              request_id: requestId,
-              status: "completed",
-              reply: "服务器已保存的原始回复",
-            }),
-          });
-        }
-      );
+    expect(postCount).toBe(1);
+    expect(originalId).toBeTruthy();
 
-      await openAuthenticatedChat(page);
+    await page.getByRole("button", { name: "查询结果" }).click();
 
-      await send(page, "断网恢复测试");
+    await expect(page.getByText("服务器已保存的原始回复")).toBeVisible();
 
-      await expect(
-        page.getByRole("alert")
-      ).toContainText("请求结果尚未确认");
+    expect(queriedIds).toEqual([originalId]);
 
-      expect(postCount).toBe(1);
-      expect(originalId).toBeTruthy();
+    // 查询不能再次发送 POST
+    expect(postCount).toBe(1);
 
-      await page.getByRole("button", {
-        name: "查询结果",
-      }).click();
+    await expect(page.getByText("断网恢复测试")).toBeVisible();
 
-      await expect(
-        page.getByText("服务器已保存的原始回复")
-      ).toBeVisible();
+    expectNoUnmockedApi(unexpected);
+  });
 
-      expect(queriedIds).toEqual([originalId]);
 
-      // 查询不能再次发送 POST
-      expect(postCount).toBe(1);
+  // 3. 刷新后通过 /api/auth/me 恢复会话，并继续查询处理中的请求
+  test("刷新页面恢复处理中请求且不重复 POST", async ({ page }) => {
+    const unexpected = await setupPage(page);
 
-      await expect(
-        page.getByText("断网恢复测试")
-      ).toBeVisible();
-    }
-  );
+    let postCount = 0;
+    let queryCount = 0;
+    let requestId = "";
 
-  // ----------------------------------------
-  // 3. 刷新后重新登录，恢复请求
-  // ----------------------------------------
+    let allowCompletion = false;
 
-  test(
-    "刷新页面恢复处理中请求且不重复 POST",
-    async ({ page }) => {
-      let postCount = 0;
-      let queryCount = 0;
-      let requestId = "";
+    await page.route(CHAT_API, async (route) => {
+      checkAuth(route);
 
-      let allowCompletion = false;
+      postCount += 1;
 
-      await page.route(CHAT_API, async (route) => {
-        checkAuth(route);
+      const data = route.request().postDataJSON() as ChatPayload;
 
-        postCount += 1;
+      requestId = data.request_id;
 
-        const data =
-          route.request().postDataJSON() as ChatPayload;
-
-        requestId = data.request_id;
-
-        // 模拟服务器正在处理
-        await route.fulfill({
-          status: 202,
-          contentType: "application/json",
-          body: JSON.stringify({
-            request_id: requestId,
-            status: "processing",
-          }),
-        });
+      // 模拟服务器正在处理
+      await route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({
+          request_id: requestId,
+          status: "processing",
+        }),
       });
+    });
 
-      await page.route(
-        STATUS_API,
-        async (route) => {
-          checkAuth(route);
+    await page.route(STATUS_API, async (route) => {
+      checkAuth(route);
 
-          queryCount += 1;
+      queryCount += 1;
 
-          const queriedId = getRequestId(
-            route.request().url()
-          );
+      const queriedId = getRequestId(route.request().url());
 
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({
-              request_id: queriedId,
-              status: allowCompletion
-                ? "completed"
-                : "processing",
-              reply: allowCompletion
-                ? "刷新后成功恢复的回复"
-                : null,
-            }),
-          });
-        }
-      );
-
-      await openAuthenticatedChat(page);
-
-      await send(page, "刷新恢复测试");
-
-      await expect
-        .poll(() => postCount)
-        .toBe(1);
-
-      await expect
-        .poll(() => queryCount)
-        .toBeGreaterThan(0);
-
-      // request_id 必须保存到用户自己的缓存
-      await expect
-        .poll(async () => {
-          return page.evaluate((key) => {
-            const raw = sessionStorage.getItem(key);
-
-            if (!raw) {
-              return null;
-            }
-
-            const messages =
-              JSON.parse(raw) as StoredMessage[];
-
-            const userMessage = messages.find(
-              (item) => item.role === "user"
-            );
-
-            return userMessage?.requestId ?? null;
-          }, CHAT_STORAGE_KEY);
-        })
-        .toBe(requestId);
-
-      // 刷新后，因为 Token 仅保存在内存，
-      // 页面应重新显示登录表单
-      await page.reload();
-
-      await expect(
-        page.locator("#pa-login-username")
-      ).toBeVisible();
-
-      // 模拟服务器在刷新期间完成回复
-      allowCompletion = true;
-
-      // 使用相同的模拟用户重新登录
-      await signIn(page);
-
-      await expect(
-        page.getByText("刷新后成功恢复的回复")
-      ).toBeVisible({
-        timeout: 10000,
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          request_id: queriedId,
+          status: allowCompletion ? "completed" : "processing",
+          reply: allowCompletion ? "刷新后成功恢复的回复" : null,
+        }),
       });
+    });
 
-      await expect(
-        page.getByText("刷新恢复测试")
-      ).toBeVisible();
+    await openAuthenticatedChat(page);
 
-      // 刷新和重新登录都不能重新 POST
-      expect(postCount).toBe(1);
+    await send(page, "刷新恢复测试");
 
-      expect(queryCount).toBeGreaterThan(1);
-    }
-  );
+    await expect.poll(() => postCount).toBe(1);
+    await expect.poll(() => queryCount).toBeGreaterThan(0);
+
+    // request_id 必须保存到用户自己的缓存
+    await expect
+      .poll(async () => {
+        return page.evaluate((key) => {
+          const raw = sessionStorage.getItem(key);
+
+          if (!raw) {
+            return null;
+          }
+
+          const messages = JSON.parse(raw) as StoredMessage[];
+
+          const userMessage = messages.find((item) => item.role === "user");
+
+          return userMessage?.requestId ?? null;
+        }, CHAT_STORAGE_KEY);
+      })
+      .toBe(requestId);
+
+    await page.reload();
+
+    // token 保存在 sessionStorage，刷新后应直接恢复会话，
+    // 不应出现登录表单。
+    await expect(
+      page.getByRole("textbox", { name: "输入聊天消息" }),
+    ).toBeVisible();
+
+    await expect(page.locator("#pa-login-username")).toHaveCount(0);
+
+    // 会话恢复之后才允许完成，确保回复来自刷新后的查询。
+    const queriesBeforeCompletion = queryCount;
+    allowCompletion = true;
+
+    await expect(page.getByText("刷新后成功恢复的回复")).toBeVisible({
+      timeout: 10000,
+    });
+
+    await expect(page.getByText("刷新恢复测试")).toBeVisible();
+
+    // 刷新后又查询过，且没有重新 POST
+    expect(queryCount).toBeGreaterThan(queriesBeforeCompletion);
+    expect(postCount).toBe(1);
+
+    expectNoUnmockedApi(unexpected);
+  });
 
 });
