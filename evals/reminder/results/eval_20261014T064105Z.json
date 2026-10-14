@@ -1,0 +1,708 @@
+{
+  "started_at": "2026-10-14T06:41:05.174975+00:00",
+  "model": "deepseek-flash",
+  "strategy": "single",
+  "reference_time": "2026-10-12T12:00:00+08:00",
+  "prompt_sha256": "a44bc1d4e8189e92",
+  "summary": {
+    "passed": 32,
+    "total": 32,
+    "cost_usd": 0.00461494,
+    "by_category": {
+      "absolute": {
+        "passed": 6,
+        "total": 6
+      },
+      "colloquial": {
+        "passed": 3,
+        "total": 3
+      },
+      "guard": {
+        "passed": 3,
+        "total": 3
+      },
+      "missing_time": {
+        "passed": 4,
+        "total": 4
+      },
+      "no_intent": {
+        "passed": 3,
+        "total": 3
+      },
+      "other_intent": {
+        "passed": 2,
+        "total": 2
+      },
+      "past_time": {
+        "passed": 2,
+        "total": 2
+      },
+      "relative": {
+        "passed": 9,
+        "total": 9
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "rel_01",
+      "category": "relative",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 477,
+        "cached_tokens": 0,
+        "completion_tokens": 56
+      },
+      "cost_usd": 0.0002103,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"关火\", \"minutes\": 10}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"关火\", \"minutes\": 10}"
+        }
+      ]
+    },
+    {
+      "id": "rel_02",
+      "category": "relative",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 477,
+        "cached_tokens": 256,
+        "completion_tokens": 56
+      },
+      "cost_usd": 0.00013504,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"接电话\", \"minutes\": 5}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"接电话\", \"minutes\": 5}"
+        }
+      ]
+    },
+    {
+      "id": "rel_03",
+      "category": "relative",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 476,
+        "cached_tokens": 256,
+        "completion_tokens": 55
+      },
+      "cost_usd": 0.00013354,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"喝水\", \"minutes\": 30}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"喝水\", \"minutes\": 30}"
+        }
+      ]
+    },
+    {
+      "id": "rel_04",
+      "category": "relative",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 477,
+        "cached_tokens": 256,
+        "completion_tokens": 78
+      },
+      "cost_usd": 0.00016144,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"取快递\", \"minutes\": 60}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"取快递\", \"minutes\": 60}"
+        }
+      ]
+    },
+    {
+      "id": "rel_05",
+      "category": "relative",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 476,
+        "cached_tokens": 256,
+        "completion_tokens": 55
+      },
+      "cost_usd": 0.00013354,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"吃药\", \"minutes\": 120}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"吃药\", \"minutes\": 120}"
+        }
+      ]
+    },
+    {
+      "id": "rel_06",
+      "category": "relative",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 477,
+        "cached_tokens": 256,
+        "completion_tokens": 56
+      },
+      "cost_usd": 0.00013504,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"看一下锅\", \"minutes\": 90}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"看一下锅\", \"minutes\": 90}"
+        }
+      ]
+    },
+    {
+      "id": "rel_07",
+      "category": "colloquial",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 477,
+        "cached_tokens": 256,
+        "completion_tokens": 55
+      },
+      "cost_usd": 0.00013384,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"出门\", \"minutes\": 90}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"出门\", \"minutes\": 90}"
+        }
+      ]
+    },
+    {
+      "id": "rel_08",
+      "category": "colloquial",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 479,
+        "cached_tokens": 256,
+        "completion_tokens": 56
+      },
+      "cost_usd": 0.00013564,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"收衣服\", \"minutes\": 45}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"收衣服\", \"minutes\": 45}"
+        }
+      ]
+    },
+    {
+      "id": "rel_09",
+      "category": "relative",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 479,
+        "cached_tokens": 256,
+        "completion_tokens": 56
+      },
+      "cost_usd": 0.00013564,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"关窗\", \"minutes\": 15}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"关窗\", \"minutes\": 15}"
+        }
+      ]
+    },
+    {
+      "id": "rel_10",
+      "category": "relative",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 479,
+        "cached_tokens": 256,
+        "completion_tokens": 57
+      },
+      "cost_usd": 0.00013684,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"下楼拿外卖\", \"minutes\": 20}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"下楼拿外卖\", \"minutes\": 20}"
+        }
+      ]
+    },
+    {
+      "id": "rel_11",
+      "category": "colloquial",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 480,
+        "cached_tokens": 256,
+        "completion_tokens": 86
+      },
+      "cost_usd": 0.00017194,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"去开会\", \"minutes\": 15}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"去开会\", \"minutes\": 15}"
+        }
+      ]
+    },
+    {
+      "id": "rel_12",
+      "category": "relative",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 477,
+        "cached_tokens": 256,
+        "completion_tokens": 56
+      },
+      "cost_usd": 0.00013504,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"面条好了\", \"minutes\": 3}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"面条好了\", \"minutes\": 3}"
+        }
+      ]
+    },
+    {
+      "id": "abs_01",
+      "category": "absolute",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 477,
+        "cached_tokens": 256,
+        "completion_tokens": 56
+      },
+      "cost_usd": 0.00013504,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"开会\", \"minutes\": 1260}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"开会\", \"minutes\": 1260}"
+        }
+      ]
+    },
+    {
+      "id": "abs_02",
+      "category": "absolute",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 479,
+        "cached_tokens": 256,
+        "completion_tokens": 56
+      },
+      "cost_usd": 0.00013564,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"交报告\", \"minutes\": 180}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"交报告\", \"minutes\": 180}"
+        }
+      ]
+    },
+    {
+      "id": "abs_03",
+      "category": "absolute",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 481,
+        "cached_tokens": 256,
+        "completion_tokens": 57
+      },
+      "cost_usd": 0.00013744,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"交房租\", \"minutes\": 4500}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"交房租\", \"minutes\": 4500}"
+        }
+      ]
+    },
+    {
+      "id": "abs_04",
+      "category": "absolute",
+      "expect": "no_call",
+      "passed": true,
+      "reason": "未调用工具",
+      "usage": {
+        "prompt_tokens": 477,
+        "cached_tokens": 256,
+        "completion_tokens": 33
+      },
+      "cost_usd": 0.00010744,
+      "first_round": [],
+      "final": []
+    },
+    {
+      "id": "abs_05",
+      "category": "absolute",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 478,
+        "cached_tokens": 256,
+        "completion_tokens": 57
+      },
+      "cost_usd": 0.00013654,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"看球赛\", \"minutes\": 480}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"看球赛\", \"minutes\": 480}"
+        }
+      ]
+    },
+    {
+      "id": "abs_06",
+      "category": "absolute",
+      "expect": "call",
+      "passed": true,
+      "reason": "参数正确",
+      "usage": {
+        "prompt_tokens": 477,
+        "cached_tokens": 256,
+        "completion_tokens": 70
+      },
+      "cost_usd": 0.00015184,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"吃饭\", \"minutes\": 30}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"吃饭\", \"minutes\": 30}"
+        }
+      ]
+    },
+    {
+      "id": "miss_01",
+      "category": "missing_time",
+      "expect": "no_call",
+      "passed": true,
+      "reason": "未调用工具",
+      "usage": {
+        "prompt_tokens": 475,
+        "cached_tokens": 256,
+        "completion_tokens": 24
+      },
+      "cost_usd": 9.604e-05,
+      "first_round": [],
+      "final": []
+    },
+    {
+      "id": "miss_02",
+      "category": "missing_time",
+      "expect": "no_call",
+      "passed": true,
+      "reason": "未调用工具",
+      "usage": {
+        "prompt_tokens": 475,
+        "cached_tokens": 256,
+        "completion_tokens": 52
+      },
+      "cost_usd": 0.00012964,
+      "first_round": [],
+      "final": []
+    },
+    {
+      "id": "miss_03",
+      "category": "missing_time",
+      "expect": "no_call",
+      "passed": true,
+      "reason": "未调用工具",
+      "usage": {
+        "prompt_tokens": 477,
+        "cached_tokens": 256,
+        "completion_tokens": 45
+      },
+      "cost_usd": 0.00012184,
+      "first_round": [],
+      "final": []
+    },
+    {
+      "id": "miss_04",
+      "category": "missing_time",
+      "expect": "no_call",
+      "passed": true,
+      "reason": "未调用工具",
+      "usage": {
+        "prompt_tokens": 476,
+        "cached_tokens": 256,
+        "completion_tokens": 29
+      },
+      "cost_usd": 0.00010234,
+      "first_round": [],
+      "final": []
+    },
+    {
+      "id": "past_01",
+      "category": "past_time",
+      "expect": "no_call",
+      "passed": true,
+      "reason": "未调用工具",
+      "usage": {
+        "prompt_tokens": 477,
+        "cached_tokens": 256,
+        "completion_tokens": 88
+      },
+      "cost_usd": 0.00017344,
+      "first_round": [],
+      "final": []
+    },
+    {
+      "id": "past_02",
+      "category": "past_time",
+      "expect": "no_call",
+      "passed": true,
+      "reason": "未调用工具",
+      "usage": {
+        "prompt_tokens": 478,
+        "cached_tokens": 256,
+        "completion_tokens": 58
+      },
+      "cost_usd": 0.00013774,
+      "first_round": [],
+      "final": []
+    },
+    {
+      "id": "chat_01",
+      "category": "no_intent",
+      "expect": "no_call",
+      "passed": true,
+      "reason": "未调用工具",
+      "usage": {
+        "prompt_tokens": 472,
+        "cached_tokens": 256,
+        "completion_tokens": 25
+      },
+      "cost_usd": 9.634e-05,
+      "first_round": [],
+      "final": []
+    },
+    {
+      "id": "chat_02",
+      "category": "no_intent",
+      "expect": "no_call",
+      "passed": true,
+      "reason": "未调用工具",
+      "usage": {
+        "prompt_tokens": 474,
+        "cached_tokens": 256,
+        "completion_tokens": 68
+      },
+      "cost_usd": 0.00014854,
+      "first_round": [],
+      "final": []
+    },
+    {
+      "id": "chat_03",
+      "category": "no_intent",
+      "expect": "no_call",
+      "passed": true,
+      "reason": "未调用工具",
+      "usage": {
+        "prompt_tokens": 477,
+        "cached_tokens": 256,
+        "completion_tokens": 140
+      },
+      "cost_usd": 0.00023584,
+      "first_round": [],
+      "final": []
+    },
+    {
+      "id": "chat_04",
+      "category": "other_intent",
+      "expect": "no_call",
+      "passed": true,
+      "reason": "未调用工具",
+      "usage": {
+        "prompt_tokens": 475,
+        "cached_tokens": 256,
+        "completion_tokens": 43
+      },
+      "cost_usd": 0.00011884,
+      "first_round": [],
+      "final": []
+    },
+    {
+      "id": "chat_05",
+      "category": "other_intent",
+      "expect": "no_call",
+      "passed": true,
+      "reason": "未调用工具",
+      "usage": {
+        "prompt_tokens": 476,
+        "cached_tokens": 256,
+        "completion_tokens": 87
+      },
+      "cost_usd": 0.00017194,
+      "first_round": [],
+      "final": []
+    },
+    {
+      "id": "guard_01",
+      "category": "guard",
+      "expect": "at_most_one",
+      "passed": true,
+      "reason": "未调用工具",
+      "usage": {
+        "prompt_tokens": 482,
+        "cached_tokens": 256,
+        "completion_tokens": 85
+      },
+      "cost_usd": 0.00017134,
+      "first_round": [],
+      "final": []
+    },
+    {
+      "id": "guard_02",
+      "category": "guard",
+      "expect": "at_most_one",
+      "passed": true,
+      "reason": "仅 1 次调用且参数有效",
+      "usage": {
+        "prompt_tokens": 484,
+        "cached_tokens": 256,
+        "completion_tokens": 82
+      },
+      "cost_usd": 0.00016834,
+      "first_round": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"关火\", \"minutes\": 10}"
+        }
+      ],
+      "final": [
+        {
+          "name": "create_reminder",
+          "arguments": "{\"message\": \"关火\", \"minutes\": 10}"
+        }
+      ]
+    },
+    {
+      "id": "guard_03",
+      "category": "guard",
+      "expect": "at_most_one",
+      "passed": true,
+      "reason": "未调用工具",
+      "usage": {
+        "prompt_tokens": 486,
+        "cached_tokens": 256,
+        "completion_tokens": 92
+      },
+      "cost_usd": 0.00018094,
+      "first_round": [],
+      "final": []
+    }
+  ]
+}

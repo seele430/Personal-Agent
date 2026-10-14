@@ -10,12 +10,12 @@
 {"id": "rel_10", "category": "relative", "input": "过20分钟提醒我下楼拿外卖", "expect": "call", "minutes": 20, "keywords": ["外卖"]}
 {"id": "rel_11", "category": "colloquial", "input": "差不多一刻钟以后叫我一下，要去开会", "expect": "call", "minutes": 15, "tolerance": 0, "keywords": ["开会", "会"]}
 {"id": "rel_12", "category": "relative", "input": "三分钟后提醒我面条好了", "expect": "call", "minutes": 3, "keywords": ["面"]}
-{"id": "abs_01", "category": "absolute", "input": "明天9点提醒我开会", "expect": "no_call"}
-{"id": "abs_02", "category": "absolute", "input": "今天下午3点提醒我交报告", "expect": "no_call"}
-{"id": "abs_03", "category": "absolute", "input": "10月15日下午3点提醒我交房租", "expect": "no_call"}
+{"id": "abs_01", "category": "absolute", "input": "明天9点提醒我开会", "expect": "call", "minutes": 1260, "keywords": ["会"]}
+{"id": "abs_02", "category": "absolute", "input": "今天下午3点提醒我交报告", "expect": "call", "minutes": 180, "keywords": ["报告"]}
+{"id": "abs_03", "category": "absolute", "input": "10月15日下午3点提醒我交房租", "expect": "call", "minutes": 4500, "keywords": ["房租"]}
 {"id": "abs_04", "category": "absolute", "input": "下周一早上提醒我去体检", "expect": "no_call"}
-{"id": "abs_05", "category": "absolute", "input": "今晚8点提醒我看球赛", "expect": "no_call"}
-{"id": "abs_06", "category": "absolute", "input": "中午12点半提醒我吃饭", "expect": "no_call"}
+{"id": "abs_05", "category": "absolute", "input": "今晚8点提醒我看球赛", "expect": "call", "minutes": 480, "keywords": ["球"]}
+{"id": "abs_06", "category": "absolute", "input": "中午12点半提醒我吃饭", "expect": "call", "minutes": 30, "keywords": ["饭"]}
 {"id": "miss_01", "category": "missing_time", "input": "提醒我买牛奶", "expect": "no_call"}
 {"id": "miss_02", "category": "missing_time", "input": "帮我设一个提醒", "expect": "no_call"}
 {"id": "miss_03", "category": "missing_time", "input": "待会儿提醒我回邮件", "expect": "no_call"}
