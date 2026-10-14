@@ -55,6 +55,60 @@ type ReminderListResponse = {
   reminders?: unknown;
 };
 
+type QuotaReport = {
+  window_hours: number;
+  role: string;
+  requests: {
+    used: number;
+    limit: number;
+    remaining: number;
+  };
+  budget: {
+    used_usd: string;
+    limit_usd: string;
+    remaining_usd: string;
+    unresolved_reservations: number;
+  };
+  note: string;
+};
+
+const ROLE_TEXT: Record<string, string> = {
+  owner: "站长",
+  admin: "管理员",
+  trusted: "可信用户",
+  member: "普通用户",
+};
+
+function roleText(role: string): string {
+  return ROLE_TEXT[role] ?? role;
+}
+
+// 后端返回的是十进制字符串，展示时统一成 4 位小数。
+function formatUsd(value: string): string {
+  const amount = Number(value);
+
+  if (!Number.isFinite(amount)) {
+    return `US$${value}`;
+  }
+
+  return `US$${amount.toFixed(4)}`;
+}
+
+function usagePercent(used: number, limit: number): number {
+  if (
+    !Number.isFinite(used) ||
+    !Number.isFinite(limit) ||
+    limit <= 0
+  ) {
+    return 0;
+  }
+
+  return Math.min(
+    Math.max((used / limit) * 100, 0),
+    100,
+  );
+}
+
 const REMINDER_STATUS_TEXT: Record<
   ReminderStatusValue,
   string
@@ -221,7 +275,14 @@ export default function App(
     useState<string | null>(null);
 
   const [view, setView] =
-    useState<"chat" | "reminders">("chat");
+    useState<"chat" | "reminders" | "quota">("chat");
+
+  const [quota, setQuota] = useState<QuotaReport | null>(
+    null
+  );
+
+  const [quotaError, setQuotaError] = useState("");
+  const [quotaLoading, setQuotaLoading] = useState(false);
 
   const [reminders, setReminders] =
     useState<Reminder[]>([]);
@@ -802,6 +863,42 @@ export default function App(
     }
   }
 
+  async function loadQuota() {
+    if (!authToken) return;
+
+    setQuotaLoading(true);
+
+    try {
+      const response = await fetch(
+        "/api/usage/summary",
+        { headers: authHeaders() }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `读取额度失败（${response.status}）`
+        );
+      }
+
+      const value: unknown = await response.json();
+
+      if (!value || typeof value !== "object") {
+        throw new Error("服务器返回格式不正确");
+      }
+
+      setQuota(value as QuotaReport);
+      setQuotaError("");
+    } catch (cause) {
+      setQuotaError(
+        cause instanceof Error
+          ? cause.message
+          : "读取额度失败"
+      );
+    } finally {
+      setQuotaLoading(false);
+    }
+  }
+
   // 打开页面取一次到期提醒，之后定时轮询。
   useEffect(() => {
     if (!authToken) return;
@@ -817,9 +914,13 @@ export default function App(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authToken]);
 
-  // 提醒列表用于面板和侧栏数量，按需重新加载。
+  // 提醒列表用于面板和侧栏数量；额度只在需要时读取。
   useEffect(() => {
     void loadReminders();
+
+    if (view === "quota") {
+      void loadQuota();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authToken, view]);
 
@@ -875,6 +976,19 @@ export default function App(
             {pendingCount > 0 && (
               <small>{pendingCount}</small>
             )}
+          </button>
+
+          <button
+            type="button"
+            className={`nav-item ${
+              view === "quota" ? "selected" : ""
+            }`}
+            onClick={() => setView("quota")}
+            aria-pressed={view === "quota"}
+            aria-label="额度"
+          >
+            <span className="nav-symbol">◔</span>
+            <span>额度</span>
           </button>
 
           <div className="nav-item disabled">
@@ -955,7 +1069,129 @@ export default function App(
           </section>
         )}
 
-        {view === "reminders" ? (
+        {view === "quota" ? (
+          <section
+            className="quota-panel"
+            aria-label="我的额度"
+          >
+            <div className="reminder-head">
+              <div>
+                <h2>我的额度</h2>
+
+                <p className="reminder-hint">
+                  过去 {quota?.window_hours ?? 24} 小时的用量，
+                  超出后新的聊天请求会被拒绝。
+                  身份：{quota ? roleText(quota.role) : "…"}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void loadQuota()}
+                aria-label="刷新额度"
+              >
+                刷新
+              </button>
+            </div>
+
+            {quotaError && (
+              <div
+                className="error-box"
+                data-testid="quota-error"
+              >
+                {quotaError}
+              </div>
+            )}
+
+            {quotaLoading && !quota && (
+              <p className="reminder-empty">
+                正在读取…
+              </p>
+            )}
+
+            {quota && (
+              <div
+                className="quota-cards"
+                data-testid="quota-cards"
+              >
+                <article className="quota-card">
+                  <h3>请求次数</h3>
+
+                  <p className="quota-value">
+                    {quota.requests.used} /{" "}
+                    {quota.requests.limit}
+                  </p>
+
+                  <div className="quota-bar">
+                    <span
+                      style={{
+                        width: `${usagePercent(
+                          quota.requests.used,
+                          quota.requests.limit
+                        )}%`,
+                      }}
+                    />
+                  </div>
+
+                  <p className="quota-foot">
+                    剩余 {quota.requests.remaining} 次
+                  </p>
+                </article>
+
+                <article className="quota-card">
+                  <h3>AI 预算</h3>
+
+                  <p className="quota-value">
+                    {formatUsd(quota.budget.used_usd)}
+                    {" / "}
+                    {formatUsd(quota.budget.limit_usd)}
+                  </p>
+
+                  <div className="quota-bar">
+                    <span
+                      style={{
+                        width: `${usagePercent(
+                          Number(
+                            quota.budget.used_usd
+                          ),
+                          Number(
+                            quota.budget.limit_usd
+                          )
+                        )}%`,
+                      }}
+                    />
+                  </div>
+
+                  <p className="quota-foot">
+                    剩余{" "}
+                    {formatUsd(
+                      quota.budget.remaining_usd
+                    )}
+                  </p>
+                </article>
+
+                <p
+                  className="quota-note"
+                  data-testid="quota-note"
+                >
+                  {quota.note}
+                </p>
+
+                {quota.budget.unresolved_reservations >
+                  0 && (
+                  <p className="quota-note">
+                    有{" "}
+                    {
+                      quota.budget
+                        .unresolved_reservations
+                    }{" "}
+                    次请求还在结算中，金额可能继续变化。
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+        ) : view === "reminders" ? (
           <section
             className="reminder-panel"
             aria-label="我的提醒"

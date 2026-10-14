@@ -24,6 +24,9 @@ from src.core.chat_quota import (
     prepare_chat_quota,
 )
 
+from src.core.ai_budget import init_budget_schema
+from src.core.quota_report import build_quota_report
+
 
 class TestChatQuota(unittest.TestCase):
 
@@ -438,6 +441,297 @@ class TestChatQuota(unittest.TestCase):
             ).fetchone()
 
         self.assertIsNotNone(found)
+
+
+class TestQuotaReport(unittest.TestCase):
+    """个人额度汇总：窗口、上限与剩余量。"""
+
+    NOW = datetime(
+        2026, 10, 12, 12, 0,
+        tzinfo=timezone.utc,
+    )
+
+    def setUp(self):
+        self.temp_dir = TemporaryDirectory()
+
+        self.db_path = (
+            Path(self.temp_dir.name)
+            / "quota_report.db"
+        )
+
+        self._seq = 0
+
+        with closing(self.connect()) as conn, conn:
+
+            conn.execute(
+                """
+                CREATE TABLE chat_requests (
+                    request_id TEXT PRIMARY KEY,
+                    message_hash TEXT NOT NULL,
+                    status TEXT NOT NULL
+                        CHECK(status IN (
+                            'processing',
+                            'completed',
+                            'unknown'
+                        )),
+                    reply TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+
+            migrate_chat_ownership(conn)
+            prepare_chat_quota(conn)
+            init_budget_schema(conn)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def connect(self):
+        conn = sqlite3.connect(
+            self.db_path,
+            timeout=10,
+        )
+
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def next_id(self, prefix):
+        self._seq += 1
+        return f"{prefix}_{self._seq:03d}"
+
+    def add_request(self, *, user_id, when):
+        with closing(self.connect()) as conn, conn:
+            conn.execute(
+                """
+                INSERT INTO chat_requests (
+                    request_id,
+                    message_hash,
+                    status,
+                    reply,
+                    created_at,
+                    updated_at,
+                    user_id
+                )
+                VALUES (?, 'hash', 'completed', 'ok', ?, ?, ?)
+                """,
+                (
+                    self.next_id("req"),
+                    when.isoformat(),
+                    when.isoformat(),
+                    user_id,
+                ),
+            )
+
+    def add_reservation(
+        self,
+        *,
+        user_id,
+        when,
+        units,
+        charged=None,
+        state="settled",
+    ):
+        with closing(self.connect()) as conn, conn:
+            conn.execute(
+                """
+                INSERT INTO ai_budget_reservations (
+                    request_id,
+                    user_id,
+                    reserved_nano_usd,
+                    charged_nano_usd,
+                    state,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    self.next_id("res"),
+                    user_id,
+                    units,
+                    charged,
+                    state,
+                    when.isoformat(),
+                ),
+            )
+
+    def report(self, *, role="member", now=None):
+        with closing(self.connect()) as conn:
+            return build_quota_report(
+                conn,
+                user_id="alice",
+                role=role,
+                now=self.NOW if now is None else now,
+            )
+
+    # 1. 空账本按角色给出上限
+
+    def test_empty_report_uses_role_limits(self):
+        result = self.report(role="member")
+
+        self.assertEqual(result["window_hours"], 24)
+        self.assertEqual(result["role"], "member")
+
+        self.assertEqual(
+            result["requests"],
+            {
+                "used": 0,
+                "limit": 10,
+                "remaining": 10,
+            },
+        )
+
+        self.assertEqual(
+            result["budget"]["used_usd"],
+            "0",
+        )
+        self.assertEqual(
+            result["budget"]["limit_usd"],
+            "0.075",
+        )
+        self.assertEqual(
+            result["budget"]["remaining_usd"],
+            "0.075",
+        )
+
+    # 2. 不同角色上限不同
+
+    def test_limits_depend_on_role(self):
+        self.assertEqual(
+            self.report(role="trusted")["budget"][
+                "limit_usd"
+            ],
+            "0.3",
+        )
+
+        self.assertEqual(
+            self.report(role="admin")["requests"]["limit"],
+            80,
+        )
+
+        self.assertEqual(
+            self.report(role="owner")["requests"]["limit"],
+            100,
+        )
+
+    # 3. 只统计最近 24 小时，且只统计自己
+
+    def test_counts_only_recent_own_requests(self):
+        recent = self.NOW - timedelta(hours=23)
+        old = self.NOW - timedelta(hours=25)
+
+        self.add_request(user_id="alice", when=recent)
+        self.add_request(user_id="alice", when=old)
+        self.add_request(user_id="bob", when=recent)
+
+        result = self.report(role="member")
+
+        self.assertEqual(result["requests"]["used"], 1)
+        self.assertEqual(
+            result["requests"]["remaining"],
+            9,
+        )
+
+    # 4. 预算按结算金额累加，只看自己的、只看 24 小时内
+
+    def test_budget_counts_charged_amount_of_own_user(
+        self,
+    ):
+        self.add_reservation(
+            user_id="alice",
+            when=self.NOW - timedelta(hours=1),
+            units=50_000_000,
+            charged=30_000_000,
+        )
+
+        # 别人的用量不能算进来
+        self.add_reservation(
+            user_id="bob",
+            when=self.NOW - timedelta(hours=1),
+            units=50_000_000,
+            charged=40_000_000,
+        )
+
+        # 超出窗口的用量不算
+        self.add_reservation(
+            user_id="alice",
+            when=self.NOW - timedelta(hours=30),
+            units=50_000_000,
+            charged=10_000_000,
+        )
+
+        result = self.report(role="member")
+
+        self.assertEqual(
+            result["budget"]["used_usd"],
+            "0.03",
+        )
+        self.assertEqual(
+            result["budget"]["remaining_usd"],
+            "0.045",
+        )
+
+    # 5. 未结算的预留按预留额计入，并单独报出条数
+
+    def test_unresolved_reservations_are_reported(self):
+        self.add_reservation(
+            user_id="alice",
+            when=self.NOW - timedelta(hours=1),
+            units=50_000_000,
+            charged=None,
+            state="reserved",
+        )
+
+        result = self.report(role="member")
+
+        self.assertEqual(
+            result["budget"]["used_usd"],
+            "0.05",
+        )
+        self.assertEqual(
+            result["budget"][
+                "unresolved_reservations"
+            ],
+            1,
+        )
+
+    # 6. 超额时剩余量不出现负数
+
+    def test_remaining_is_never_negative(self):
+        self.add_reservation(
+            user_id="alice",
+            when=self.NOW - timedelta(hours=1),
+            units=100_000_000,
+            charged=200_000_000,
+            state="overrun",
+        )
+
+        result = self.report(role="member")
+
+        self.assertEqual(
+            result["budget"]["used_usd"],
+            "0.2",
+        )
+        self.assertEqual(
+            result["budget"]["remaining_usd"],
+            "0",
+        )
+
+    # 7. 未知角色不猜额度
+
+    def test_unknown_role_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.report(role="ghost")
+
+    # 8. 不带时区的时间直接拒绝
+
+    def test_naive_time_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.report(
+                role="member",
+                now=datetime(2026, 10, 12, 12, 0),
+            )
 
 
 if __name__ == "__main__":

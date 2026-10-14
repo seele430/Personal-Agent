@@ -14,6 +14,7 @@ from src import api as legacy_chat
 from src.auth_api import router as auth_router
 from src.chat_secure_api import router as chat_router
 from src.reminder_api import router as reminder_router
+from src.usage_api import router as usage_router
 
 from src.core.chat_ownership import migrate_chat_ownership
 from src.core.ai_budget import init_budget_schema
@@ -68,3 +69,6 @@ app.include_router(chat_router)
 
 # 个人站内提醒查询
 app.include_router(reminder_router)
+
+# 个人额度查询（只读）
+app.include_router(usage_router)
