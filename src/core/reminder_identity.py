@@ -4,7 +4,7 @@
 
 默认策略：
 - owner：可以创建 ntfy 提醒
-- 其他角色：在站内通知中心上线前，禁止创建提醒
+- 其他角色：写入站内提醒，由前端提醒面板读取
 - 没有认证上下文：禁止创建提醒
 
 必须由服务端使用真实登录身份建立上下文，
@@ -27,9 +27,12 @@ from src.config import paths
 
 REMINDER_DB_PATH: Path = paths.reminders_db
 
-# 网站内个人通知中心尚未上线。
-# 在正式完成通知读取及权限测试前，保持 False。
-IN_APP_DELIVERY_ENABLED = False
+# 站内个人提醒中心已经上线：读取 / 修改 / 取消 / 确认送达
+# 见 src/reminder_api.py，配套测试见 tests/test_reminder_api.py。
+#
+# 这个开关只决定"非站长用户能否创建站内提醒"。
+# 关掉它不会删除任何已经存在的提醒数据。
+IN_APP_DELIVERY_ENABLED = True
 
 
 class ReminderDeliveryUnavailable(RuntimeError):
@@ -115,7 +118,7 @@ def create_reminder_for_current_user(
 
     # 方案 A：
     # 站长沿用 ntfy；
-    # 其他用户暂时等待网站内个人通知中心上线。
+    # 其他用户写入站内提醒，由前端提醒面板读取。
     if (
         identity.role != "owner"
         and not IN_APP_DELIVERY_ENABLED

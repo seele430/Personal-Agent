@@ -283,17 +283,17 @@ class TestReminderChatHTTP(unittest.TestCase):
         )
 
     # ======================================
-    # 2. 普通成员不能进入站长 ntfy 队列
+    # 2. 普通成员只进站内提醒，不进站长 ntfy 队列
     # ======================================
 
-    def test_member_reminder_is_not_created(self):
+    def test_member_reminder_goes_to_in_app_only(self):
         request_id = self.new_id()
 
         with patch.object(
             agent.client.chat.completions,
             "create",
             side_effect=self.model_replies(
-                "个人提醒功能尚未开放"
+                "提醒已创建，将在站内提醒中心显示"
             ),
         ) as model:
 
@@ -312,8 +312,84 @@ class TestReminderChatHTTP(unittest.TestCase):
             2,
         )
 
-        # 检查工具实际返回失败，
+        # 检查工具实际创建成功，
         # 不是只依赖模型回复文字。
+        second_messages = (
+            model.call_args_list[1]
+            .kwargs["messages"]
+        )
+
+        tool_result = json.loads(
+            second_messages[-1]["content"]
+        )
+
+        self.assertTrue(
+            tool_result["success"]
+        )
+
+        # 成员提醒只能走站内投递。
+        self.assertEqual(
+            tool_result["delivery"],
+            "in_app",
+        )
+
+        # 旧表（站长 ntfy 队列）必须为空，
+        # 新表恰好一条。
+        self.assertEqual(
+            self.reminder_counts(),
+            (0, 1),
+        )
+
+        with closing(
+            sqlite3.connect(self.reminder_path)
+        ) as conn:
+            row = conn.execute(
+                """
+                SELECT user_id, delivery, status
+                FROM reminder_requests
+                """
+            ).fetchone()
+
+        # 身份取自登录会话，不取自聊天内容。
+        self.assertEqual(row[0], "member_test_001")
+        self.assertEqual(row[1], "in_app")
+        self.assertEqual(row[2], "pending")
+
+    # ======================================
+    # 2b. 关闭站内投递时，成员仍然不能创建提醒
+    # ======================================
+
+    def test_member_reminder_is_rejected_when_disabled(self):
+        request_id = self.new_id()
+
+        with patch.object(
+            reminder_identity,
+            "IN_APP_DELIVERY_ENABLED",
+            False,
+        ):
+            with patch.object(
+                agent.client.chat.completions,
+                "create",
+                side_effect=self.model_replies(
+                    "个人提醒功能尚未开放"
+                ),
+            ) as model:
+
+                response = self.send(
+                    request_id,
+                    token="member-test-token",
+                )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            model.call_count,
+            2,
+        )
+
         second_messages = (
             model.call_args_list[1]
             .kwargs["messages"]
@@ -332,7 +408,7 @@ class TestReminderChatHTTP(unittest.TestCase):
             tool_result["error"],
         )
 
-        # 不得写入站长通知队列。
+        # 开关关闭时什么都不写。
         self.assertEqual(
             self.reminder_counts(),
             (0, 0),
