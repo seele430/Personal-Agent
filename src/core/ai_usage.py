@@ -1,16 +1,31 @@
-
-"""模型响应的 Token 用量记录。
+"""模型响应的 Token 用量与调用 trace 记录。
 
 不保存聊天内容或 API 密钥。
 缺失的 usage 使用 NULL，不假设为零。
+
+trace 字段（latency_ms / finish_reason / tool_names）用于回答
+「这次请求为什么慢、为什么贵、模型调了什么工具」。
+只记录工具名称，不记录工具参数：参数含用户输入的提醒内容。
 """
 
 import sqlite3
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+# trace 字段上限。模型返回的字符串不可信，超长直接截断。
+MAX_FINISH_REASON_CHARS = 64
+MAX_TOOL_NAMES_CHARS = 200
+
+# 迁移用：列名 -> 列定义
+_TRACE_COLUMNS = (
+    ("latency_ms", "INTEGER"),
+    ("finish_reason", "TEXT"),
+    ("tool_names", "TEXT"),
+)
 
 
 def _get(obj, name):
@@ -25,6 +40,50 @@ def _token(value):
         return value
 
     return None
+
+
+def _latency(value):
+    if type(value) is int and value >= 0:
+        return value
+
+    return None
+
+
+def _text(value, limit):
+    if not isinstance(value, str):
+        return None
+
+    cleaned = value.strip()
+
+    if not cleaned:
+        return None
+
+    return cleaned[:limit]
+
+
+def _tool_names(value):
+    """把工具名序列拼成逗号分隔字符串。只取名称，不取参数。"""
+
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        names = [value]
+    elif isinstance(value, Sequence):
+        names = list(value)
+    else:
+        return None
+
+    cleaned = [
+        item.strip()
+        for item in names
+        if isinstance(item, str) and item.strip()
+    ]
+
+    if not cleaned:
+        return None
+
+    return ",".join(cleaned)[:MAX_TOOL_NAMES_CHARS]
 
 
 class AIUsageStore:
@@ -71,6 +130,10 @@ class AIUsageStore:
                     total_tokens INTEGER,
                     cache_hit_tokens INTEGER,
 
+                    latency_ms INTEGER,
+                    finish_reason TEXT,
+                    tool_names TEXT,
+
                     created_at TEXT NOT NULL,
 
                     PRIMARY KEY (
@@ -85,6 +148,24 @@ class AIUsageStore:
                 """
             )
 
+            # 旧库迁移：已存在的表不会被 CREATE 语句修改，
+            # 这里补齐 trace 列，历史行保持 NULL。
+            existing = {
+                row["name"]
+                for row in conn.execute(
+                    "PRAGMA table_info(ai_usage_calls)"
+                )
+            }
+
+            for name, column_type in _TRACE_COLUMNS:
+                if name in existing:
+                    continue
+
+                conn.execute(
+                    "ALTER TABLE ai_usage_calls "
+                    f"ADD COLUMN {name} {column_type}"
+                )
+
     # ======================================
     # 记录一次模型调用
     # ======================================
@@ -97,6 +178,9 @@ class AIUsageStore:
         call_number: int,
         model: str,
         response,
+        latency_ms: int | None = None,
+        finish_reason: str | None = None,
+        tool_names=None,
     ) -> bool:
 
         # 身份必须由服务端提供
@@ -159,6 +243,16 @@ class AIUsageStore:
                 _get(details, "cached_tokens")
             )
 
+        # trace 字段：缺失或无效一律记 NULL，不猜测。
+        latency = _latency(latency_ms)
+
+        reason = _text(
+            finish_reason,
+            MAX_FINISH_REASON_CHARS,
+        )
+
+        tools = _tool_names(tool_names)
+
         timestamp = (
             datetime.now(timezone.utc).isoformat()
         )
@@ -178,9 +272,15 @@ class AIUsageStore:
                     completion_tokens,
                     total_tokens,
                     cache_hit_tokens,
+                    latency_ms,
+                    finish_reason,
+                    tool_names,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (
+                    ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?
+                )
                 """,
                 (
                     request_id,
@@ -191,11 +291,68 @@ class AIUsageStore:
                     completion,
                     total,
                     cached,
+                    latency,
+                    reason,
+                    tools,
                     timestamp,
                 ),
             )
 
             return cursor.rowcount == 1
+
+    # ======================================
+    # 查询一次请求的调用链
+    # ======================================
+
+    def request_trace(
+        self,
+        user_id: str,
+        request_id: str,
+    ) -> list:
+        """按 call_number 顺序返回该请求的调用记录。
+
+        必须同时匹配 user_id，防止跨用户读取。
+        """
+
+        for name, value in (
+            ("user_id", user_id),
+            ("request_id", request_id),
+        ):
+            if (
+                not isinstance(value, str)
+                or not value.strip()
+            ):
+                raise ValueError(
+                    f"{name} 不能为空"
+                )
+
+        with closing(self._connect()) as conn:
+
+            rows = conn.execute(
+                """
+                SELECT
+                    call_number,
+                    model,
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                    cache_hit_tokens,
+                    latency_ms,
+                    finish_reason,
+                    tool_names,
+                    created_at
+
+                FROM ai_usage_calls
+
+                WHERE user_id = ?
+                  AND request_id = ?
+
+                ORDER BY call_number
+                """,
+                (user_id, request_id),
+            ).fetchall()
+
+        return [dict(row) for row in rows]
 
     # ======================================
     # 查询指定用户的用量汇总

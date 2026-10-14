@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import time
 
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -221,9 +222,47 @@ def _completion(
             },
         }
 
+    # 单调时钟：不受系统时间调整影响
+    started = time.monotonic()
+
     response = client.chat.completions.create(
         **kwargs
     )
+
+    latency_ms = int(
+        (time.monotonic() - started) * 1000
+    )
+
+    # trace 字段在校验之前提取，
+    # 这样异常结束的调用也能留下记录。
+    choice = (
+        response.choices[0]
+        if getattr(response, "choices", None)
+        else None
+    )
+
+    finish_reason = getattr(
+        choice,
+        "finish_reason",
+        None,
+    )
+
+    tool_names = [
+        item.function.name
+        for item in (
+            getattr(
+                getattr(choice, "message", None),
+                "tool_calls",
+                None,
+            )
+            or []
+        )
+        if getattr(
+            getattr(item, "function", None),
+            "name",
+            None,
+        )
+    ]
 
     scope = _current_usage.get()
 
@@ -237,6 +276,9 @@ def _completion(
                 call_number=scope.completed_calls,
                 model=MODEL,
                 response=response,
+                latency_ms=latency_ms,
+                finish_reason=finish_reason,
+                tool_names=tool_names,
             )
 
         except Exception:
@@ -247,16 +289,10 @@ def _completion(
                 scope.completed_calls,
             )
 
-    if not response.choices:
+    if choice is None:
         raise RuntimeError(
             "模型没有返回有效结果"
         )
-
-    finish_reason = getattr(
-        response.choices[0],
-        "finish_reason",
-        None,
-    )
 
     if finish_reason == "length":
         raise RuntimeError(
