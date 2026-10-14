@@ -151,6 +151,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L1：提醒 eval 用例加载与判定（纯函数，不调用模型）
+    "unit/test_reminder_eval.py": TestSchema(
+        layer="unit",
+        domain="eval",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
     # ----------------------------------------------------------------
     # L2：数据集成测试（临时 SQLite）
     # ----------------------------------------------------------------

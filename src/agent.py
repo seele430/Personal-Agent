@@ -372,6 +372,28 @@ def _format_reminder_result(
 # 主聊天函数
 # ==========================================
 
+def build_system_prompt(now: datetime) -> str:
+    """聊天 system prompt。
+
+    now 必须带时区。chat() 传入当前时间；
+    eval 传入固定参考时间，保证两边提示词完全一致。
+    """
+
+    return (
+        "你是 Personal Agent，中文私人助手。"
+        f"当前本地时间："
+        f"{now.isoformat()}。"
+        "用户要求若干分钟后提醒时，"
+        "可以调用 create_reminder。"
+        "缺少时间时先询问，不要猜测。"
+        "工具返回失败时必须明确告知用户。"
+        "只有工具返回成功，才能说提醒已保存。"
+        "提醒已保存不代表通知已经送达。"
+        "目前仅支持以整数分钟表示的"
+        "相对时间提醒。"
+    )
+
+
 def chat(user_input: str) -> str:
 
     validate_user_input(user_input)
@@ -381,18 +403,8 @@ def chat(user_input: str) -> str:
     messages = [
         {
             "role": "system",
-            "content": (
-                "你是 Personal Agent，中文私人助手。"
-                f"当前本地时间："
-                f"{datetime.now().astimezone().isoformat()}。"
-                "用户要求若干分钟后提醒时，"
-                "可以调用 create_reminder。"
-                "缺少时间时先询问，不要猜测。"
-                "工具返回失败时必须明确告知用户。"
-                "只有工具返回成功，才能说提醒已保存。"
-                "提醒已保存不代表通知已经送达。"
-                "目前仅支持以整数分钟表示的"
-                "相对时间提醒。"
+            "content": build_system_prompt(
+                datetime.now().astimezone()
             ),
         },
         {

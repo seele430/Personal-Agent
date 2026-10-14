@@ -64,3 +64,4 @@ Thumbs.db
 
 # Accidentally created nested frontend
 /frontend/frontend/
+evals/reminder/results/

@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 5c5380be41fae738 -->
+<!-- membership-digest: 6fb8a250159826a9 -->
 
-## unit — L1 单元测试 (5 files)
+## unit — L1 单元测试 (6 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -28,6 +28,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_agent_usage.py` | tests/ 根 | agent | none | none | low | registered-inferred |
 | `test_rss_errors.py` | tests/ 根 | rss | none | mocked | medium | registered-inferred |
 | `unit/test_agent_tool_limits.py` | tests/unit/ | reminder | none | mocked | medium | registered |
+| `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 
 ## integration — L2 数据集成测试 (24 files)
 
