@@ -20,7 +20,10 @@ from openai import OpenAI
 from src.core.ai_usage import AIUsageStore
 from src.core.reminder_identity import (
     ReminderDeliveryUnavailable,
+    cancel_reminder_for_current_user as cancel_reminder,
     create_reminder_for_current_user as create_reminder,
+    list_reminders_for_current_user as list_reminders,
+    update_reminder_for_current_user as update_reminder,
 )
 from src.tools.reminder import init_db
 
@@ -58,6 +61,10 @@ MAX_USER_MESSAGE_BYTES = 32000
 MAX_REMINDER_TOOL_CALLS = 1
 MAX_REMINDER_MESSAGE_BYTES = 1024
 MAX_TOOL_ARGUMENT_BYTES = 4096
+
+# 单次列出的提醒条数上限：
+# 不要把整张表塞进模型上下文。
+MAX_LISTED_REMINDERS = 20
 
 logger = logging.getLogger(
     "personal_agent.usage"
@@ -98,6 +105,94 @@ REMINDER_TOOL = {
         },
     },
 }
+
+
+LIST_REMINDERS_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "list_reminders",
+        "description": (
+            "列出当前用户自己的提醒，返回每条提醒的编号 id、"
+            "内容、时间和状态。"
+            "用户想知道自己有哪些提醒时调用。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+}
+
+
+CANCEL_REMINDER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "cancel_reminder",
+        "description": (
+            "取消当前用户的一条尚未发送的提醒。"
+            "reminder_id 必须来自 list_reminders 的结果，"
+            "或用户明确说出的编号。"
+            "没有编号时先询问或先列出，不要猜测。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "reminder_id": {
+                    "type": "integer",
+                    "description": "提醒编号",
+                },
+            },
+            "required": [
+                "reminder_id",
+            ],
+        },
+    },
+}
+
+
+UPDATE_REMINDER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "update_reminder",
+        "description": (
+            "修改当前用户一条尚未发送的提醒的内容或时间。"
+            "至少要给出 message 或 minutes 之一。"
+            "reminder_id 必须来自 list_reminders 的结果，"
+            "或用户明确说出的编号。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "reminder_id": {
+                    "type": "integer",
+                    "description": "提醒编号",
+                },
+                "message": {
+                    "type": "string",
+                    "description": "新的提醒内容",
+                },
+                "minutes": {
+                    "type": "integer",
+                    "description": "从现在起多少分钟后提醒",
+                },
+            },
+            "required": [
+                "reminder_id",
+            ],
+        },
+    },
+}
+
+
+# 暴露给模型的全部工具。
+# 每个工具都必须经过登录身份校验才能读写数据。
+REMINDER_TOOLS = [
+    REMINDER_TOOL,
+    LIST_REMINDERS_TOOL,
+    CANCEL_REMINDER_TOOL,
+    UPDATE_REMINDER_TOOL,
+]
 
 
 # ==========================================
@@ -204,12 +299,13 @@ def _is_deepseek_flash() -> bool:
 def _completion(
     messages: list,
     tool_choice: str,
+    tools: list | None = None,
 ):
 
     kwargs = {
         "model": MODEL,
         "messages": messages,
-        "tools": [REMINDER_TOOL],
+        "tools": REMINDER_TOOLS if tools is None else tools,
         "tool_choice": tool_choice,
         "max_tokens": MAX_OUTPUT_TOKENS,
     }
@@ -420,6 +516,11 @@ def build_system_prompt(now: datetime) -> str:
         f"当前本地时间："
         f"{now.isoformat()}。"
         "用户要求提醒且时间明确时，可以调用 create_reminder。"
+        "用户想知道自己有哪些提醒时，调用 list_reminders。"
+        "取消或修改提醒需要提醒编号："
+        "先用 list_reminders 取得编号，或使用用户明确说出的编号；"
+        "没有编号时先询问，绝不猜测编号。"
+        "取消和修改只对尚未发送的提醒有效。"
         "用户给出具体钟点（如今晚8点、明天9点）时，"
         "按当前本地时间换算成整数分钟后调用，"
         "并在回复中说明换算后的提醒时间。"
@@ -430,6 +531,157 @@ def build_system_prompt(now: datetime) -> str:
         "只有工具返回成功，才能说提醒已保存。"
         "提醒已保存不代表通知已经送达。"
     )
+
+
+# ==========================================
+# 执行一次提醒工具调用
+# ==========================================
+
+def _tool_arguments(tool_call) -> dict:
+    """解析工具参数，必须是一个 JSON 对象。"""
+
+    args = json.loads(
+        tool_call.function.arguments
+    )
+
+    if not isinstance(args, dict):
+        raise ValueError("工具参数格式无效")
+
+    return args
+
+
+def _require_reminder_id(args: dict) -> int:
+    reminder_id = args.get("reminder_id")
+
+    if type(reminder_id) is not int or reminder_id <= 0:
+        raise ValueError("提醒编号无效")
+
+    return reminder_id
+
+
+def _clean_reminder_message(message) -> str:
+    if (
+        not isinstance(message, str)
+        or not message.strip()
+    ):
+        raise ValueError("提醒内容无效")
+
+    message = message.strip()
+
+    if (
+        len(message.encode("utf-8"))
+        > MAX_REMINDER_MESSAGE_BYTES
+    ):
+        raise ValueError("提醒内容太长")
+
+    return message
+
+
+def _clean_reminder_minutes(minutes) -> int:
+    if (
+        type(minutes) is not int
+        or not 1 <= minutes <= 43200
+    ):
+        raise ValueError(
+            "提醒时间必须是 1～43200 分钟"
+        )
+
+    return minutes
+
+
+def _execute_reminder_tool(tool_call) -> dict:
+    """执行一次提醒工具调用。
+
+    每个分支都通过经过认证的入口读写数据：
+    没有登录身份时一律拒绝，
+    也不会回退到旧的、不区分用户的全站创建接口。
+    """
+
+    name = tool_call.function.name
+
+    if name == "list_reminders":
+        reminders = list_reminders()
+
+        return {
+            "success": True,
+            "count": len(reminders),
+            # 只返回渲染所需字段，并限制条数。
+            "reminders": [
+                {
+                    "id": item["id"],
+                    "message": item["message"],
+                    "remind_at": item["remind_at"],
+                    "status": item["status"],
+                }
+                for item in
+                reminders[:MAX_LISTED_REMINDERS]
+            ],
+        }
+
+    if name == "cancel_reminder":
+        args = _tool_arguments(tool_call)
+
+        cancelled = cancel_reminder(
+            _require_reminder_id(args)
+        )
+
+        return {
+            "success": True,
+            "reminder_id": cancelled["id"],
+            "status": cancelled["status"],
+            "changed": cancelled["changed"],
+        }
+
+    if name == "update_reminder":
+        args = _tool_arguments(tool_call)
+
+        reminder_id = _require_reminder_id(args)
+
+        message = args.get("message")
+        minutes = args.get("minutes")
+
+        if message is None and minutes is None:
+            raise ValueError(
+                "请给出新的提醒内容或新的提醒时间"
+            )
+
+        updated = update_reminder(
+            reminder_id,
+            message=(
+                None
+                if message is None
+                else _clean_reminder_message(message)
+            ),
+            minutes=(
+                None
+                if minutes is None
+                else _clean_reminder_minutes(minutes)
+            ),
+        )
+
+        return {
+            "success": True,
+            "reminder_id": updated["id"],
+            "message": updated["message"],
+            "minutes": updated["minutes"],
+            "remind_at": updated["remind_at"],
+            "changed": updated["changed"],
+        }
+
+    if name != "create_reminder":
+        raise ValueError("未知工具")
+
+    args = _tool_arguments(tool_call)
+
+    # 核心安全变化：
+    # create_reminder 现在是经过身份验证的入口。
+    # 没有绑定身份时绝不创建提醒。
+    created = create_reminder(
+        _clean_reminder_message(args.get("message")),
+        _clean_reminder_minutes(args.get("minutes")),
+    )
+
+    return _format_reminder_result(created)
 
 
 def chat(user_input: str) -> str:
@@ -480,62 +732,8 @@ def chat(user_input: str) -> str:
     for tool_call in tool_calls:
 
         try:
-            if (
-                tool_call.function.name
-                != "create_reminder"
-            ):
-                raise ValueError(
-                    "未知工具"
-                )
-
-            args = json.loads(
-                tool_call.function.arguments
-            )
-
-            if not isinstance(args, dict):
-                raise ValueError(
-                    "提醒参数格式无效"
-                )
-
-            message = args.get("message")
-            minutes = args.get("minutes")
-
-            if (
-                not isinstance(message, str)
-                or not message.strip()
-            ):
-                raise ValueError(
-                    "提醒内容无效"
-                )
-
-            message = message.strip()
-
-            if (
-                len(message.encode("utf-8"))
-                > MAX_REMINDER_MESSAGE_BYTES
-            ):
-                raise ValueError(
-                    "提醒内容太长"
-                )
-
-            if (
-                type(minutes) is not int
-                or not 1 <= minutes <= 43200
-            ):
-                raise ValueError(
-                    "提醒时间必须是 1～43200 分钟"
-                )
-
-            # 核心安全变化：
-            # create_reminder 现在是经过身份验证的入口。
-            # 没有绑定身份时绝不创建提醒。
-            created = create_reminder(
-                message,
-                minutes,
-            )
-
-            result = _format_reminder_result(
-                created
+            result = _execute_reminder_tool(
+                tool_call
             )
 
         except (

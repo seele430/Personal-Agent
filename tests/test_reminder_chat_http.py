@@ -23,6 +23,7 @@ from src import api
 from src.auth_api import get_current_user
 from src.core import reminder_identity
 from src.core.ai_usage import AIUsageStore
+from src.core.reminder_store import ReminderStore
 from src.main import app
 
 
@@ -219,6 +220,79 @@ class TestReminderChatHTTP(unittest.TestCase):
         return legacy, owned
 
     # ======================================
+    # 工具测试工具函数
+    # ======================================
+
+    @staticmethod
+    def tool_call_for(name, **arguments):
+        """构造一次任意工具的调用。"""
+
+        return SimpleNamespace(
+            id=f"tool_{name}_001",
+            function=SimpleNamespace(
+                name=name,
+                arguments=json.dumps(
+                    arguments,
+                    ensure_ascii=False,
+                ),
+            ),
+        )
+
+    def model_replies_with(
+        self,
+        tool_calls,
+        final_text,
+    ):
+        return [
+            self.model_response(
+                text=None,
+                tool_calls=tool_calls,
+            ),
+            self.model_response(text=final_text),
+        ]
+
+    def tool_result(self, model):
+        """取出第二次模型调用看到的工具结果。"""
+
+        messages = (
+            model.call_args_list[1].kwargs["messages"]
+        )
+
+        return json.loads(messages[-1]["content"])
+
+    def stored_status(self, reminder_id):
+        with closing(
+            sqlite3.connect(self.reminder_path)
+        ) as conn:
+            return conn.execute(
+                """
+                SELECT status
+                FROM reminder_requests
+                WHERE id = ?
+                """,
+                (reminder_id,),
+            ).fetchone()[0]
+
+    def seed_reminder(
+        self,
+        *,
+        user_id,
+        message,
+        minutes=5,
+    ):
+        store = ReminderStore(self.reminder_path)
+
+        store.init_db()
+
+        return store.create(
+            user_id=user_id,
+            request_id="seed_" + uuid.uuid4().hex,
+            role="member",
+            message=message,
+            minutes=minutes,
+        )
+
+    # ======================================
     # 1. 站长提醒写入原 ntfy 队列
     # ======================================
 
@@ -283,17 +357,17 @@ class TestReminderChatHTTP(unittest.TestCase):
         )
 
     # ======================================
-    # 2. 普通成员不能进入站长 ntfy 队列
+    # 2. 普通成员只进站内提醒，不进站长 ntfy 队列
     # ======================================
 
-    def test_member_reminder_is_not_created(self):
+    def test_member_reminder_goes_to_in_app_only(self):
         request_id = self.new_id()
 
         with patch.object(
             agent.client.chat.completions,
             "create",
             side_effect=self.model_replies(
-                "个人提醒功能尚未开放"
+                "提醒已创建，将在站内提醒中心显示"
             ),
         ) as model:
 
@@ -312,8 +386,84 @@ class TestReminderChatHTTP(unittest.TestCase):
             2,
         )
 
-        # 检查工具实际返回失败，
+        # 检查工具实际创建成功，
         # 不是只依赖模型回复文字。
+        second_messages = (
+            model.call_args_list[1]
+            .kwargs["messages"]
+        )
+
+        tool_result = json.loads(
+            second_messages[-1]["content"]
+        )
+
+        self.assertTrue(
+            tool_result["success"]
+        )
+
+        # 成员提醒只能走站内投递。
+        self.assertEqual(
+            tool_result["delivery"],
+            "in_app",
+        )
+
+        # 旧表（站长 ntfy 队列）必须为空，
+        # 新表恰好一条。
+        self.assertEqual(
+            self.reminder_counts(),
+            (0, 1),
+        )
+
+        with closing(
+            sqlite3.connect(self.reminder_path)
+        ) as conn:
+            row = conn.execute(
+                """
+                SELECT user_id, delivery, status
+                FROM reminder_requests
+                """
+            ).fetchone()
+
+        # 身份取自登录会话，不取自聊天内容。
+        self.assertEqual(row[0], "member_test_001")
+        self.assertEqual(row[1], "in_app")
+        self.assertEqual(row[2], "pending")
+
+    # ======================================
+    # 2b. 关闭站内投递时，成员仍然不能创建提醒
+    # ======================================
+
+    def test_member_reminder_is_rejected_when_disabled(self):
+        request_id = self.new_id()
+
+        with patch.object(
+            reminder_identity,
+            "IN_APP_DELIVERY_ENABLED",
+            False,
+        ):
+            with patch.object(
+                agent.client.chat.completions,
+                "create",
+                side_effect=self.model_replies(
+                    "个人提醒功能尚未开放"
+                ),
+            ) as model:
+
+                response = self.send(
+                    request_id,
+                    token="member-test-token",
+                )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            model.call_count,
+            2,
+        )
+
         second_messages = (
             model.call_args_list[1]
             .kwargs["messages"]
@@ -332,7 +482,7 @@ class TestReminderChatHTTP(unittest.TestCase):
             tool_result["error"],
         )
 
-        # 不得写入站长通知队列。
+        # 开关关闭时什么都不写。
         self.assertEqual(
             self.reminder_counts(),
             (0, 0),
@@ -488,6 +638,293 @@ class TestReminderChatHTTP(unittest.TestCase):
                 "喝水",
                 5,
             )
+
+        self.assertEqual(
+            self.reminder_counts(),
+            (0, 0),
+        )
+
+
+    # ======================================
+    # 6. 暴露给模型的工具集合
+    # ======================================
+
+    def test_all_reminder_tools_are_exposed(self):
+        request_id = self.new_id()
+
+        with patch.object(
+            agent.client.chat.completions,
+            "create",
+            side_effect=self.model_replies_with(
+                [self.tool_call_for("list_reminders")],
+                "好的",
+            ),
+        ) as model:
+
+            self.send(
+                request_id,
+                token="member-test-token",
+            )
+
+        names = [
+            item["function"]["name"]
+            for item in (
+                model.call_args_list[0]
+                .kwargs["tools"]
+            )
+        ]
+
+        self.assertEqual(
+            names,
+            [
+                "create_reminder",
+                "list_reminders",
+                "cancel_reminder",
+                "update_reminder",
+            ],
+        )
+
+    # ======================================
+    # 7. 列出提醒只返回自己的
+    # ======================================
+
+    def test_list_reminders_returns_only_own(self):
+        request_id = self.new_id()
+
+        self.seed_reminder(
+            user_id="member_test_001",
+            message="自己的提醒",
+        )
+        self.seed_reminder(
+            user_id="other_member_001",
+            message="别人的提醒",
+        )
+
+        with patch.object(
+            agent.client.chat.completions,
+            "create",
+            side_effect=self.model_replies_with(
+                [self.tool_call_for("list_reminders")],
+                "这是你的提醒",
+            ),
+        ) as model:
+
+            response = self.send(
+                request_id,
+                token="member-test-token",
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+        result = self.tool_result(model)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(
+            [
+                item["message"]
+                for item in result["reminders"]
+            ],
+            ["自己的提醒"],
+        )
+
+        # 结果里不带其他用户的字段。
+        self.assertNotIn(
+            "user_id",
+            result["reminders"][0],
+        )
+
+    # ======================================
+    # 8. 取消提醒
+    # ======================================
+
+    def test_cancel_reminder_cancels_own_pending(self):
+        request_id = self.new_id()
+
+        created = self.seed_reminder(
+            user_id="member_test_001",
+            message="要取消的提醒",
+        )
+
+        with patch.object(
+            agent.client.chat.completions,
+            "create",
+            side_effect=self.model_replies_with(
+                [
+                    self.tool_call_for(
+                        "cancel_reminder",
+                        reminder_id=created["id"],
+                    )
+                ],
+                "已经取消",
+            ),
+        ) as model:
+
+            response = self.send(
+                request_id,
+                token="member-test-token",
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+        result = self.tool_result(model)
+
+        self.assertTrue(result["success"])
+        self.assertTrue(result["changed"])
+        self.assertEqual(
+            result["status"],
+            "cancelled",
+        )
+
+        self.assertEqual(
+            self.stored_status(created["id"]),
+            "cancelled",
+        )
+
+    def test_cancel_other_users_reminder_is_rejected(self):
+        request_id = self.new_id()
+
+        other = self.seed_reminder(
+            user_id="other_member_001",
+            message="别人的提醒",
+        )
+
+        with patch.object(
+            agent.client.chat.completions,
+            "create",
+            side_effect=self.model_replies_with(
+                [
+                    self.tool_call_for(
+                        "cancel_reminder",
+                        reminder_id=other["id"],
+                    )
+                ],
+                "无法取消",
+            ),
+        ) as model:
+
+            self.send(
+                request_id,
+                token="member-test-token",
+            )
+
+        result = self.tool_result(model)
+
+        self.assertFalse(result["success"])
+        self.assertIn("无权访问", result["error"])
+
+        # 别人的提醒没有被改动。
+        self.assertEqual(
+            self.stored_status(other["id"]),
+            "pending",
+        )
+
+    # ======================================
+    # 9. 修改提醒
+    # ======================================
+
+    def test_update_reminder_changes_time(self):
+        request_id = self.new_id()
+
+        created = self.seed_reminder(
+            user_id="member_test_001",
+            message="要改期的提醒",
+        )
+
+        with patch.object(
+            agent.client.chat.completions,
+            "create",
+            side_effect=self.model_replies_with(
+                [
+                    self.tool_call_for(
+                        "update_reminder",
+                        reminder_id=created["id"],
+                        minutes=30,
+                    )
+                ],
+                "已经改到 30 分钟后",
+            ),
+        ) as model:
+
+            self.send(
+                request_id,
+                token="member-test-token",
+            )
+
+        result = self.tool_result(model)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["minutes"], 30)
+        self.assertNotEqual(
+            result["remind_at"],
+            created["remind_at"],
+        )
+
+    def test_update_reminder_requires_a_field(self):
+        request_id = self.new_id()
+
+        created = self.seed_reminder(
+            user_id="member_test_001",
+            message="什么都没改",
+        )
+
+        with patch.object(
+            agent.client.chat.completions,
+            "create",
+            side_effect=self.model_replies_with(
+                [
+                    self.tool_call_for(
+                        "update_reminder",
+                        reminder_id=created["id"],
+                    )
+                ],
+                "需要更多信息",
+            ),
+        ) as model:
+
+            self.send(
+                request_id,
+                token="member-test-token",
+            )
+
+        result = self.tool_result(model)
+
+        self.assertFalse(result["success"])
+        self.assertIn(
+            "新的提醒内容或新的提醒时间",
+            result["error"],
+        )
+
+    # ======================================
+    # 10. 未知工具不得被执行
+    # ======================================
+
+    def test_unknown_tool_is_rejected(self):
+        request_id = self.new_id()
+
+        with patch.object(
+            agent.client.chat.completions,
+            "create",
+            side_effect=self.model_replies_with(
+                [
+                    self.tool_call_for(
+                        "delete_everything",
+                        reminder_id=1,
+                    )
+                ],
+                "无法执行",
+            ),
+        ) as model:
+
+            self.send(
+                request_id,
+                token="member-test-token",
+            )
+
+        result = self.tool_result(model)
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "未知工具")
 
         self.assertEqual(
             self.reminder_counts(),

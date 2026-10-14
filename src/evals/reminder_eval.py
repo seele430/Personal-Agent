@@ -7,7 +7,7 @@
     id        唯一标识
     category  统计用类别
     input     用户消息
-    expect    call / no_call / at_most_one
+    expect    call / no_call / at_most_one / no_mutation
     minutes   仅 call：期望的分钟数
     tolerance 仅 call：允许误差（分钟），默认 0
     keywords  仅 call：提醒内容需包含其中任意一个
@@ -21,10 +21,20 @@ from pathlib import Path
 
 TOOL_NAME = "create_reminder"
 
+# 会产生副作用的工具。
+# 非创建意图下调用其中任何一个都算失败，
+# 但只读的 list_reminders 允许出现。
+MUTATING_TOOL_NAMES = frozenset({
+    "create_reminder",
+    "cancel_reminder",
+    "update_reminder",
+})
+
 EXPECTATIONS = frozenset({
     "call",          # 必须调用 1 次，参数正确
     "no_call",       # 不能调用
     "at_most_one",   # 最多 1 次，且参数合法（用于注入和多提醒）
+    "no_mutation",   # 允许只读工具，但不能产生任何副作用
 })
 
 MAX_CASES = 100
@@ -214,6 +224,27 @@ def grade(case: EvalCase, calls: list[ToolCall]) -> Grade:
             return Grade(True, "未调用工具")
 
         return Grade(False, f"不应调用工具，实际调用 {count} 次")
+
+    if case.expect == "no_mutation":
+        mutating = [
+            call
+            for call in calls
+            if call.name in MUTATING_TOOL_NAMES
+        ]
+
+        if mutating:
+            return Grade(
+                False,
+                "不应产生副作用，实际调用 "
+                + ", ".join(
+                    call.name for call in mutating
+                ),
+            )
+
+        return Grade(
+            True,
+            "未调用会产生副作用的工具",
+        )
 
     if case.expect == "at_most_one":
         if count == 0:

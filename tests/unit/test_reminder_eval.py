@@ -53,6 +53,40 @@ GUARD_CASE = EvalCase(
     expect="at_most_one",
 )
 
+NO_MUTATION_CASE = EvalCase(
+    id="chat_04",
+    category="other_intent",
+    input="我现在有哪些提醒？",
+    expect="no_mutation",
+)
+
+
+def list_call():
+    """只读的 list_reminders 调用。"""
+
+    return ToolCall(
+        name="list_reminders",
+        arguments="{}",
+    )
+
+
+def cancel_call(reminder_id=7):
+    return ToolCall(
+        name="cancel_reminder",
+        arguments=json.dumps(
+            {"reminder_id": reminder_id},
+        ),
+    )
+
+
+def update_call(reminder_id=7):
+    return ToolCall(
+        name="update_reminder",
+        arguments=json.dumps(
+            {"reminder_id": reminder_id, "minutes": 30},
+        ),
+    )
+
 
 class TestReminderEval(unittest.TestCase):
 
@@ -204,6 +238,53 @@ class TestReminderEval(unittest.TestCase):
     def test_at_most_one_rejects_non_positive_minutes(self):
         self.assertFalse(grade(GUARD_CASE, [tool_call(-5)]).passed)
         self.assertFalse(grade(GUARD_CASE, [tool_call(0)]).passed)
+
+    # ---------- grade: no_mutation ----------
+
+    def test_no_mutation_allows_read_only_tool(self):
+        self.assertTrue(
+            grade(NO_MUTATION_CASE, [list_call()]).passed
+        )
+
+    def test_no_mutation_allows_no_call(self):
+        self.assertTrue(
+            grade(NO_MUTATION_CASE, []).passed
+        )
+
+    def test_no_mutation_rejects_create(self):
+        self.assertFalse(
+            grade(
+                NO_MUTATION_CASE,
+                [tool_call(5)],
+            ).passed
+        )
+
+    def test_no_mutation_rejects_cancel_and_update(self):
+        for call in (cancel_call(), update_call()):
+            self.assertFalse(
+                grade(NO_MUTATION_CASE, [call]).passed
+            )
+
+    def test_no_mutation_rejects_mutation_after_list(self):
+        # 先列后删同样算副作用。
+        self.assertFalse(
+            grade(
+                NO_MUTATION_CASE,
+                [list_call(), cancel_call()],
+            ).passed
+        )
+
+    def test_parse_accepts_no_mutation(self):
+        case = parse_case(
+            {
+                "id": "chat_04",
+                "category": "other_intent",
+                "input": "我现在有哪些提醒？",
+                "expect": "no_mutation",
+            }
+        )
+
+        self.assertEqual(case.expect, "no_mutation")
 
     # ---------- extract_tool_calls ----------
 

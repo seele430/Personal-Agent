@@ -4,7 +4,7 @@
 
 默认策略：
 - owner：可以创建 ntfy 提醒
-- 其他角色：在站内通知中心上线前，禁止创建提醒
+- 其他角色：写入站内提醒，由前端提醒面板读取
 - 没有认证上下文：禁止创建提醒
 
 必须由服务端使用真实登录身份建立上下文，
@@ -20,6 +20,8 @@ from typing import Iterator
 from src.core.reminder_store import (
     REQUEST_ID_PATTERN,
     ROLES,
+    ReminderNotEditable,
+    ReminderNotFound,
     ReminderStore,
 )
 from src.config import paths
@@ -27,9 +29,12 @@ from src.config import paths
 
 REMINDER_DB_PATH: Path = paths.reminders_db
 
-# 网站内个人通知中心尚未上线。
-# 在正式完成通知读取及权限测试前，保持 False。
-IN_APP_DELIVERY_ENABLED = False
+# 站内个人提醒中心已经上线：读取 / 修改 / 取消 / 确认送达
+# 见 src/reminder_api.py，配套测试见 tests/test_reminder_api.py。
+#
+# 这个开关只决定"非站长用户能否创建站内提醒"。
+# 关掉它不会删除任何已经存在的提醒数据。
+IN_APP_DELIVERY_ENABLED = True
 
 
 class ReminderDeliveryUnavailable(RuntimeError):
@@ -115,7 +120,7 @@ def create_reminder_for_current_user(
 
     # 方案 A：
     # 站长沿用 ntfy；
-    # 其他用户暂时等待网站内个人通知中心上线。
+    # 其他用户写入站内提醒，由前端提醒面板读取。
     if (
         identity.role != "owner"
         and not IN_APP_DELIVERY_ENABLED
@@ -143,3 +148,97 @@ def create_reminder_for_current_user(
         "legacy_reminder_id":
             result["legacy_reminder_id"],
     }
+
+
+def _require_identity(action: str) -> ReminderIdentity:
+    """取出当前登录身份，没有就拒绝。
+
+    读取和修改提醒同样需要身份：
+    绝不回退到"无用户"的全站记录。
+    """
+
+    identity = _current_identity.get()
+
+    if identity is None:
+        raise PermissionError(
+            f"没有经过认证的提醒身份，拒绝{action}提醒"
+        )
+
+    return identity
+
+
+def list_reminders_for_current_user() -> list[dict]:
+    """按当前登录用户身份列出自己的提醒。
+
+    只影响读取，不检查站内投递开关：
+    开关只决定能否创建站内提醒。
+    """
+
+    identity = _require_identity("读取")
+
+    store = ReminderStore(REMINDER_DB_PATH)
+
+    return store.list_for_user(
+        user_id=identity.user_id,
+    )
+
+
+def cancel_reminder_for_current_user(
+    reminder_id: int,
+) -> dict:
+    """按当前登录用户身份取消一条待发提醒。
+
+    归属校验在 store 的 SQL 里完成，
+    别人的提醒与不存在的提醒都变成同一个错误。
+    """
+
+    identity = _require_identity("取消")
+
+    store = ReminderStore(REMINDER_DB_PATH)
+
+    try:
+        return store.cancel(
+            user_id=identity.user_id,
+            reminder_id=reminder_id,
+        )
+
+    except ReminderNotFound:
+        raise ValueError(
+            "提醒不存在或无权访问"
+        ) from None
+
+    except ReminderNotEditable:
+        raise ValueError(
+            "提醒已经发送或已取消，不能再取消"
+        ) from None
+
+
+def update_reminder_for_current_user(
+    reminder_id: int,
+    *,
+    message: str | None = None,
+    minutes: int | None = None,
+) -> dict:
+    """按当前登录用户身份修改一条待发提醒。"""
+
+    identity = _require_identity("修改")
+
+    store = ReminderStore(REMINDER_DB_PATH)
+
+    try:
+        return store.update(
+            user_id=identity.user_id,
+            reminder_id=reminder_id,
+            message=message,
+            minutes=minutes,
+        )
+
+    except ReminderNotFound:
+        raise ValueError(
+            "提醒不存在或无权访问"
+        ) from None
+
+    except ReminderNotEditable:
+        raise ValueError(
+            "提醒已经发送或已取消，不能再修改"
+        ) from None
