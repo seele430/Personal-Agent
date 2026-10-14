@@ -11,6 +11,7 @@ import uuid
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+from datetime import datetime, timedelta, timezone
 from tempfile import TemporaryDirectory
 from threading import Event
 from unittest.mock import patch
@@ -439,6 +440,185 @@ class TestChatQuotaHTTP(unittest.TestCase):
                     model.call_count,
                     2,
                 )
+
+
+class TestUsageSummaryHTTP(unittest.TestCase):
+    """只读额度接口：身份、数字与缓存头。"""
+
+    def setUp(self):
+        self.temp = TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+
+        isolate_paths(self, self.temp)
+
+        self.old_overrides = (
+            app.dependency_overrides.copy()
+        )
+
+        self.addCleanup(self.restore_overrides)
+
+        def fake_user(request: Request) -> dict:
+            token = request.headers.get(
+                "authorization", ""
+            )
+
+            if token == "Bearer member-test-token":
+                return {
+                    "id": "member-test-id",
+                    "role": "member",
+                    "username": "member",
+                    "active": True,
+                }
+
+            # 角色不在额度表里：接口必须拒绝，
+            # 而不是猜一个上限。
+            if token == "Bearer ghost-test-token":
+                return {
+                    "id": "ghost-test-id",
+                    "role": "ghost",
+                    "username": "ghost",
+                    "active": True,
+                }
+
+            raise HTTPException(
+                status_code=401,
+                detail="请先登录",
+            )
+
+        app.dependency_overrides[
+            get_current_user
+        ] = fake_user
+
+        self.client = TestClient(app)
+        self.client.__enter__()
+
+        self.addCleanup(
+            lambda: self.client.__exit__(
+                None, None, None
+            )
+        )
+
+    def restore_overrides(self):
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(
+            self.old_overrides
+        )
+
+    def headers(self, token="member-test-token"):
+        return {
+            "Authorization": f"Bearer {token}",
+        }
+
+    def add_request(self, *, user_id, when):
+        with closing(api.connect_db()) as conn, conn:
+            conn.execute(
+                """
+                INSERT INTO chat_requests (
+                    request_id,
+                    message_hash,
+                    status,
+                    reply,
+                    created_at,
+                    updated_at,
+                    user_id
+                )
+                VALUES (?, 'hash', 'completed', 'ok', ?, ?, ?)
+                """,
+                (
+                    f"req_{user_id}_{when.timestamp()}",
+                    when.isoformat(),
+                    when.isoformat(),
+                    user_id,
+                ),
+            )
+
+    # 1. 未登录不能读额度
+
+    def test_summary_requires_login(self):
+        result = self.client.get("/usage/summary")
+
+        self.assertEqual(result.status_code, 401)
+
+    # 2. 空账本返回角色上限，且不允许缓存
+
+    def test_summary_starts_empty_with_role_limits(self):
+        result = self.client.get(
+            "/usage/summary",
+            headers=self.headers(),
+        )
+
+        self.assertEqual(result.status_code, 200)
+
+        self.assertEqual(
+            result.headers["cache-control"],
+            "no-store",
+        )
+
+        body = result.json()
+
+        self.assertEqual(body["window_hours"], 24)
+        self.assertEqual(body["role"], "member")
+
+        self.assertEqual(
+            body["requests"],
+            {
+                "used": 0,
+                "limit": 10,
+                "remaining": 10,
+            },
+        )
+
+        self.assertEqual(
+            body["budget"]["limit_usd"],
+            "0.075",
+        )
+        self.assertEqual(
+            body["budget"]["used_usd"],
+            "0",
+        )
+
+    # 3. 只统计自己的、最近 24 小时的请求
+
+    def test_summary_counts_recent_own_requests(self):
+        now = datetime.now(timezone.utc)
+
+        self.add_request(
+            user_id="member-test-id",
+            when=now - timedelta(hours=1),
+        )
+        self.add_request(
+            user_id="member-test-id",
+            when=now - timedelta(hours=2),
+        )
+        self.add_request(
+            user_id="member-test-id",
+            when=now - timedelta(hours=30),
+        )
+        self.add_request(
+            user_id="someone-else",
+            when=now - timedelta(hours=1),
+        )
+
+        body = self.client.get(
+            "/usage/summary",
+            headers=self.headers(),
+        ).json()
+
+        self.assertEqual(body["requests"]["used"], 2)
+        self.assertEqual(
+            body["requests"]["remaining"],
+            8,
+        )
+
+    # 4. 角色不在额度表里时明确拒绝
+
+    def test_unknown_role_is_rejected(self):
+        result = self.client.get(
+            "/usage/summary",
+            headers=self.headers("ghost-test-token"),
+        )
+
+        self.assertEqual(result.status_code, 403)
 
 
 if __name__ == "__main__":

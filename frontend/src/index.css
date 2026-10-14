@@ -601,6 +601,70 @@ textarea {
   cursor: not-allowed;
 }
 
+/* Quota */
+
+.quota-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px 40px;
+}
+
+.quota-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  max-width: 620px;
+}
+
+.quota-card {
+  border: 1px solid #ebedf0;
+  border-radius: 11px;
+  padding: 15px 17px;
+}
+
+.quota-card h3 {
+  margin: 0 0 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #929aa6;
+  letter-spacing: 0.4px;
+}
+
+.quota-value {
+  margin: 0 0 11px;
+  font-size: 19px;
+  font-weight: 600;
+  color: #252b35;
+}
+
+.quota-bar {
+  height: 7px;
+  border-radius: 99px;
+  background: #eef1f5;
+  overflow: hidden;
+}
+
+.quota-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: #293344;
+  transition: width 0.3s;
+}
+
+.quota-foot {
+  margin: 9px 0 0;
+  font-size: 11px;
+  color: #929aa6;
+}
+
+.quota-note {
+  margin: 0;
+  font-size: 11px;
+  color: #a0a7b1;
+  line-height: 1.7;
+}
+
 /* Responsive */
 
 @media (max-width: 700px) {
