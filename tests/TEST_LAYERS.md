@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 5c5380be41fae738 -->
+<!-- membership-digest: b0d7b69f76a84566 -->
 
-## unit — L1 单元测试 (5 files)
+## unit — L1 单元测试 (6 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -28,8 +28,9 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_agent_usage.py` | tests/ 根 | agent | none | none | low | registered-inferred |
 | `test_rss_errors.py` | tests/ 根 | rss | none | mocked | medium | registered-inferred |
 | `unit/test_agent_tool_limits.py` | tests/unit/ | reminder | none | mocked | medium | registered |
+| `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 
-## integration — L2 数据集成测试 (24 files)
+## integration — L2 数据集成测试 (26 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -38,10 +39,12 @@ python scripts/run_tests.py integration       # 运行该层
 | `integration/test_test_safety.py` | tests/integration/ | test_infra | temporary_sqlite | none | medium | registered-inferred |
 | `test_access_policy_dispatcher.py` | tests/ 根 | access_policy | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_admin_alerts.py` | tests/ 根 | alerting | temporary_sqlite | none | medium | registered-inferred |
+| `test_agent_usage_trace.py` | tests/ 根 | agent | temporary_sqlite | mocked | high | registered-inferred |
 | `test_ai_budget.py` | tests/ 根 | billing | temporary_sqlite | none | high | registered |
 | `test_ai_budget_reconcile.py` | tests/ 根 | billing | temporary_sqlite | none | high | registered |
 | `test_ai_pricing.py` | tests/ 根 | billing | temporary_sqlite | none | high | registered-inferred |
 | `test_ai_usage.py` | tests/ 根 | billing | temporary_sqlite | none | high | registered-inferred |
+| `test_ai_usage_trace.py` | tests/ 根 | billing | temporary_sqlite | none | high | registered-inferred |
 | `test_auth_store.py` | tests/ 根 | auth | temporary_sqlite | none | high | registered-inferred |
 | `test_bootstrap_owner.py` | tests/ 根 | auth | temporary_sqlite | none | high | registered-inferred |
 | `test_chat_admission.py` | tests/ 根 | chat | temporary_sqlite | none | medium | registered-inferred |

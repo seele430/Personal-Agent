@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import time
 
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -73,8 +74,9 @@ REMINDER_TOOL = {
     "function": {
         "name": "create_reminder",
         "description": (
-            "当用户明确要求几分钟后提醒某件事时，"
+            "当用户要求提醒某件事且时间明确时，"
             "创建一条定时提醒。"
+            "minutes 是距离当前本地时间的整数分钟。"
             "每次对话最多创建一条。"
             "如果提醒功能不可用，应明确告知用户。"
         ),
@@ -220,9 +222,47 @@ def _completion(
             },
         }
 
+    # 单调时钟：不受系统时间调整影响
+    started = time.monotonic()
+
     response = client.chat.completions.create(
         **kwargs
     )
+
+    latency_ms = int(
+        (time.monotonic() - started) * 1000
+    )
+
+    # trace 字段在校验之前提取，
+    # 这样异常结束的调用也能留下记录。
+    choice = (
+        response.choices[0]
+        if getattr(response, "choices", None)
+        else None
+    )
+
+    finish_reason = getattr(
+        choice,
+        "finish_reason",
+        None,
+    )
+
+    tool_names = [
+        item.function.name
+        for item in (
+            getattr(
+                getattr(choice, "message", None),
+                "tool_calls",
+                None,
+            )
+            or []
+        )
+        if getattr(
+            getattr(item, "function", None),
+            "name",
+            None,
+        )
+    ]
 
     scope = _current_usage.get()
 
@@ -236,6 +276,9 @@ def _completion(
                 call_number=scope.completed_calls,
                 model=MODEL,
                 response=response,
+                latency_ms=latency_ms,
+                finish_reason=finish_reason,
+                tool_names=tool_names,
             )
 
         except Exception:
@@ -246,16 +289,10 @@ def _completion(
                 scope.completed_calls,
             )
 
-    if not response.choices:
+    if choice is None:
         raise RuntimeError(
             "模型没有返回有效结果"
         )
-
-    finish_reason = getattr(
-        response.choices[0],
-        "finish_reason",
-        None,
-    )
 
     if finish_reason == "length":
         raise RuntimeError(
@@ -372,6 +409,30 @@ def _format_reminder_result(
 # 主聊天函数
 # ==========================================
 
+def build_system_prompt(now: datetime) -> str:
+    """聊天 system prompt。
+
+    now 必须带时区。chat() 传入当前时间；
+    eval 传入固定参考时间，保证两边提示词完全一致。
+    """
+
+    return (
+        "你是 Personal Agent，中文私人助手。"
+        f"当前本地时间："
+        f"{now.isoformat()}。"
+        "用户要求提醒且时间明确时，可以调用 create_reminder。"
+        "用户给出具体钟点（如今晚8点、明天9点）时，"
+        "按当前本地时间换算成整数分钟后调用，"
+        "并在回复中说明换算后的提醒时间。"
+        "只有日期或时段、没有具体钟点（如下周一早上），"
+        "或时间已经过去时，先询问，不要猜测。"
+        "缺少时间时先询问，不要猜测。"
+        "工具返回失败时必须明确告知用户。"
+        "只有工具返回成功，才能说提醒已保存。"
+        "提醒已保存不代表通知已经送达。"
+    )
+
+
 def chat(user_input: str) -> str:
 
     validate_user_input(user_input)
@@ -381,18 +442,8 @@ def chat(user_input: str) -> str:
     messages = [
         {
             "role": "system",
-            "content": (
-                "你是 Personal Agent，中文私人助手。"
-                f"当前本地时间："
-                f"{datetime.now().astimezone().isoformat()}。"
-                "用户要求若干分钟后提醒时，"
-                "可以调用 create_reminder。"
-                "缺少时间时先询问，不要猜测。"
-                "工具返回失败时必须明确告知用户。"
-                "只有工具返回成功，才能说提醒已保存。"
-                "提醒已保存不代表通知已经送达。"
-                "目前仅支持以整数分钟表示的"
-                "相对时间提醒。"
+            "content": build_system_prompt(
+                datetime.now().astimezone()
             ),
         },
         {

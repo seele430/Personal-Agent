@@ -151,6 +151,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L1：提醒 eval 用例加载与判定（纯函数，不调用模型）
+    "unit/test_reminder_eval.py": TestSchema(
+        layer="unit",
+        domain="eval",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
     # ----------------------------------------------------------------
     # L2：数据集成测试（临时 SQLite）
     # ----------------------------------------------------------------
@@ -222,6 +232,26 @@ TEST_SCHEMAS = {
         database="temporary_sqlite",
         authentication="none",
         external_network="none",
+        risk="high",
+    ),
+
+    # L2：AI 调用 trace 字段与旧库迁移
+    "test_ai_usage_trace.py": TestSchema(
+        layer="integration",
+        domain="billing",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
+
+    # L2：agent 调用路径写入 trace（SDK 被 patch，临时用量库）
+    "test_agent_usage_trace.py": TestSchema(
+        layer="integration",
+        domain="agent",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
         risk="high",
     ),
 
