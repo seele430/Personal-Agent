@@ -31,6 +31,40 @@ export const TEST_USER: MockUser = {
   active: true,
 };
 
+export const REMINDERS_API = "**/api/reminders";
+export const DUE_REMINDERS_API = "**/api/reminders/in-app/due";
+
+/**
+ * 站内提醒的默认 mock：空列表。
+ *
+ * App 一打开就会取一次到期提醒（之后每 60 秒轮询），侧栏也会取
+ * 提醒列表，所以所有用例都需要这个兜底，否则会被 blockUnmockedApi
+ * 记为"漏 mock"。要断言真实数据的用例，在 setupPage 之后再注册
+ * 自己的 route 即可覆盖（Playwright 后注册的优先）。
+ */
+export async function installReminderMocks(page: Page): Promise<void> {
+  const empty = JSON.stringify({
+    enabled: true,
+    reminders: [],
+  });
+
+  await page.route(DUE_REMINDERS_API, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: empty,
+    }),
+  );
+
+  await page.route(REMINDERS_API, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: empty,
+    }),
+  );
+}
+
 export async function blockUnmockedApi(page: Page): Promise<string[]> {
   const unexpected: string[] = [];
 
@@ -77,6 +111,9 @@ export async function installAuthMocks(
       body: JSON.stringify({ status: "ok" }),
     }),
   );
+
+  // 已登录就一定会轮询站内提醒，这里一并兜底。
+  await installReminderMocks(page);
 }
 
 export function expectNoUnmockedApi(unexpected: string[]): void {

@@ -30,6 +30,81 @@ type ChatResponse = {
   detail?: string;
 };
 
+type ReminderStatusValue =
+  | "pending"
+  | "sent"
+  | "cancelled";
+
+type Reminder = {
+  id: number;
+  message: string;
+  minutes: number;
+  remind_at: string;
+  delivery: "ntfy" | "in_app";
+  status: ReminderStatusValue;
+};
+
+type DueReminder = {
+  id: number;
+  message: string;
+  remind_at: string;
+};
+
+type ReminderListResponse = {
+  enabled?: boolean;
+  reminders?: unknown;
+};
+
+const REMINDER_STATUS_TEXT: Record<
+  ReminderStatusValue,
+  string
+> = {
+  pending: "待发送",
+  sent: "已送达",
+  cancelled: "已取消",
+};
+
+// 到期提醒的轮询间隔。
+const DUE_POLL_MS = 60_000;
+
+function formatRemindAt(value: string): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString("zh-CN", {
+    hour12: false,
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+async function readReminders(
+  response: Response
+): Promise<{
+  enabled: boolean;
+  reminders: Reminder[];
+}> {
+  const value: unknown = await response.json();
+
+  if (!value || typeof value !== "object") {
+    throw new Error("服务器返回格式不正确");
+  }
+
+  const data = value as ReminderListResponse;
+
+  return {
+    enabled: data.enabled !== false,
+    reminders: Array.isArray(data.reminders)
+      ? (data.reminders as Reminder[])
+      : [],
+  };
+}
+
 const CHAT_KEY = "personal-agent-dev-chat";
 const DRAFT_KEY = "personal-agent-dev-draft";
 
@@ -144,6 +219,24 @@ export default function App(
 
   const [checkingId, setCheckingId] =
     useState<string | null>(null);
+
+  const [view, setView] =
+    useState<"chat" | "reminders">("chat");
+
+  const [reminders, setReminders] =
+    useState<Reminder[]>([]);
+
+  const [dueReminders, setDueReminders] =
+    useState<DueReminder[]>([]);
+
+  const [reminderError, setReminderError] = useState("");
+
+  const [reminderBusy, setReminderBusy] =
+    useState<number | null>(null);
+
+  const [delayMinutes, setDelayMinutes] = useState<
+    Record<number, string>
+  >({});
 
   const sendingLock = useRef(false);
   const checkingIds = useRef(new Set<string>());
@@ -544,6 +637,197 @@ export default function App(
   }
 
   // ========================================
+  // 站内提醒
+  // ========================================
+
+  function authHeaders(): Record<string, string> {
+    return authToken
+      ? { Authorization: `Bearer ${authToken}` }
+      : {};
+  }
+
+  async function loadReminders() {
+    if (!authToken) return;
+
+    try {
+      const response = await fetch("/api/reminders", {
+        headers: authHeaders(),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `读取提醒失败（${response.status}）`
+        );
+      }
+
+      const data = await readReminders(response);
+
+      setReminders(data.reminders);
+      setReminderError("");
+    } catch (cause) {
+      setReminderError(
+        cause instanceof Error
+          ? cause.message
+          : "读取提醒失败"
+      );
+    }
+  }
+
+  async function loadDueReminders() {
+    if (!authToken) return;
+
+    try {
+      const response = await fetch(
+        "/api/reminders/in-app/due",
+        { headers: authHeaders() }
+      );
+
+      if (!response.ok) return;
+
+      const data = await readReminders(response);
+
+      setDueReminders(
+        data.enabled
+          ? (data.reminders as DueReminder[])
+          : []
+      );
+    } catch {
+      // 到期提醒读取失败不打断聊天
+    }
+  }
+
+  async function cancelReminder(reminderId: number) {
+    setReminderBusy(reminderId);
+
+    try {
+      const response = await fetch(
+        `/api/reminders/${reminderId}`,
+        {
+          method: "DELETE",
+          headers: authHeaders(),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `删除失败（${response.status}）`
+        );
+      }
+
+      setDueReminders((previous) =>
+        previous.filter(
+          (item) => item.id !== reminderId
+        )
+      );
+
+      await loadReminders();
+    } catch (cause) {
+      setReminderError(
+        cause instanceof Error
+          ? cause.message
+          : "删除失败"
+      );
+    } finally {
+      setReminderBusy(null);
+    }
+  }
+
+  async function rescheduleReminder(reminderId: number) {
+    const raw = delayMinutes[reminderId] ?? "10";
+    const minutes = Number(raw);
+
+    if (
+      !Number.isInteger(minutes) ||
+      minutes < 1 ||
+      minutes > 43200
+    ) {
+      setReminderError("请输入 1～43200 之间的分钟数");
+      return;
+    }
+
+    setReminderBusy(reminderId);
+
+    try {
+      const response = await fetch(
+        `/api/reminders/${reminderId}`,
+        {
+          method: "PATCH",
+          headers: {
+            ...authHeaders(),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ minutes }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `修改失败（${response.status}）`
+        );
+      }
+
+      await loadReminders();
+    } catch (cause) {
+      setReminderError(
+        cause instanceof Error
+          ? cause.message
+          : "修改失败"
+      );
+    } finally {
+      setReminderBusy(null);
+    }
+  }
+
+  async function acknowledgeReminder(reminderId: number) {
+    try {
+      const response = await fetch(
+        `/api/reminders/${reminderId}/ack`,
+        {
+          method: "POST",
+          headers: authHeaders(),
+        }
+      );
+
+      if (!response.ok) return;
+
+      setDueReminders((previous) =>
+        previous.filter(
+          (item) => item.id !== reminderId
+        )
+      );
+
+      await loadReminders();
+    } catch {
+      // 确认失败时保留提示条，下次轮询还会出现
+    }
+  }
+
+  // 打开页面取一次到期提醒，之后定时轮询。
+  useEffect(() => {
+    if (!authToken) return;
+
+    void loadDueReminders();
+
+    const timer = window.setInterval(
+      () => void loadDueReminders(),
+      DUE_POLL_MS
+    );
+
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authToken]);
+
+  // 提醒列表用于面板和侧栏数量，按需重新加载。
+  useEffect(() => {
+    void loadReminders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authToken, view]);
+
+  const pendingCount = reminders.filter(
+    (item) => item.status === "pending"
+  ).length;
+
+  // ========================================
   // 页面
   // ========================================
 
@@ -564,10 +848,34 @@ export default function App(
             工作空间
           </p>
 
-          <div className="nav-item selected">
+          <button
+            type="button"
+            className={`nav-item ${
+              view === "chat" ? "selected" : ""
+            }`}
+            onClick={() => setView("chat")}
+            aria-pressed={view === "chat"}
+          >
             <span className="nav-symbol">◻</span>
             <span>聊天室</span>
-          </div>
+          </button>
+
+          <button
+            type="button"
+            className={`nav-item ${
+              view === "reminders" ? "selected" : ""
+            }`}
+            onClick={() => setView("reminders")}
+            aria-pressed={view === "reminders"}
+            aria-label="提醒"
+          >
+            <span className="nav-symbol">⏰</span>
+            <span>提醒</span>
+
+            {pendingCount > 0 && (
+              <small>{pendingCount}</small>
+            )}
+          </button>
 
           <div className="nav-item disabled">
             <span className="nav-symbol">☷</span>
@@ -612,6 +920,171 @@ export default function App(
           </div>
         </header>
 
+        {dueReminders.length > 0 && (
+          <section
+            className="due-banner"
+            aria-label="到期的站内提醒"
+          >
+            <strong>到期的提醒</strong>
+
+            <ul>
+              {dueReminders.map((reminder) => (
+                <li key={reminder.id}>
+                  <span className="due-message">
+                    {reminder.message}
+                  </span>
+
+                  <span className="due-time">
+                    {formatRemindAt(reminder.remind_at)}
+                  </span>
+
+                  <button
+                    type="button"
+                    aria-label={`知道了 ${reminder.id}`}
+                    onClick={() =>
+                      void acknowledgeReminder(
+                        reminder.id
+                      )
+                    }
+                  >
+                    知道了
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {view === "reminders" ? (
+          <section
+            className="reminder-panel"
+            aria-label="我的提醒"
+          >
+            <div className="reminder-head">
+              <div>
+                <h2>我的提醒</h2>
+
+                <p className="reminder-hint">
+                  在聊天里说“10 分钟后提醒我开会”，
+                  助手就会在这里创建提醒。
+                  站内提醒只在网页打开时显示。
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void loadReminders()}
+                aria-label="刷新提醒"
+              >
+                刷新
+              </button>
+            </div>
+
+            {reminderError && (
+              <div
+                className="error-box"
+                data-testid="reminder-error"
+              >
+                {reminderError}
+              </div>
+            )}
+
+            {reminders.length === 0 ? (
+              <p
+                className="reminder-empty"
+                data-testid="reminder-empty"
+              >
+                还没有提醒
+              </p>
+            ) : (
+              <ul className="reminder-list">
+                {reminders.map((reminder) => (
+                  <li
+                    className={`reminder-row ${reminder.status}`}
+                    key={reminder.id}
+                  >
+                    <div className="reminder-main">
+                      <strong>{reminder.message}</strong>
+
+                      <span className="reminder-time">
+                        {formatRemindAt(
+                          reminder.remind_at
+                        )}
+                      </span>
+
+                      <span className="reminder-status">
+                        {
+                          REMINDER_STATUS_TEXT[
+                            reminder.status
+                          ]
+                        }
+                      </span>
+                    </div>
+
+                    {reminder.status === "pending" && (
+                      <div className="reminder-actions">
+                        <label>
+                          改时间（分钟）
+
+                          <input
+                            type="number"
+                            min={1}
+                            max={43200}
+                            aria-label={`新的提醒分钟数 ${reminder.id}`}
+                            value={
+                              delayMinutes[reminder.id] ??
+                              "10"
+                            }
+                            onChange={(event) =>
+                              setDelayMinutes(
+                                (previous) => ({
+                                  ...previous,
+                                  [reminder.id]:
+                                    event.target.value,
+                                })
+                              )
+                            }
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          disabled={
+                            reminderBusy === reminder.id
+                          }
+                          aria-label={`改时间 ${reminder.id}`}
+                          onClick={() =>
+                            void rescheduleReminder(
+                              reminder.id
+                            )
+                          }
+                        >
+                          改时间
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={
+                            reminderBusy === reminder.id
+                          }
+                          aria-label={`删除提醒 ${reminder.id}`}
+                          onClick={() =>
+                            void cancelReminder(
+                              reminder.id
+                            )
+                          }
+                        >
+                          删除
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ) : (
+          <>
         <section className="chat-area">
           {messages.length === 0 && (
             <div className="welcome">
@@ -762,6 +1235,8 @@ export default function App(
             聊天记录暂存于当前浏览器标签页
           </p>
         </div>
+          </>
+        )}
       </main>
     </div>
   );
