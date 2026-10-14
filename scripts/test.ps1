@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Position = 0)]
     [ValidateSet('check', 'audit', 'unit', 'integration', 'api', 'backend', 'frontend', 'all')]
     [string]$Suite = 'backend'
