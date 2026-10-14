@@ -2,11 +2,11 @@ from contextlib import closing
 import sqlite3
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 import requests
 
+from tests.helper import build_temp_paths, isolated_paths
 from src.core import outbox_worker
 
 
@@ -14,7 +14,7 @@ class TestOutboxRetry(unittest.TestCase):
 
     def test_network_failure_keeps_notification_pending(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            db_path = Path(temp_dir) / "test_tasks.db"
+            db_path = build_temp_paths(temp_dir).tasks_db
 
             with closing(sqlite3.connect(db_path)) as conn, conn:
                 conn.execute("""
@@ -39,7 +39,7 @@ class TestOutboxRetry(unittest.TestCase):
                 """)
 
             with (
-                patch.object(outbox_worker, "DB_PATH", db_path),
+                isolated_paths(temp_dir),
                 patch.object(outbox_worker, "init_task_db"),
                 patch.object(
                     outbox_worker,

@@ -1,9 +1,9 @@
 import sqlite3
 from contextlib import closing
 from pathlib import Path
+from src.config import paths
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-DB_PATH = BASE_DIR / "tasks.db"
 
 
 # 连接写法说明：
@@ -15,7 +15,7 @@ DB_PATH = BASE_DIR / "tasks.db"
 
 def init_task_db():
     """初始化任务状态数据库。"""
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn, conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn, conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS monitor_state (
                 monitor_id TEXT PRIMARY KEY,
@@ -71,7 +71,7 @@ def detect_new_items(
 
     new_articles = []
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn, conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
 
         initialized = conn.execute(

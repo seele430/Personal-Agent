@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+from src.config import paths
 
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -50,8 +51,6 @@ client = OpenAI(
 )
 
 MODEL = os.getenv("MODEL", "deepseek-flash")
-
-USAGE_DB_PATH = BASE_DIR / "ai_usage.db"
 
 MAX_OUTPUT_TOKENS = 2048
 MAX_USER_MESSAGE_BYTES = 32000
@@ -152,7 +151,7 @@ def track_chat_usage(
 
 
 def _get_usage_store() -> AIUsageStore:
-    return AIUsageStore(USAGE_DB_PATH)
+    return AIUsageStore(paths.ai_usage_db)
 
 
 # ==========================================

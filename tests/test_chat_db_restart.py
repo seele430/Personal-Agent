@@ -7,10 +7,9 @@ main.py 启动时调用 init_chat_db，旧入口下线后由本文件保护这�
 import unittest
 
 from contextlib import closing
-from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
 
+from tests.helper import isolate_paths
 from src import api
 
 
@@ -22,18 +21,12 @@ class TestChatDbRestart(unittest.TestCase):
     def setUp(self):
         self.temp = TemporaryDirectory()
 
-        self.db_patch = patch.object(
-            api,
-            "CHAT_DB_PATH",
-            Path(self.temp.name) / "chat_restart_test.db",
-        )
-        self.db_patch.start()
+        isolate_paths(self, self.temp)
 
         # 第一次启动：建表
         api.init_chat_db()
 
     def tearDown(self):
-        self.db_patch.stop()
         self.temp.cleanup()
 
     def insert(self, request_id, status, reply=None):

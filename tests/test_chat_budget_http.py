@@ -4,18 +4,17 @@
 不会访问真实账户，也不会调用付费模型。
 """
 
-import sqlite3
 import unittest
 import uuid
 
 from contextlib import closing
-from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
+from tests.helper import isolate_paths
 from src import agent
 from src import api
 from src.auth_api import get_current_user
@@ -28,16 +27,9 @@ class TestChatBudgetHTTP(unittest.TestCase):
     def setUp(self):
         self.temp = TemporaryDirectory()
 
-        self.chat_path = (
-            Path(self.temp.name) / "chat_test.db"
-        )
+        temporary = isolate_paths(self, self.temp)
 
-        self.db_patch = patch.object(
-            api,
-            "CHAT_DB_PATH",
-            self.chat_path,
-        )
-        self.db_patch.start()
+        self.chat_path = temporary.chat_requests_db
 
         self.old_overrides = (
             app.dependency_overrides.copy()
@@ -79,7 +71,6 @@ class TestChatBudgetHTTP(unittest.TestCase):
             self.old_overrides
         )
 
-        self.db_patch.stop()
         self.temp.cleanup()
 
     @staticmethod

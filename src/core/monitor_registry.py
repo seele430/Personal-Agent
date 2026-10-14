@@ -5,8 +5,8 @@ from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from src.core.task_engine import DB_PATH, init_task_db
-
+from src.config import paths
+from src.core.task_engine import init_task_db
 
 # =====================================
 # Database Initialization
@@ -15,7 +15,7 @@ from src.core.task_engine import DB_PATH, init_task_db
 def init_monitor_registry() -> bool:
     """初始化监控任务表，并兼容旧数据库。"""
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn:
         with conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS monitor_tasks (
@@ -100,7 +100,7 @@ def create_monitor_task(
 
     init_monitor_registry()
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn:
         with conn:
             conn.execute(
                 """
@@ -139,7 +139,7 @@ def list_monitor_tasks(owner_id: str) -> list[dict]:
 
     init_monitor_registry()
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn:
         conn.row_factory = sqlite3.Row
 
         rows = conn.execute(
@@ -180,7 +180,7 @@ def pause_monitor_task(
     validate_owner_task(owner_id, task_id)
     init_monitor_registry()
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn:
         with conn:
             cursor = conn.execute(
                 """
@@ -210,7 +210,7 @@ def resume_monitor_task(
     validate_owner_task(owner_id, task_id)
     init_monitor_registry()
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn:
         with conn:
             cursor = conn.execute(
                 """
@@ -254,7 +254,7 @@ def archive_monitor_task(
 
     archived_at = datetime.now(timezone.utc).isoformat()
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn:
         with conn:
             conn.execute("BEGIN IMMEDIATE")
 

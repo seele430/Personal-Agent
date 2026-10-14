@@ -2,9 +2,7 @@
 import tempfile
 import unittest
 
-from pathlib import Path
-from unittest.mock import patch
-
+from tests.helper import isolated_paths
 from src.core import task_run_history
 
 
@@ -12,11 +10,7 @@ class TestTaskRunHistory(unittest.TestCase):
 
     def test_successful_execution(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            db_path = Path(temp_dir) / "history.db"
-
-            with patch.object(
-                task_run_history, "DB_PATH", db_path
-            ):
+            with isolated_paths(temp_dir):
                 run_id = task_run_history.start_task_run(
                     "rss_test",
                     "lease_123"
@@ -58,11 +52,7 @@ class TestTaskRunHistory(unittest.TestCase):
 
     def test_failed_execution(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            db_path = Path(temp_dir) / "failure.db"
-
-            with patch.object(
-                task_run_history, "DB_PATH", db_path
-            ):
+            with isolated_paths(temp_dir):
                 run_id = task_run_history.start_task_run(
                     "rss_failure"
                 )

@@ -5,9 +5,9 @@ import unittest
 
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from unittest.mock import patch
 
+from tests.helper import isolate_paths
 from src.core import admin_alerts
 
 
@@ -32,16 +32,8 @@ class TestAdminAlerts(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
 
-        self.db_path = (
-            Path(self.temp_dir.name) / "alerts.db"
-        )
-
-        db_patch = patch.object(
-            admin_alerts, "DB_PATH", self.db_path
-        )
-
-        db_patch.start()
-        self.addCleanup(db_patch.stop)
+        temporary = isolate_paths(self, self.temp_dir)
+        self.db_path = temporary.tasks_db
 
     def collect(self, issues, current_time=BASE_TIME):
         with (

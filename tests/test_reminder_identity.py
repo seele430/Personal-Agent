@@ -8,10 +8,10 @@ import sqlite3
 import unittest
 
 from contextlib import closing
-from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from tests.helper import isolate_paths
 from src.core import reminder_identity
 from src.core.reminder_identity import (
     ReminderDeliveryUnavailable,
@@ -29,16 +29,8 @@ class TestReminderIdentity(unittest.TestCase):
     def setUp(self):
         self.temp = TemporaryDirectory()
 
-        self.path = (
-            Path(self.temp.name) / "reminders_test.db"
-        )
-
-        self.path_patch = patch.object(
-            reminder_identity,
-            "REMINDER_DB_PATH",
-            self.path,
-        )
-        self.path_patch.start()
+        temporary = isolate_paths(self, self.temp)
+        self.path = temporary.reminders_db
 
         self.delivery_patch = patch.object(
             reminder_identity,
@@ -51,7 +43,6 @@ class TestReminderIdentity(unittest.TestCase):
 
     def tearDown(self):
         self.delivery_patch.stop()
-        self.path_patch.stop()
         self.temp.cleanup()
 
     def counts(self):

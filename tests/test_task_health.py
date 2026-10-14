@@ -3,11 +3,10 @@ import sqlite3
 import tempfile
 import unittest
 
-from contextlib import closing, ExitStack
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from unittest.mock import patch
 
+from tests.helper import isolate_paths
 from src.core import monitor_registry
 from src.core import monitor_dispatcher
 from src.core import task_run_history
@@ -24,26 +23,8 @@ class TestTaskHealth(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
 
-        self.db_path = (
-            Path(self.temp_dir.name) / "health.db"
-        )
-
-        self.patches = ExitStack()
-        self.addCleanup(self.patches.close)
-
-        for module in (
-            monitor_registry,
-            monitor_dispatcher,
-            task_run_history,
-            task_health,
-        ):
-            self.patches.enter_context(
-                patch.object(
-                    module,
-                    "DB_PATH",
-                    self.db_path
-                )
-            )
+        temporary = isolate_paths(self, self.temp_dir)
+        self.db_path = temporary.tasks_db
 
         monitor_dispatcher.init_dispatcher_db()
 

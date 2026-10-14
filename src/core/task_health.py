@@ -3,7 +3,7 @@ import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone
 
-from src.core.task_engine import DB_PATH
+from src.config import paths
 
 
 def utc_now():
@@ -70,7 +70,7 @@ def scan_task_health(
     findings = []
 
     with closing(
-        sqlite3.connect(DB_PATH, timeout=10)
+        sqlite3.connect(paths.tasks_db, timeout=10)
     ) as conn:
         conn.row_factory = sqlite3.Row
 

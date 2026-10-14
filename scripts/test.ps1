@@ -32,10 +32,24 @@ function Invoke-Checked {
     Write-Host ''
     Write-Host "Running: $Title"
 
-    & $Program @Argv
+    # Windows PowerShell 会把原生程序的 stderr 当成 ErrorRecord。
+    # 一旦调用方重定向输出（`> log.txt`、`*> log.txt`、Tee-Object），
+    # 上面的 $ErrorActionPreference='Stop' 就把它升级成终止错误 ——
+    # 于是"测试自己往 stderr 打日志"会被误判成脚本失败。
+    # 这里只在执行这一条命令期间放宽偏好，成败一律以退出码为准。
+    $PreviousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "$Title failed with exit code $LASTEXITCODE"
+    try {
+        & $Program @Argv
+        $Code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $PreviousPreference
+    }
+
+    if ($Code -ne 0) {
+        throw "$Title failed with exit code $Code"
     }
 
     Write-Host "PASS: $Title" -ForegroundColor Green

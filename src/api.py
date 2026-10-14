@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 # 正式 API 通过本模块调用模型（legacy_chat.chat），测试也在这里 patch。
 from src.agent import chat  # noqa: F401
+from src.config import paths
 
 
 # ==========================================
@@ -27,7 +28,6 @@ from src.agent import chat  # noqa: F401
 # ==========================================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-CHAT_DB_PATH = BASE_DIR / "chat_requests.db"
 
 REQUEST_ID_RE = re.compile(
     r"^[A-Za-z0-9_-]{8,128}$"
@@ -55,7 +55,7 @@ def now_utc() -> str:
 
 def connect_db() -> sqlite3.Connection:
     conn = sqlite3.connect(
-        CHAT_DB_PATH,
+        paths.chat_requests_db,
         timeout=10
     )
     conn.row_factory = sqlite3.Row

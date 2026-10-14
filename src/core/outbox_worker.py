@@ -4,8 +4,9 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-from src.core.task_engine import DB_PATH, init_task_db
+from src.config import paths
 from src.core.access_policy import decide_access, AccessAction
+from src.core.task_engine import init_task_db
 from src.notification import send_notification
 
 
@@ -22,7 +23,7 @@ def process_one_notification():
     now = utc_time_after()
 
     # 使用事务领取任务，避免多个 Worker 同时领取
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn, conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
 
         row = conn.execute(
@@ -93,7 +94,7 @@ def process_one_notification():
             else "pending"
         )
 
-        with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn, conn:
+        with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn, conn:
             conn.execute(
                 """
                 UPDATE notification_outbox
@@ -113,7 +114,7 @@ def process_one_notification():
         print(f"任务状态：{status}")
         return False
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn, conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn, conn:
         conn.execute(
             """
             UPDATE notification_outbox

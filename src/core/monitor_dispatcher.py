@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import requests
 
-from src.core.task_engine import DB_PATH
+from src.config import paths
 from src.core.monitor_registry import init_monitor_registry
 from src.core.task_run_history import (
     init_run_history,
@@ -49,7 +49,7 @@ def init_dispatcher_db() -> bool:
     init_monitor_registry()
 
     with closing(
-        sqlite3.connect(DB_PATH, timeout=10)
+        sqlite3.connect(paths.tasks_db, timeout=10)
     ) as conn:
         with conn:
             columns = {
@@ -265,7 +265,7 @@ def claim_due_tasks(limit: int = 5) -> list[dict]:
     claimed = []
 
     with closing(
-        sqlite3.connect(DB_PATH, timeout=10)
+        sqlite3.connect(paths.tasks_db, timeout=10)
     ) as conn:
         conn.row_factory = sqlite3.Row
 
@@ -362,7 +362,7 @@ def complete_task(
         ).isoformat()
 
     with closing(
-        sqlite3.connect(DB_PATH, timeout=10)
+        sqlite3.connect(paths.tasks_db, timeout=10)
     ) as conn:
         with conn:
             if pause:

@@ -17,6 +17,7 @@ from unittest.mock import patch
 from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
+from tests.helper import isolate_paths
 from src import agent
 from src import api
 from src.auth_api import get_current_user
@@ -35,12 +36,7 @@ class TestChatUsageHTTP(unittest.TestCase):
             root / "usage_test.db"
         )
 
-        self.db_patch = patch.object(
-            api,
-            "CHAT_DB_PATH",
-            root / "chat_test.db",
-        )
-        self.db_patch.start()
+        isolate_paths(self, self.temp)
 
         self.init_patch = patch.object(
             agent,
@@ -107,7 +103,7 @@ class TestChatUsageHTTP(unittest.TestCase):
 
         self.usage_patch.stop()
         self.init_patch.stop()
-        self.db_patch.stop()
+        self.usage_patch.stop()
 
         self.temp.cleanup()
 

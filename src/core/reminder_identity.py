@@ -22,10 +22,10 @@ from src.core.reminder_store import (
     ROLES,
     ReminderStore,
 )
-from src.tools.reminder import DB_PATH
+from src.config import paths
 
 
-REMINDER_DB_PATH: Path = DB_PATH
+REMINDER_DB_PATH: Path = paths.reminders_db
 
 # 网站内个人通知中心尚未上线。
 # 在正式完成通知读取及权限测试前，保持 False。

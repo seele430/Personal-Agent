@@ -2,9 +2,9 @@ import sqlite3
 from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
+from src.config import paths
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-DB_PATH = BASE_DIR / "reminders.db"
 
 
 # 连接写法说明：
@@ -13,7 +13,7 @@ DB_PATH = BASE_DIR / "reminders.db"
 
 
 def init_db():
-    with closing(sqlite3.connect(DB_PATH)) as conn, conn:
+    with closing(sqlite3.connect(paths.reminders_db)) as conn, conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS reminders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +32,7 @@ def create_reminder(message: str, minutes: int):
         minutes=minutes
     )
 
-    with closing(sqlite3.connect(DB_PATH)) as conn, conn:
+    with closing(sqlite3.connect(paths.reminders_db)) as conn, conn:
         cursor = conn.execute(
             """
             INSERT INTO reminders
