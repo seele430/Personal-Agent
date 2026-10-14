@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-from src.core.task_engine import DB_PATH, init_task_db
+from src.config import paths, init_task_db
 from src.core.access_policy import decide_access, AccessAction
 from src.notification import send_notification
 

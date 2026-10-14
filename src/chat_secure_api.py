@@ -17,6 +17,8 @@ import uuid
 from contextlib import closing
 from urllib.parse import urlsplit
 
+from src.config import paths
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -207,8 +209,8 @@ def _reconcile_completed_budget(
 
     try:
         state = reconcile_recorded_request(
-            budget_db_path=legacy_chat.CHAT_DB_PATH,
-            usage_db_path=agent.USAGE_DB_PATH,
+            budget_db_path=paths.chat_requests_db,
+            usage_db_path=paths.ai_usage_db,
             request_id=request_id,
             user_id=user_id,
             provider_host=_provider_host(),

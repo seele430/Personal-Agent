@@ -10,7 +10,9 @@ from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from src.notification import send_notification
-from src.tools.reminder import DB_PATH, init_db
+from src.config import paths
+from src.config import paths
+from src.tools.reminder import init_db
 
 from src.core.monitor_registry import init_monitor_registry
 from src.core.monitor_dispatcher import run_due_monitor_tasks
@@ -47,7 +49,7 @@ def check_reminders():
 
     try:
         with closing(
-            sqlite3.connect(DB_PATH, timeout=10)
+            sqlite3.connect(paths.reminders_db, timeout=10)
         ) as conn:
             reminders = conn.execute(
                 """
@@ -71,7 +73,7 @@ def check_reminders():
             send_notification(f"⏰ 提醒：{message}")
 
             with closing(
-                sqlite3.connect(DB_PATH, timeout=10)
+                sqlite3.connect(paths.reminders_db, timeout=10)
             ) as conn:
                 with conn:
                     conn.execute(

@@ -7,7 +7,7 @@ import sqlite3
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 
-from src.core.task_engine import DB_PATH
+from src.config import paths
 from src.core.task_health import scan_task_health
 
 

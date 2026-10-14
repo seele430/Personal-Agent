@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import requests
 
-from src.core.task_engine import DB_PATH
+from src.config import paths
 from src.core.monitor_registry import init_monitor_registry
 from src.core.task_run_history import (
     init_run_history,

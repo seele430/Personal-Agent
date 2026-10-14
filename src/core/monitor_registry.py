@@ -5,7 +5,7 @@ from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from src.core.task_engine import DB_PATH, init_task_db
+from src.config import paths, init_task_db
 
 
 # =====================================

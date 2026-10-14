@@ -3,7 +3,7 @@ import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone
 
-from src.core.task_engine import DB_PATH
+from src.config import paths
 
 
 def utc_now():

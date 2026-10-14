@@ -6,7 +6,7 @@ import getpass
 import sys
 import tkinter as tk
 
-from src.auth_api import AUTH_DB_PATH
+from src.config import paths
 from src.core.auth_store import (
     AuthError,
     AuthForbidden,
@@ -567,7 +567,7 @@ def main() -> int:
     print("Personal Agent - 初始化站长")
     print("=" * 48)
 
-    print(f"账户数据库：{AUTH_DB_PATH}")
+    print(f"账户数据库：{paths.auth_users_db}")
 
     try:
         username = input(
@@ -586,7 +586,7 @@ def main() -> int:
                 prompt_password_pair()
             )
 
-        store = AuthStore(AUTH_DB_PATH)
+        store = AuthStore(paths.auth_users_db)
 
         user = create_owner(
             store,

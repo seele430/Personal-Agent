@@ -6,7 +6,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from src.core.task_engine import DB_PATH
+from src.config import paths
 
 
 logger = logging.getLogger("personal_agent.history")

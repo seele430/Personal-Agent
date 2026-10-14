@@ -30,9 +30,10 @@ from src.core.auth_store import (
     AuthStore,
 )
 
+from src.config import paths
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-AUTH_DB_PATH = BASE_DIR / "auth_users.db"
 
 LOGIN_WINDOW_SECONDS = 600
 MAX_USER_ATTEMPTS = 8
@@ -50,7 +51,7 @@ bearer_scheme = HTTPBearer(
 
 @lru_cache(maxsize=1)
 def get_auth_store() -> AuthStore:
-    return AuthStore(AUTH_DB_PATH)
+    return AuthStore(paths.auth_users_db)
 
 
 class LoginRequest(BaseModel):
