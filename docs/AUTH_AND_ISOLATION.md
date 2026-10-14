@@ -201,12 +201,15 @@ BEGIN IMMEDIATE
 
 | 边界 | 现状 |
 | --- | --- |
-| **隔离覆盖范围** | 只有**聊天请求**与**提醒**两条线有 `user_id`。监控任务、外发 worker、任务执行历史、管理告警这几个模块（`monitor_registry` / `monitor_dispatcher` / `outbox_worker` / `task_run_history` / `task_engine` / `admin_alerts`）**实测 `user_id` 出现 0 次**，仍是单用户（站长）模型 |
+| **两套归属列名不统一** | 聊天请求与提醒用 `user_id`；监控任务用 **`owner_id`**。语义相同、命名不同，属于历史差异，读代码时要分清 |
+| **隔离覆盖范围** | 聊天请求（`chat_ownership`）与提醒（`reminder_store`）按 `user_id` 过滤；监控任务（`monitor_tasks`）按 `owner_id` 过滤 —— `create / list / pause / resume / archive` **五处都带归属条件** |
+| **监控任务没有入口** | `create_monitor_task()` 的生产调用方为 **0**（唯一调用方是测试），也没有 HTTP 或工具入口。归属逻辑存在，但从用户视角**不可达**，端到端隔离尚未被真实使用验证 —— 这是当前最该补的一块 |
+| **外发通知的归属** | `notification_outbox` 原先没有任何归属列（已补 `owner_id`：非破坏性迁移 + 写入时从任务带出；旧记录保持 NULL，不自动归属）。但**按人投递尚未实现**：现在只有一个全局 `NTFY_TOPIC`，实际只能发给站长 |
 | 存储 | SQLite 单机；无读写分离、无连接池 |
 | 会话 | 无刷新令牌、无轮换、无多设备管理（只有 24h 过期 + 软撤销） |
 | 限流 | 计数表在同一个 SQLite 里，单进程有效；多实例部署需换成共享存储 |
 | 令牌存放 | `sessionStorage`，XSS 可读；靠 CSP 与输出转义缓解 |
-| 旧数据 | 迁移前 `user_id IS NULL` 的聊天记录任何人都读不到，没有做归属回填 |
+| 旧数据 | 迁移前 `user_id IS NULL` 的聊天记录任何人都读不到；`notification_outbox.owner_id IS NULL` 的旧通知是"未归属"。两者都没有做归属回填 |
 
 另外提醒一个容易记混的模块：`src/core/access_policy.py` **不是权限策略表**，
 它决定的是监控/外发遇到 HTTP 状态码后的动作（429 → 暂停、401/402/403 → 停止、
@@ -245,7 +248,9 @@ A：不算。真正的门是后端 `require_role` + 角色等级比较；前端�
 
 - ❌ "JWT + httpOnly cookie" → ✅ 不透明随机令牌 + `Authorization: Bearer`
 - ❌ "bcrypt 加密密码" → ✅ PBKDF2-HMAC-SHA256，60 万轮，per-user salt
-- ❌ "全项目都做了多用户隔离" → ✅ 聊天与提醒做了；监控/外发仍是单用户
+- ❌ "监控任务没有做归属" → ✅ `monitor_tasks` 有 `owner_id`，五个操作都按它过滤；
+  **真正缺的是入口**（`create_monitor_task` 只有测试在调），别把"没入口"说成"没隔离"
+- ❌ "全项目只用了 user_id 一种归属" → ✅ 监控层用的是 `owner_id`，列名不统一是历史差异
 - ❌ "access_policy 是权限策略" → ✅ 它是监控外发的 HTTP 重试策略
 - ❌ "管理员看得到所有人对话" → ✅ 接口层没有读取他人对话的入口：
   `/chat/requests/{id}` 走 `read_owned_record()`，一律按归属过滤，
