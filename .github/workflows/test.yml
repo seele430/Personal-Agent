@@ -1,0 +1,66 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  audit:
+    name: Isolation audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - run: python scripts/run_tests.py audit
+
+  backend:
+    name: Backend tests (guarded)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      # run_guarded_tests.py sets SAFE_ENVIRONMENT internally.
+      # Keep that list in sync with $TestEnvironment in scripts/test.ps1.
+      - run: python scripts/run_guarded_tests.py backend
+
+  frontend:
+    name: Frontend build + Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - working-directory: frontend
+        run: npm ci
+
+      - working-directory: frontend
+        run: npm run build
+
+      - working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - working-directory: frontend
+        run: npx playwright test
