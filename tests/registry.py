@@ -355,7 +355,7 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
-    # L2：调度器运行历史与 DB_PATH 注入
+    # L2：调度器运行历史（路径由 tests.helper.isolate_paths 指向临时库）
     "test_dispatcher_history.py": TestSchema(
         layer="integration",
         domain="dispatcher",
@@ -367,9 +367,9 @@ TEST_SCHEMAS = {
 
     # L2：监控租约抢占用与释放
     #
-    # 2026-10-12 修复隔离缺口后登记：
-    # setUp 现在替换 src.core.task_engine.DB_PATH（DB_PATH 的源头），
-    # 受保护运行器下不再访问项目 tasks.db。
+    # 2026-10-14 迁移到 src.config.paths 后登记：
+    # setUp 用 tests.helper.isolate_paths 同时替换 src.config.paths
+    # 与各模块早绑定的 paths，受保护运行器下不再访问项目 tasks.db。
     "test_monitor_lease.py": TestSchema(
         layer="integration",
         domain="monitor",
@@ -409,7 +409,7 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
-    # L2：聊天库重启恢复（init_chat_db，CHAT_DB_PATH 指向临时目录）
+    # L2：聊天库重启恢复（init_chat_db，路径由 isolate_paths 指向临时目录）
     # 旧入口 src.api:app 下线后替代 test_api_idempotency.py 的重启用例。
     "test_chat_db_restart.py": TestSchema(
         layer="integration",
@@ -420,7 +420,7 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
-    # L2：提醒身份归属（REMINDER_DB_PATH 指向临时目录）
+    # L2：提醒身份归属（REMINDER_DB_PATH 由 isolate_paths 指向临时目录）
     "test_reminder_identity.py": TestSchema(
         layer="integration",
         domain="reminder",

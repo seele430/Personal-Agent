@@ -5,7 +5,6 @@
 绝不访问项目的真实数据库，也不会消费模型额度。
 """
 
-import sqlite3
 import unittest
 import uuid
 
@@ -18,6 +17,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from tests.helper import isolate_paths
 from src import api
 from src.auth_api import get_auth_store
 from src.core.auth_store import AuthStore
@@ -30,6 +30,9 @@ class TestSecureChatHttp(unittest.TestCase):
     def setUp(self):
         self.temp_dir = TemporaryDirectory()
         root = Path(self.temp_dir.name)
+
+        # 所有数据库路径都指向临时目录，绝不接触真实数据
+        isolate_paths(self, self.temp_dir)
 
         # 每项测试使用独立的临时账户数据库
         self.store = AuthStore(root / "test_auth.db")
@@ -46,14 +49,6 @@ class TestSecureChatHttp(unittest.TestCase):
             self.PASSWORD,
             invite,
         )
-
-        # 替换聊天数据库路径，绝不接触真实数据
-        self.chat_db_patch = patch.object(
-            api,
-            "CHAT_DB_PATH",
-            root / "test_chat.db",
-        )
-        self.chat_db_patch.start()
 
         # 正式 App 的认证依赖使用临时账户库
         self.old_overrides = app.dependency_overrides.copy()
@@ -77,7 +72,6 @@ class TestSecureChatHttp(unittest.TestCase):
             self.old_overrides
         )
 
-        self.chat_db_patch.stop()
         self.temp_dir.cleanup()
 
     def login(self, username):

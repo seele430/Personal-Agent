@@ -3,11 +3,11 @@ import tempfile
 import unittest
 
 from contextlib import closing
-from pathlib import Path
 from unittest.mock import patch
 
 import requests
 
+from tests.helper import build_temp_paths, isolated_paths
 from src.core import outbox_worker
 
 
@@ -16,7 +16,7 @@ class TestOutboxHTTP(unittest.TestCase):
     def test_403_stops_retry(self):
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            db_path = Path(temp_dir) / "http_test.db"
+            db_path = build_temp_paths(temp_dir).tasks_db
 
             with closing(sqlite3.connect(db_path)) as conn, conn:
                 conn.execute("""
@@ -45,7 +45,7 @@ class TestOutboxHTTP(unittest.TestCase):
             )
 
             with (
-                patch.object(outbox_worker, "DB_PATH", db_path),
+                isolated_paths(temp_dir),
                 patch.object(outbox_worker, "init_task_db"),
                 patch.object(
                     outbox_worker,

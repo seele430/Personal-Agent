@@ -11,7 +11,6 @@ import uuid
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
-from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Event
 from unittest.mock import patch
@@ -19,6 +18,7 @@ from unittest.mock import patch
 from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
+from tests.helper import isolate_paths
 from src import api
 from src.auth_api import get_current_user
 from src.core import chat_quota
@@ -30,12 +30,7 @@ class TestChatQuotaHTTP(unittest.TestCase):
     def setUp(self):
         self.temp = TemporaryDirectory()
 
-        self.db_patch = patch.object(
-            api,
-            "CHAT_DB_PATH",
-            Path(self.temp.name) / "requests.db",
-        )
-        self.db_patch.start()
+        isolate_paths(self, self.temp)
 
         self.old_overrides = (
             app.dependency_overrides.copy()
@@ -99,7 +94,6 @@ class TestChatQuotaHTTP(unittest.TestCase):
             self.old_overrides
         )
 
-        self.db_patch.stop()
         self.temp.cleanup()
 
     @staticmethod

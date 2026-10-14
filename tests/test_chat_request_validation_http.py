@@ -4,17 +4,16 @@
 旧入口 src.api:app 下线后，由本文件保护 400 校验。
 """
 
-import sqlite3
 import unittest
 
 from contextlib import closing
-from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
+from tests.helper import isolate_paths
 from src import api
 from src.auth_api import get_current_user
 from src.main import app
@@ -25,12 +24,7 @@ class TestChatRequestValidationHTTP(unittest.TestCase):
     def setUp(self):
         self.temp = TemporaryDirectory()
 
-        self.db_patch = patch.object(
-            api,
-            "CHAT_DB_PATH",
-            Path(self.temp.name) / "chat_validation_test.db",
-        )
-        self.db_patch.start()
+        isolate_paths(self, self.temp)
 
         self.old_overrides = app.dependency_overrides.copy()
 
@@ -56,7 +50,6 @@ class TestChatRequestValidationHTTP(unittest.TestCase):
         app.dependency_overrides.clear()
         app.dependency_overrides.update(self.old_overrides)
 
-        self.db_patch.stop()
         self.temp.cleanup()
 
     def record_count(self):

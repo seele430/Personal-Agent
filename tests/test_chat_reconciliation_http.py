@@ -7,13 +7,11 @@
 不访问正式账户，不产生真实 API 费用。
 """
 
-import sqlite3
 import unittest
 import uuid
 
 from contextlib import closing
 from datetime import datetime, timezone
-from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -21,6 +19,7 @@ from unittest.mock import patch
 from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
+from tests.helper import isolate_paths
 from src import agent
 from src import api
 from src.auth_api import get_current_user
@@ -32,28 +31,15 @@ class TestChatReconciliationHTTP(unittest.TestCase):
 
     def setUp(self):
         self.temp = TemporaryDirectory()
-        root = Path(self.temp.name)
 
-        self.chat_path = root / "chat_test.db"
-        self.usage_path = root / "usage_test.db"
+        temporary = isolate_paths(self, self.temp)
+
+        self.chat_path = temporary.chat_requests_db
+        self.usage_path = temporary.ai_usage_db
 
         self.usage_store = AIUsageStore(
             self.usage_path
         )
-
-        self.chat_db_patch = patch.object(
-            api,
-            "CHAT_DB_PATH",
-            self.chat_path,
-        )
-        self.chat_db_patch.start()
-
-        self.usage_path_patch = patch.object(
-            agent,
-            "USAGE_DB_PATH",
-            self.usage_path,
-        )
-        self.usage_path_patch.start()
 
         self.usage_store_patch = patch.object(
             agent,
@@ -108,8 +94,6 @@ class TestChatReconciliationHTTP(unittest.TestCase):
 
         self.reminder_init_patch.stop()
         self.usage_store_patch.stop()
-        self.usage_path_patch.stop()
-        self.chat_db_patch.stop()
 
         self.temp.cleanup()
 

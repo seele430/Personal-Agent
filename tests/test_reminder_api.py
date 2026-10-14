@@ -7,13 +7,13 @@
 import unittest
 
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 
+from tests.helper import isolate_paths
 from src.auth_api import get_current_user
 from src.core import reminder_identity
 from src.core.reminder_store import ReminderStore
@@ -26,17 +26,8 @@ class TestReminderAPI(unittest.TestCase):
         self.temp = TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
 
-        self.db_path = (
-            Path(self.temp.name) / "reminders.db"
-        )
-
-        db_patch = patch.object(
-            reminder_identity,
-            "REMINDER_DB_PATH",
-            self.db_path,
-        )
-        db_patch.start()
-        self.addCleanup(db_patch.stop)
+        temporary = isolate_paths(self, self.temp)
+        self.db_path = temporary.reminders_db
 
         self.store = ReminderStore(self.db_path)
 

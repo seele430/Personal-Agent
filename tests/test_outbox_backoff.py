@@ -4,9 +4,9 @@ import unittest
 
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from unittest.mock import patch
 
+from tests.helper import build_temp_paths, isolated_paths
 from src.core import outbox_worker
 
 
@@ -15,7 +15,7 @@ class TestOutboxBackoff(unittest.TestCase):
     def test_pending_notification_waits_until_due(self):
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            db_path = Path(temp_dir) / "backoff.db"
+            db_path = build_temp_paths(temp_dir).tasks_db
 
             future_time = (
                 datetime.now(timezone.utc)
@@ -43,7 +43,7 @@ class TestOutboxBackoff(unittest.TestCase):
                 )
 
             with (
-                patch.object(outbox_worker, "DB_PATH", db_path),
+                isolated_paths(temp_dir),
                 patch.object(outbox_worker, "init_task_db"),
                 patch.object(
                     outbox_worker, "send_notification"

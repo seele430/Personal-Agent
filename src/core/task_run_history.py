@@ -23,7 +23,7 @@ def utc_now():
 def init_run_history() -> bool:
     """初始化持久化任务执行历史表。"""
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn:
         with conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS task_run_history (
@@ -76,7 +76,7 @@ def start_task_run(
 
     started_at = utc_now().isoformat()
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn:
         with conn:
             conn.execute(
                 """
@@ -142,7 +142,7 @@ def finish_task_run(
             error_message or "Unknown error"
         )[:500]
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn:
         with conn:
             conn.execute("BEGIN IMMEDIATE")
 
@@ -227,7 +227,7 @@ def list_task_runs(
 
     init_run_history()
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn:
         conn.row_factory = sqlite3.Row
 
         rows = conn.execute(

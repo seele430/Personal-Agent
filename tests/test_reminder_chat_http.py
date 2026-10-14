@@ -10,7 +10,6 @@ import unittest
 import uuid
 
 from contextlib import closing
-from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -18,6 +17,7 @@ from unittest.mock import patch
 from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
+from tests.helper import isolate_paths
 from src import agent
 from src import api
 from src.auth_api import get_current_user
@@ -32,33 +32,18 @@ class TestReminderChatHTTP(unittest.TestCase):
         self.temp = TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
 
-        root = Path(self.temp.name)
+        temporary = isolate_paths(self, self.temp)
 
-        self.chat_path = root / "chat.db"
-        self.reminder_path = root / "reminders.db"
-        self.usage_path = root / "usage.db"
+        self.chat_path = temporary.chat_requests_db
+        self.reminder_path = temporary.reminders_db
+        self.usage_path = temporary.ai_usage_db
 
         self.usage_store = AIUsageStore(
             self.usage_path
         )
 
-        # 所有数据库路径均指向临时目录。
+        # 模型用量库与旧提醒初始化都换成测试替身。
         patches = [
-            patch.object(
-                api,
-                "CHAT_DB_PATH",
-                self.chat_path,
-            ),
-            patch.object(
-                reminder_identity,
-                "REMINDER_DB_PATH",
-                self.reminder_path,
-            ),
-            patch.object(
-                agent,
-                "USAGE_DB_PATH",
-                self.usage_path,
-            ),
             patch.object(
                 agent,
                 "_get_usage_store",

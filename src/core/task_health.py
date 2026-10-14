@@ -70,7 +70,7 @@ def scan_task_health(
     findings = []
 
     with closing(
-        sqlite3.connect(DB_PATH, timeout=10)
+        sqlite3.connect(paths.tasks_db, timeout=10)
     ) as conn:
         conn.row_factory = sqlite3.Row
 

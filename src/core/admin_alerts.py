@@ -29,7 +29,7 @@ def utc_now():
 def init_admin_alert_db() -> bool:
     """初始化管理员告警状态与待发送队列。"""
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn:
         with conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS admin_alert_state (
@@ -168,7 +168,7 @@ def enqueue_health_alerts(
 
     queued_count = 0
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn:
         conn.row_factory = sqlite3.Row
 
         with conn:
@@ -326,7 +326,7 @@ def list_pending_admin_alerts(
 
     init_admin_alert_db()
 
-    with closing(sqlite3.connect(DB_PATH, timeout=10)) as conn:
+    with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn:
         conn.row_factory = sqlite3.Row
 
         rows = conn.execute(

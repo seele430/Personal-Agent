@@ -11,7 +11,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from src.notification import send_notification
 from src.config import paths
-from src.config import paths
 from src.tools.reminder import init_db
 
 from src.core.monitor_registry import init_monitor_registry

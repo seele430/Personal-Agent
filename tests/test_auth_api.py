@@ -7,11 +7,10 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from src import api
+from tests.helper import isolate_paths
 from src.auth_api import get_auth_store
 from src.core.auth_store import AuthStore
 from src.main import app
@@ -25,6 +24,8 @@ class TestAuthAPI(unittest.TestCase):
     def setUp(self):
         self.tmp = TemporaryDirectory()
 
+        isolate_paths(self, self.tmp)
+
         self.store = AuthStore(
             Path(self.tmp.name) / "auth_test.db"
         )
@@ -33,13 +34,6 @@ class TestAuthAPI(unittest.TestCase):
             "siteowner",
             PASSWORD,
         )
-
-        self.db_patch = patch.object(
-            api,
-            "CHAT_DB_PATH",
-            Path(self.tmp.name) / "chat_test.db",
-        )
-        self.db_patch.start()
 
         app.dependency_overrides[get_auth_store] = (
             lambda: self.store
@@ -56,7 +50,6 @@ class TestAuthAPI(unittest.TestCase):
                 get_auth_store,
                 None,
             )
-            self.db_patch.stop()
             self.tmp.cleanup()
 
     @staticmethod
