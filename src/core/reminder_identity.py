@@ -20,6 +20,8 @@ from typing import Iterator
 from src.core.reminder_store import (
     REQUEST_ID_PATTERN,
     ROLES,
+    ReminderNotEditable,
+    ReminderNotFound,
     ReminderStore,
 )
 from src.config import paths
@@ -146,3 +148,97 @@ def create_reminder_for_current_user(
         "legacy_reminder_id":
             result["legacy_reminder_id"],
     }
+
+
+def _require_identity(action: str) -> ReminderIdentity:
+    """取出当前登录身份，没有就拒绝。
+
+    读取和修改提醒同样需要身份：
+    绝不回退到"无用户"的全站记录。
+    """
+
+    identity = _current_identity.get()
+
+    if identity is None:
+        raise PermissionError(
+            f"没有经过认证的提醒身份，拒绝{action}提醒"
+        )
+
+    return identity
+
+
+def list_reminders_for_current_user() -> list[dict]:
+    """按当前登录用户身份列出自己的提醒。
+
+    只影响读取，不检查站内投递开关：
+    开关只决定能否创建站内提醒。
+    """
+
+    identity = _require_identity("读取")
+
+    store = ReminderStore(REMINDER_DB_PATH)
+
+    return store.list_for_user(
+        user_id=identity.user_id,
+    )
+
+
+def cancel_reminder_for_current_user(
+    reminder_id: int,
+) -> dict:
+    """按当前登录用户身份取消一条待发提醒。
+
+    归属校验在 store 的 SQL 里完成，
+    别人的提醒与不存在的提醒都变成同一个错误。
+    """
+
+    identity = _require_identity("取消")
+
+    store = ReminderStore(REMINDER_DB_PATH)
+
+    try:
+        return store.cancel(
+            user_id=identity.user_id,
+            reminder_id=reminder_id,
+        )
+
+    except ReminderNotFound:
+        raise ValueError(
+            "提醒不存在或无权访问"
+        ) from None
+
+    except ReminderNotEditable:
+        raise ValueError(
+            "提醒已经发送或已取消，不能再取消"
+        ) from None
+
+
+def update_reminder_for_current_user(
+    reminder_id: int,
+    *,
+    message: str | None = None,
+    minutes: int | None = None,
+) -> dict:
+    """按当前登录用户身份修改一条待发提醒。"""
+
+    identity = _require_identity("修改")
+
+    store = ReminderStore(REMINDER_DB_PATH)
+
+    try:
+        return store.update(
+            user_id=identity.user_id,
+            reminder_id=reminder_id,
+            message=message,
+            minutes=minutes,
+        )
+
+    except ReminderNotFound:
+        raise ValueError(
+            "提醒不存在或无权访问"
+        ) from None
+
+    except ReminderNotEditable:
+        raise ValueError(
+            "提醒已经发送或已取消，不能再修改"
+        ) from None

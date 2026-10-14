@@ -16,7 +16,10 @@ from src.core import reminder_identity
 from src.core.reminder_identity import (
     ReminderDeliveryUnavailable,
     bind_authenticated_reminder,
+    cancel_reminder_for_current_user,
     create_reminder_for_current_user,
+    list_reminders_for_current_user,
+    update_reminder_for_current_user,
 )
 from src.core.reminder_store import (
     ReminderConflict,
@@ -248,6 +251,112 @@ class TestReminderIdentity(unittest.TestCase):
                 pass
 
         self.assertEqual(self.counts(), (0, 0))
+
+
+    # 9. 没有登录身份时，读取 / 取消 / 修改一律被拒绝
+
+    def test_management_requires_identity(self):
+        with self.assertRaises(PermissionError):
+            list_reminders_for_current_user()
+
+        with self.assertRaises(PermissionError):
+            cancel_reminder_for_current_user(1)
+
+        with self.assertRaises(PermissionError):
+            update_reminder_for_current_user(
+                1,
+                message="新内容",
+            )
+
+    # 10. 列表只包含自己的提醒
+
+    def test_list_only_returns_own(self):
+        with patch.object(
+            reminder_identity,
+            "IN_APP_DELIVERY_ENABLED",
+            True,
+        ):
+            with bind_authenticated_reminder(
+                user_id="member_a",
+                request_id="request_member_a_001",
+                role="member",
+            ):
+                create_reminder_for_current_user(
+                    "A 的提醒",
+                    5,
+                )
+
+            with bind_authenticated_reminder(
+                user_id="member_b",
+                request_id="request_member_b_001",
+                role="member",
+            ):
+                create_reminder_for_current_user(
+                    "B 的提醒",
+                    5,
+                )
+
+                mine = (
+                    list_reminders_for_current_user()
+                )
+
+        self.assertEqual(
+            [item["message"] for item in mine],
+            ["B 的提醒"],
+        )
+
+    # 11. 不能取消别人的提醒
+
+    def test_cannot_cancel_other_users_reminder(self):
+        with patch.object(
+            reminder_identity,
+            "IN_APP_DELIVERY_ENABLED",
+            True,
+        ):
+            with bind_authenticated_reminder(
+                user_id="member_a",
+                request_id="request_member_a_002",
+                role="member",
+            ):
+                created = create_reminder_for_current_user(
+                    "A 的提醒",
+                    5,
+                )
+
+            with bind_authenticated_reminder(
+                user_id="member_b",
+                request_id="request_member_b_002",
+                role="member",
+            ):
+                with self.assertRaises(ValueError):
+                    cancel_reminder_for_current_user(
+                        created["id"]
+                    )
+
+                with self.assertRaises(ValueError):
+                    update_reminder_for_current_user(
+                        created["id"],
+                        message="改别人的提醒",
+                    )
+
+        # A 的提醒没有被改动。
+        self.assertEqual(
+            self.counts(),
+            (0, 1),
+        )
+
+        with closing(
+            sqlite3.connect(self.path)
+        ) as conn:
+            status, message = conn.execute(
+                """
+                SELECT status, message
+                FROM reminder_requests
+                """
+            ).fetchone()
+
+        self.assertEqual(status, "pending")
+        self.assertEqual(message, "A 的提醒")
 
 
 if __name__ == "__main__":
