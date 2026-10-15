@@ -1,16 +1,13 @@
 
 
 import logging
-import sqlite3
 import time
-
-from contextlib import closing
-from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from src.notification import send_notification
 from src.config import paths
+from src.core.reminder_store import ReminderStore
 from src.tools.reminder import init_db
 
 from src.core.monitor_registry import init_monitor_registry
@@ -42,58 +39,67 @@ logging.getLogger(
 # =====================================
 
 def check_reminders():
-    """检查并发送到期提醒。"""
+    """投递到期的 ntfy 提醒。
 
-    now = datetime.now().astimezone()
+    取件口是**新表** `reminder_requests`（按人投递的权威记录），
+    不再直接扫旧表 —— 旧表只是站长提醒的历史镜像，
+    由 `ReminderStore.mark_sent()` 与新表同事务更新。
+
+    另外保留一条**互斥**的兼容路径：处理没有任何新表记录指向的旧表
+    待发行。它们只可能来自按人投递上线之前（旧的 create_reminder 已
+    废弃），但直接不管等于把用户当时设好的提醒吞掉。
+    两条路径不会重复推送同一条提醒。
+    """
+
+    store = ReminderStore(paths.reminders_db)
 
     try:
-        with closing(
-            sqlite3.connect(paths.reminders_db, timeout=10)
-        ) as conn:
-            reminders = conn.execute(
-                """
-                SELECT id, message, remind_at
-                FROM reminders
-                WHERE status = 'pending'
-                """
-            ).fetchall()
+        due = store.due_ntfy()
 
     except Exception:
-        logger.exception("读取提醒任务失败")
+        logger.exception("读取到期提醒失败")
         return
 
-    for reminder_id, message, remind_at in reminders:
+    for row in due:
         try:
-            due = datetime.fromisoformat(remind_at)
+            send_notification(f"⏰ 提醒：{row['message']}")
 
-            if due > now:
-                continue
-
-            send_notification(f"⏰ 提醒：{message}")
-
-            with closing(
-                sqlite3.connect(paths.reminders_db, timeout=10)
-            ) as conn:
-                with conn:
-                    conn.execute(
-                        """
-                        UPDATE reminders
-                        SET status = 'sent'
-                        WHERE id = ?
-                          AND status = 'pending'
-                        """,
-                        (reminder_id,)
-                    )
+            store.mark_sent(reminder_id=row["id"])
 
             logger.info(
-                "提醒 %s 已提交到 ntfy",
-                reminder_id
+                "提醒 %s 已提交到 ntfy（用户 %s）",
+                row["id"],
+                row["user_id"],
+            )
+
+        except Exception:
+            # 保持 pending：下一个扫描周期重试。
+            logger.exception(
+                "提醒 %s 投递失败", row["id"]
+            )
+
+    try:
+        legacy = store.legacy_only_due()
+
+    except Exception:
+        logger.exception("读取历史提醒失败")
+        return
+
+    for row in legacy:
+        try:
+            send_notification(f"⏰ 提醒：{row['message']}")
+
+            store.mark_legacy_sent(
+                legacy_reminder_id=row["id"]
+            )
+
+            logger.info(
+                "历史提醒 %s 已提交到 ntfy", row["id"]
             )
 
         except Exception:
             logger.exception(
-                "提醒 %s 处理失败",
-                reminder_id
+                "历史提醒 %s 投递失败", row["id"]
             )
 
 

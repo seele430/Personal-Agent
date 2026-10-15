@@ -494,6 +494,16 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
+    # L2：提醒投递（调度器取件、幂等、不越权外推）
+    "test_reminder_scheduler.py": TestSchema(
+        layer="integration",
+        domain="reminder",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="high",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",

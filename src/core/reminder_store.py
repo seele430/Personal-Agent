@@ -334,6 +334,218 @@ class ReminderStore:
         return [dict(row) for row in rows]
 
     # ----------------------------------------------------------------
+    # 投递（ntfy）：调度器取件 + 结单
+    # ----------------------------------------------------------------
+
+    def due_ntfy(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> list[dict]:
+        """读取所有已到期、还没送出的 ntfy 提醒（系统级，不限用户）。
+
+        这是**投递路径的唯一取件口**。只返回
+        `delivery = 'ntfy'` 的行：站内提醒（in_app）绝不会出现在
+        这里 —— 它们的"送达"由前端轮询 + `mark_delivered()` 完成。
+        """
+
+        current = _check_time(now).isoformat()
+
+        self.init_db()
+
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, user_id, message, remind_at,
+                       legacy_reminder_id
+                FROM reminder_requests
+                WHERE delivery = 'ntfy'
+                  AND status = 'pending'
+                  AND remind_at <= ?
+                ORDER BY remind_at, id
+                LIMIT 100
+                """,
+                (current,),
+            ).fetchall()
+
+        return [dict(row) for row in rows]
+
+    def mark_sent(
+        self,
+        *,
+        reminder_id: int,
+    ) -> dict:
+        """把一条 ntfy 提醒标记为已送出，并同步旧表镜像。
+
+        旧表是站长 ntfy 提醒的历史镜像，两条记录必须同进同退：
+        否则一旦还有别的进程在扫旧表，同一条提醒会被推送两次。
+        所以这里在**同一个事务**里更新两张表。
+
+        只处理 `pending` + `ntfy`：站内提醒和已结单的都不动。
+        """
+
+        if type(reminder_id) is not int or reminder_id <= 0:
+            raise ValueError("无效的提醒 ID")
+
+        self.init_db()
+
+        with closing(self._connect()) as conn:
+
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+
+                row = conn.execute(
+                    """
+                    SELECT id, status, delivery,
+                           legacy_reminder_id
+                    FROM reminder_requests
+                    WHERE id = ?
+                    """,
+                    (reminder_id,),
+                ).fetchone()
+
+                if row is None:
+                    raise ReminderNotFound("提醒不存在")
+
+                if (
+                    row["status"] != "pending"
+                    or row["delivery"] != "ntfy"
+                ):
+                    conn.commit()
+
+                    return {
+                        "id": reminder_id,
+                        "status": row["status"],
+                        "changed": False,
+                        "legacy_synced": False,
+                    }
+
+                conn.execute(
+                    """
+                    UPDATE reminder_requests
+                    SET status = 'sent'
+                    WHERE id = ? AND status = 'pending'
+                    """,
+                    (reminder_id,),
+                )
+
+                legacy_id = row["legacy_reminder_id"]
+
+                legacy_synced = False
+
+                if legacy_id is not None:
+                    cursor = conn.execute(
+                        """
+                        UPDATE reminders
+                        SET status = 'sent'
+                        WHERE id = ? AND status = 'pending'
+                        """,
+                        (legacy_id,),
+                    )
+
+                    legacy_synced = cursor.rowcount == 1
+
+                conn.commit()
+
+                return {
+                    "id": reminder_id,
+                    "status": "sent",
+                    "changed": True,
+                    "legacy_synced": legacy_synced,
+                }
+
+            except Exception:
+                conn.rollback()
+                raise
+
+    def legacy_only_due(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> list[dict]:
+        """读取**没有任何新表记录指向**的旧表待发提醒。
+
+        这些行只可能来自按人投递上线之前（旧的 create_reminder 已经
+        废弃）。直接不管等于把用户当时设好的提醒吞掉，所以保留一条
+        兼容投递路径。
+
+        与 `due_ntfy()` **互斥**：只要新表里有一条记录指向它，
+        它就不会出现在这里 —— 两条路径不会重复推送同一条提醒。
+
+        历史行的时间戳是本地时区（旧代码用 astimezone 写入），
+        所以这里解析后比较，而不是做字符串比较。
+        """
+
+        current = _check_time(now)
+
+        def as_utc(value):
+            try:
+                moment = datetime.fromisoformat(value)
+
+            except (TypeError, ValueError):
+                return None
+
+            if moment.tzinfo is None:
+                moment = moment.replace(tzinfo=timezone.utc)
+
+            return moment.astimezone(timezone.utc)
+
+        self.init_db()
+
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, message, remind_at
+                FROM reminders
+                WHERE status = 'pending'
+                  AND id NOT IN (
+                      SELECT legacy_reminder_id
+                      FROM reminder_requests
+                      WHERE legacy_reminder_id IS NOT NULL
+                  )
+                ORDER BY id
+                LIMIT 100
+                """
+            ).fetchall()
+
+        due = []
+
+        for row in rows:
+            moment = as_utc(row["remind_at"])
+
+            if moment is not None and moment <= current:
+                due.append(dict(row))
+
+        return due
+
+    def mark_legacy_sent(
+        self,
+        *,
+        legacy_reminder_id: int,
+    ) -> bool:
+        """把一条历史旧表提醒标记为已送出。"""
+
+        if (
+            type(legacy_reminder_id) is not int
+            or legacy_reminder_id <= 0
+        ):
+            raise ValueError("无效的提醒 ID")
+
+        self.init_db()
+
+        with closing(self._connect()) as conn, conn:
+            cursor = conn.execute(
+                """
+                UPDATE reminders
+                SET status = 'sent'
+                WHERE id = ? AND status = 'pending'
+                """,
+                (legacy_reminder_id,),
+            )
+
+        return cursor.rowcount == 1
+
+    # ----------------------------------------------------------------
     # 查询、取消、修改、确认送达
     # ----------------------------------------------------------------
 
