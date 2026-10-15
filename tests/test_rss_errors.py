@@ -204,6 +204,26 @@ class FakeResponse:
         self.closed = True
 
 
+class FakeSession:
+    """requests.Session 的最小替身：记录请求并返回预置响应。"""
+
+    def __init__(self, response=None):
+        self._response = response
+        self.calls = []
+        self.closed = False
+
+    def get(self, url, **kwargs):
+        self.calls.append(url)
+
+        if isinstance(self._response, Exception):
+            raise self._response
+
+        return self._response
+
+    def close(self):
+        self.closed = True
+
+
 class TestFetchRssPolicy(unittest.TestCase):
     """抓取路径上的 SSRF 防护。
 
@@ -212,26 +232,19 @@ class TestFetchRssPolicy(unittest.TestCase):
     """
 
     def test_plain_http_is_rejected_before_request(self):
-        calls = []
-
-        def fake_get(url, **kwargs):
-            calls.append(url)
-
         with patch(
-            "src.monitors.rss.requests.get",
-            side_effect=fake_get,
-        ):
+            "src.monitors.rss._pinned_session",
+        ) as session_factory:
             with self.assertRaises(UrlPolicyError):
                 fetch_rss(
                     "http://blog.python.org/rss.xml",
                     resolver=public_resolver,
                 )
 
-        self.assertEqual(calls, [])
+        # 策略在建立任何连接之前就拒绝了
+        session_factory.assert_not_called()
 
     def test_redirect_to_internal_address_is_blocked(self):
-        calls = []
-
         response = FakeResponse(
             status_code=302,
             headers={
@@ -239,23 +252,34 @@ class TestFetchRssPolicy(unittest.TestCase):
             },
         )
 
-        def fake_get(url, **kwargs):
-            calls.append(url)
-            return response
+        session = FakeSession(response)
 
         with patch(
-            "src.monitors.rss.requests.get",
-            side_effect=fake_get,
-        ):
+            "src.monitors.rss._pinned_session",
+            return_value=session,
+        ) as session_factory:
             with self.assertRaises(UrlPolicyError):
                 fetch_rss(
                     RSS_URL,
                     resolver=public_resolver,
                 )
 
-        # 只请求了起点；内网那一跳被拦在请求之前
-        self.assertEqual(calls, [RSS_URL])
+        # 只请求了起点；内网那一跳在建立连接之前就被拦下
+        self.assertEqual(session.calls, [RSS_URL])
         self.assertTrue(response.closed)
+        self.assertTrue(session.closed)
+
+        # 只为一跳建立会话，且连接被固定到"已验证的地址"
+        self.assertEqual(session_factory.call_count, 1)
+
+        self.assertEqual(
+            session_factory.call_args.kwargs,
+            {
+                "host": "blog.python.org",
+                "connect_host": "1.1.1.1",
+                "port": 443,
+            },
+        )
 
     def test_redirect_to_metadata_service_is_blocked(self):
         response = FakeResponse(
@@ -269,8 +293,8 @@ class TestFetchRssPolicy(unittest.TestCase):
         )
 
         with patch(
-            "src.monitors.rss.requests.get",
-            return_value=response,
+            "src.monitors.rss._pinned_session",
+            return_value=FakeSession(response),
         ):
             with self.assertRaises(UrlPolicyError):
                 fetch_rss(
@@ -285,8 +309,8 @@ class TestFetchRssPolicy(unittest.TestCase):
         )
 
         with patch(
-            "src.monitors.rss.requests.get",
-            return_value=response,
+            "src.monitors.rss._pinned_session",
+            return_value=FakeSession(response),
         ):
             with self.assertRaises(UrlPolicyError):
                 fetch_rss(
@@ -298,8 +322,8 @@ class TestFetchRssPolicy(unittest.TestCase):
         response = FakeResponse(status_code=302)
 
         with patch(
-            "src.monitors.rss.requests.get",
-            return_value=response,
+            "src.monitors.rss._pinned_session",
+            return_value=FakeSession(response),
         ):
             with self.assertRaises(ValueError):
                 fetch_rss(
@@ -314,8 +338,8 @@ class TestFetchRssPolicy(unittest.TestCase):
 
         with (
             patch(
-                "src.monitors.rss.requests.get",
-                return_value=response,
+                "src.monitors.rss._pinned_session",
+                return_value=FakeSession(response),
             ),
             patch(
                 "src.monitors.rss.MAX_RESPONSE_BYTES",
@@ -335,8 +359,8 @@ class TestFetchRssPolicy(unittest.TestCase):
         )
 
         with patch(
-            "src.monitors.rss.requests.get",
-            return_value=response,
+            "src.monitors.rss._pinned_session",
+            return_value=FakeSession(response),
         ):
             with self.assertRaises(UrlPolicyError):
                 fetch_rss(
@@ -348,8 +372,8 @@ class TestFetchRssPolicy(unittest.TestCase):
         response = FakeResponse(status_code=429)
 
         with patch(
-            "src.monitors.rss.requests.get",
-            return_value=response,
+            "src.monitors.rss._pinned_session",
+            return_value=FakeSession(response),
         ):
             with self.assertRaises(
                 requests.HTTPError

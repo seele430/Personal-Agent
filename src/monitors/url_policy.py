@@ -16,6 +16,7 @@ IP 直接用于连接、用 Host 头承载域名。当前实现选择"解析校�
 """
 
 import ipaddress
+import os
 import socket
 
 from urllib.parse import urlsplit
@@ -204,3 +205,80 @@ def check_fetch_url(url: str, *, resolver=None) -> str:
         resolve_public_addresses(host, resolver=resolver)
 
     return host
+
+
+# 可选的域名白名单环境变量：
+# 不设置 = 除 URL 策略外不做额外限制；
+# 设置 = 只允许列表内的主机（逗号分隔）。
+ALLOWED_HOSTS_ENV = "RSS_ALLOWED_HOSTS"
+
+
+def configured_allowed_hosts() -> frozenset[str]:
+    """读取可选域名白名单。默认为空集（不做额外限制）。"""
+
+    raw = os.getenv(ALLOWED_HOSTS_ENV, "")
+
+    return frozenset(
+        item.strip().lower().rstrip(".")
+        for item in raw.split(",")
+        if item.strip()
+    )
+
+
+def check_host_allowed(
+    url: str,
+    *,
+    allowed: frozenset[str] | None = None,
+) -> str:
+    """结构校验 + 可选域名白名单（不做 DNS）。
+
+    调度器用它决定"这条任务的数据源是否获准执行"，
+    与接口层共用同一份策略，避免两处判断漂移。
+    """
+
+    host = check_url_shape(url)
+
+    allow = (
+        configured_allowed_hosts()
+        if allowed is None
+        else allowed
+    )
+
+    if allow and host not in allow:
+        raise UrlPolicyError(
+            f"该域名未在允许列表内：{host}"
+        )
+
+    return host
+
+
+def resolve_for_fetch(
+    url: str,
+    *,
+    resolver=None,
+) -> tuple[str, list[str]]:
+    """抓取前校验，并返回 (主机名, 已验证地址列表)。
+
+    返回值直接用于"连接固定到已验证 IP"，
+    从而消除"校验完再解析一次"的 TOCTOU 窗口。
+    """
+
+    host = check_url_shape(url)
+
+    try:
+        literal = ipaddress.ip_address(host)
+
+    except ValueError:
+        addresses = resolve_public_addresses(
+            host, resolver=resolver
+        )
+
+        return host, addresses
+
+    # 字面量 IP 已经在 check_url_shape 里判过公网。
+    if not is_public_address(str(literal)):
+        raise UrlPolicyError(
+            "不允许访问非公网地址（内网 / 环回 / 链路本地）"
+        )
+
+    return host, [str(literal)]

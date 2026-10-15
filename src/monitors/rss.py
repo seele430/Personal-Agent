@@ -14,14 +14,16 @@
 （继承 ValueError），属于"不该重试"的配置类错误。
 """
 
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import feedparser
 import requests
 
+from requests.adapters import HTTPAdapter
+
 from src.monitors.url_policy import (
     UrlPolicyError,
-    check_fetch_url,
+    resolve_for_fetch,
 )
 
 
@@ -35,6 +37,61 @@ USER_AGENT = "PersonalAgent/0.1"
 REDIRECT_STATUSES = frozenset({
     301, 302, 303, 307, 308,
 })
+
+
+class _PinnedAdapter(HTTPAdapter):
+    """把连接固定到已验证的 IP，但用原域名做 SNI 与证书校验。
+
+    这是消除 TOCTOU 的关键一步：策略校验返回的地址**直接用于连接**，
+    所以"校验通过之后 DNS 再被改掉"影响不了这次请求。
+    `Host` 头与 SNI / 证书校验仍然使用原域名，因此虚拟主机与 TLS
+    的行为与直连完全一致。
+    """
+
+    def __init__(
+        self,
+        *,
+        connect_host: str,
+        server_hostname: str,
+        port: int,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+
+        self._connect_host = connect_host
+        self._server_hostname = server_hostname
+        self._port = port
+
+    def get_connection(self, url, proxies=None):
+        return self.poolmanager.connection_from_host(
+            host=self._connect_host,
+            port=self._port,
+            scheme="https",
+            pool_kwargs={
+                "server_hostname": self._server_hostname,
+                "assert_hostname": self._server_hostname,
+            },
+        )
+
+
+def _pinned_session(
+    *,
+    host: str,
+    connect_host: str,
+    port: int,
+) -> requests.Session:
+    session = requests.Session()
+
+    session.mount(
+        "https://",
+        _PinnedAdapter(
+            connect_host=connect_host,
+            server_hostname=host,
+            port=port,
+        ),
+    )
+
+    return session
 
 
 def _declared_length(response) -> int | None:
@@ -127,20 +184,34 @@ def fetch_rss(
 
     for _ in range(MAX_REDIRECTS + 1):
 
-        # 每一跳都重新校验：重定向目标同样要做 SSRF 检查。
-        check_fetch_url(current, resolver=resolver)
-
-        response = requests.get(
-            current,
-            timeout=REQUEST_TIMEOUT,
-            headers={
-                "User-Agent": USER_AGENT
-            },
-            allow_redirects=False,
-            stream=True,
+        # 每一跳都重新校验，并拿到**已验证的地址**用于连接。
+        host, addresses = resolve_for_fetch(
+            current, resolver=resolver
         )
 
+        port = urlsplit(current).port or 443
+
+        session = _pinned_session(
+            host=host,
+            connect_host=addresses[0],
+            port=port,
+        )
+
+        response = None
+
         try:
+            response = session.get(
+                current,
+                timeout=REQUEST_TIMEOUT,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    # 连接固定到 IP，Host 头必须仍是原域名
+                    "Host": host,
+                },
+                allow_redirects=False,
+                stream=True,
+            )
+
             if (
                 response.is_redirect
                 or response.status_code
@@ -163,7 +234,10 @@ def fetch_rss(
             content = _read_limited(response)
 
         finally:
-            response.close()
+            if response is not None:
+                response.close()
+
+            session.close()
 
         return _parse_articles(content)
 
