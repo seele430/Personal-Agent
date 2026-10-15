@@ -4,10 +4,15 @@
 调度器对所有人一视同仁地跑到期任务（谁离线也不影响），
 但每个账号只能看到、暂停、恢复、归档**自己的**任务。
 
-为什么创建只开放给站长：现在只有一个全局 `NTFY_TOPIC`，
-通知实际只会发到站长的手机。开放给别人创建，会让他们以为
-"我建的监控会通知我"，而那是不成立的。等按人投递落地后，
-把 `MONITOR_CREATE_ROLES` 放宽即可 —— 归属字段早就写好了。
+创建权限的演变：**按人投递落地之前**，创建只开放给站长 ——
+因为那时只有一个全局 `NTFY_TOPIC`，开放给别人创建会让他们以为
+"我建的监控会通知我"，而事实并非如此。按人投递（站长 → ntfy，
+其他角色 → 站内收件箱）落地之后，这个前提消失了，于是创建放宽到
+**站长 + 管理员**，让"非站长也能收到自己的监控结果"这条路真正可达。
+
+普通成员（member）仍然不能创建：每个任务都是一次计划内的对外抓取，
+开放给全体成员等于把服务器当抓取代理用。要不要再放宽是产品决策，
+届时 `MONITOR_CREATE_ROLES` 仍然是一行的事。
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -24,8 +29,10 @@ from src.monitors.url_policy import UrlPolicyError
 
 router = APIRouter(tags=["监控任务"])
 
-# 谁能创建：见模块开头。
-MONITOR_CREATE_ROLES = frozenset({"owner"})
+# 谁能创建：见模块开头（按人投递落地后放宽到 owner + admin）。
+# 与 MANAGE 目前相同，但**故意分成两个常量**：以后要单独收紧
+# 或放宽其中一项时，改一处即可，不必动权限校验的调用点。
+MONITOR_CREATE_ROLES = frozenset({"owner", "admin"})
 
 # 谁能查看 / 暂停 / 恢复 / 归档（各自只看自己的）。
 MONITOR_MANAGE_ROLES = frozenset({"owner", "admin"})
@@ -91,7 +98,7 @@ def create_monitor(
     if user.get("role") not in MONITOR_CREATE_ROLES:
         raise HTTPException(
             status_code=403,
-            detail="当前只有站长可以创建监控任务",
+            detail="当前只有站长与管理员可以创建监控任务",
         )
 
     if not (
@@ -175,6 +182,41 @@ def resume_monitor(
         raise _not_found() from None
 
     return {"id": task_id, "status": "active"}
+
+
+@router.post("/monitors/{task_id}/check")
+def check_monitor_now(
+    task_id: str,
+    response: Response,
+    user: dict = Depends(get_current_user),
+):
+    """请求立即检查一次（排队，不绕过频率限制）。"""
+
+    response.headers["Cache-Control"] = "no-store"
+
+    _require_manage_role(user)
+
+    try:
+        queued = monitor_registry.request_monitor_check(
+            user["id"], task_id
+        )
+
+    except monitor_registry.MonitorNotActive as error:
+        raise HTTPException(
+            status_code=409,
+            detail=str(error),
+        ) from None
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from None
+
+    if queued is None:
+        raise _not_found() from None
+
+    return queued
 
 
 @router.delete("/monitors/{task_id}")

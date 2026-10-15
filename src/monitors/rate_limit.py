@@ -174,10 +174,21 @@ def retry_at(
     now: datetime | None = None,
     interval_seconds: int = MIN_HOST_INTERVAL_SECONDS,
 ) -> str:
-    """被限流时建议的下次执行时间（ISO 字符串）。"""
+    """该主机下一次**允许**被抓取的时间（ISO 字符串）。
+
+    从没抓过 → 就是现在；刚抓过 → 上次抓取时间 + 间隔。
+
+    注意这里必须读 host 的真实状态。早先的实现直接返回
+    "现在 + 间隔"，与 host 无关 —— 那样"立即检查"会告诉用户
+    "要等 5 分钟"，而实际上这个主机可能从没抓过。
+    """
 
     current = utc_time(now)
+    last = current_host_state(host)
 
-    return (
-        current + timedelta(seconds=interval_seconds)
-    ).isoformat()
+    if last is None:
+        return current.isoformat()
+
+    allowed = last + timedelta(seconds=interval_seconds)
+
+    return max(current, allowed).isoformat()

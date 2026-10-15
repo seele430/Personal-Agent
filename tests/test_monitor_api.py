@@ -4,8 +4,11 @@
 不联网、不调用模型、不发送通知。
 """
 
+import sqlite3
 import unittest
 
+from contextlib import closing
+from datetime import datetime, timedelta, timezone
 from tempfile import TemporaryDirectory
 
 from fastapi import FastAPI, HTTPException, Request
@@ -13,7 +16,9 @@ from fastapi.testclient import TestClient
 
 from tests.helper import isolate_paths
 from src.auth_api import get_current_user
+from src.config import paths
 from src.core import monitor_registry
+from src.monitors import rate_limit
 from src.monitors_api import router
 
 
@@ -210,20 +215,35 @@ class TestMonitorAPI(unittest.TestCase):
         # 一个都不许落地
         self.assertEqual(self.list_ids(), [])
 
-    # 6. 管理员能看不能建
+    # 6. 管理员可以创建（按人投递落地后放宽）；普通成员仍然不行
 
-    def test_admin_cannot_create(self):
+    def test_admin_can_create(self):
         response = self.client.post(
             "/monitors",
             headers=self.headers("admin-token"),
             json={"source_url": RSS_URL},
         )
 
+        self.assertEqual(response.status_code, 201)
+
+        # 只落在自己名下：站长看不到管理员的任务
+        self.assertEqual(
+            self.list_ids("admin-token"),
+            [response.json()["id"]],
+        )
+        self.assertEqual(self.list_ids(), [])
+
+    def test_member_cannot_create(self):
+        response = self.client.post(
+            "/monitors",
+            headers=self.headers("member-token"),
+            json={"source_url": RSS_URL},
+        )
+
         self.assertEqual(response.status_code, 403)
 
-        self.assertEqual(
-            self.list_ids("admin-token"), []
-        )
+        # 一个都不许落地
+        self.assertEqual(self.list_ids("admin-token"), [])
 
     # 7. 暂停与恢复
 
@@ -303,6 +323,7 @@ class TestMonitorAPI(unittest.TestCase):
         for path, method in (
             ("/monitors/rss_missing/pause", "post"),
             ("/monitors/rss_missing/resume", "post"),
+            ("/monitors/rss_missing/check", "post"),
             ("/monitors/rss_missing", "delete"),
         ):
             with self.subTest(path=path):
@@ -316,6 +337,103 @@ class TestMonitorAPI(unittest.TestCase):
                 self.assertEqual(
                     response.status_code, 404
                 )
+
+    # 8. 立即检查（排队语义，不绕过频率限制）
+
+    def test_check_now_queues_task(self):
+        task_id = self.seed("owner_001")
+
+        response = self.client.post(
+            f"/monitors/{task_id}/check",
+            headers=self.headers(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        body = response.json()
+
+        self.assertEqual(body["id"], task_id)
+        self.assertEqual(body["status"], "queued")
+
+        # 这个主机从没抓过：现在就能跑，不该报等待
+        self.assertEqual(body["deferred_seconds"], 0)
+
+        # 下发后，调度时间确实被提前到了现在
+        listed = self.client.get(
+            "/monitors",
+            headers=self.headers(),
+        ).json()["monitors"][0]
+
+        next_run = datetime.fromisoformat(
+            listed["next_run_at"]
+        )
+
+        self.assertLessEqual(
+            next_run,
+            datetime.now(timezone.utc)
+            + timedelta(seconds=5),
+        )
+
+    def test_check_reports_rate_limit_wait(self):
+        task_id = self.seed("owner_001")
+
+        # 该主机刚刚被抓过 -> 必须如实告诉用户还要等多久，
+        # 而不是假装"马上就会跑"
+        rate_limit.init_rate_limit_db()
+
+        with closing(
+            sqlite3.connect(paths.tasks_db)
+        ) as conn, conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO feed_fetch_log
+                (host, last_started_at)
+                VALUES (?, ?)
+                """,
+                (
+                    "blog.python.org",
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+
+        body = self.client.post(
+            f"/monitors/{task_id}/check",
+            headers=self.headers(),
+        ).json()
+
+        self.assertGreater(body["deferred_seconds"], 250)
+        self.assertLessEqual(
+            body["deferred_seconds"],
+            rate_limit.MIN_HOST_INTERVAL_SECONDS,
+        )
+
+    def test_check_paused_task_conflicts(self):
+        task_id = self.seed("owner_001")
+
+        self.client.post(
+            f"/monitors/{task_id}/pause",
+            headers=self.headers(),
+        )
+
+        response = self.client.post(
+            f"/monitors/{task_id}/check",
+            headers=self.headers(),
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn(
+            "已暂停", response.json()["detail"]
+        )
+
+    def test_check_other_users_task_is_404(self):
+        task_id = self.seed("admin_001")
+
+        response = self.client.post(
+            f"/monitors/{task_id}/check",
+            headers=self.headers(),
+        )
+
+        self.assertEqual(response.status_code, 404)
 
 
 if __name__ == "__main__":

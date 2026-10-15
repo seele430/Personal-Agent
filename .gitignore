@@ -50,6 +50,9 @@ playwright/.cache/
 *.log
 logs/
 
+# Local run artifacts (service pids + logs written by scripts/run-dev.ps1)
+.run/
+
 # Temporary files
 *.tmp
 *.temp

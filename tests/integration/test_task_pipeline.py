@@ -205,6 +205,37 @@ class TestPipelineSemantics(PipelineTestCase):
         # 第二个任务的首次运行同样是基线，不通知
         self.assertEqual(self.outbox(), [])
 
+    def test_notification_label_is_declared_by_the_source(
+        self,
+    ):
+        init_task_db()
+
+        detect_new_items("m1", [{"id": "a"}])
+
+        detect_new_items(
+            "m1",
+            [
+                {
+                    "id": "b",
+                    "title": "B",
+                    "link": "https://example.com/b",
+                }
+            ],
+            label="RSS 更新",
+        )
+
+        rows = self.outbox()
+
+        self.assertEqual(len(rows), 1)
+
+        # 前缀来自数据源，正文是 标题 + 链接
+        self.assertTrue(
+            rows[0]["message"].startswith("RSS 更新：B")
+        )
+        self.assertIn(
+            "https://example.com/b", rows[0]["message"]
+        )
+
 
 class TestHttpTextSource(PipelineTestCase):
     """第二个数据源的语义：内容变了才通知，且只通知一次。"""
@@ -231,6 +262,13 @@ class TestHttpTextSource(PipelineTestCase):
         bodies.append(b"<html>hello world</html>")
         self.assertEqual(scan(), 1)
         self.assertEqual(len(self.outbox()), 1)
+
+        # 文案前缀由这个数据源自己声明（不是写死的 "RSS 更新"）
+        self.assertTrue(
+            self.outbox()[0]["message"].startswith(
+                "页面更新："
+            )
+        )
 
         # 内容没变（只是重新抓了一次）：不通知
         self.assertEqual(scan(), 0)
