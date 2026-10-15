@@ -31,7 +31,7 @@
     只起后端三件套。
 
 .PARAMETER Stop
-    停掉上一次启动的进程（读 .run/pids.txt）。窗口被强杀、进程成孤儿时用这个收尾。
+    停掉上一次启动的进程（读 .run/pids.txt）。窗口被强杀、进程留在后台没人管时用这个收尾。
 
 .EXAMPLE
     .\scripts\run-dev.ps1 -DataDir "$env:TEMP\pa-demo" -NoNtfy
