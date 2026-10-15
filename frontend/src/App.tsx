@@ -175,6 +175,7 @@ type MonitorTask = {
 
 type MonitorListResponse = {
   monitors?: unknown;
+  source_types?: unknown;
 };
 
 const MONITOR_STATUS_TEXT: Record<string, string> = {
@@ -182,11 +183,25 @@ const MONITOR_STATUS_TEXT: Record<string, string> = {
   paused: "已暂停",
 };
 
+// 数据源类型的中文名。后端会给出支持的列表，
+// 这里只负责把已知类型翻译得好看一点。
+const MONITOR_SOURCE_TEXT: Record<string, string> = {
+  rss: "RSS 订阅",
+  http_text: "网页内容变化",
+};
+
+function sourceTypeText(sourceType: string): string {
+  return MONITOR_SOURCE_TEXT[sourceType] ?? sourceType;
+}
+
 const MONITOR_MIN_INTERVAL = 15;
 
 async function readMonitors(
   response: Response
-): Promise<MonitorTask[]> {
+): Promise<{
+  monitors: MonitorTask[];
+  sourceTypes: string[];
+}> {
   const value: unknown = await response.json();
 
   if (!value || typeof value !== "object") {
@@ -195,9 +210,17 @@ async function readMonitors(
 
   const data = value as MonitorListResponse;
 
-  return Array.isArray(data.monitors)
-    ? (data.monitors as MonitorTask[])
-    : [];
+  return {
+    monitors: Array.isArray(data.monitors)
+      ? (data.monitors as MonitorTask[])
+      : [],
+    sourceTypes: Array.isArray(data.source_types)
+      ? (data.source_types as unknown[]).filter(
+          (item): item is string =>
+            typeof item === "string"
+        )
+      : [],
+  };
 }
 
 // 后端的 detail 已经是给人看的中文，直接展示，
@@ -367,6 +390,13 @@ export default function App(
   const [monitorUrl, setMonitorUrl] = useState("");
   const [monitorInterval, setMonitorInterval] =
     useState("30");
+
+  // 数据源类型：默认 RSS；后端返回支持列表后校正选择。
+  const [monitorSourceType, setMonitorSourceType] =
+    useState("rss");
+
+  const [monitorSourceTypes, setMonitorSourceTypes] =
+    useState<string[]>([]);
 
   const [reminders, setReminders] =
     useState<Reminder[]>([]);
@@ -1013,7 +1043,23 @@ export default function App(
       }
 
       setMonitorForbidden(false);
-      setMonitors(await readMonitors(response));
+
+      const data = await readMonitors(response);
+
+      setMonitors(data.monitors);
+
+      // 以后端声明的支持列表为准：当前选择不在列表里就回退到第一个，
+      // 避免界面停在一个引擎其实不支持的类型上。
+      if (data.sourceTypes.length > 0) {
+        setMonitorSourceTypes(data.sourceTypes);
+
+        setMonitorSourceType((current) =>
+          data.sourceTypes.includes(current)
+            ? current
+            : data.sourceTypes[0]
+        );
+      }
+
       setMonitorError("");
     } catch (cause) {
       setMonitorError(
@@ -1050,6 +1096,7 @@ export default function App(
         body: JSON.stringify({
           source_url: monitorUrl.trim(),
           interval_minutes: minutes,
+          source_type: monitorSourceType,
         }),
       });
 
@@ -1391,6 +1438,30 @@ export default function App(
                   }}
                 >
                   <label>
+                    数据源类型
+
+                    <select
+                      aria-label="数据源类型"
+                      value={monitorSourceType}
+                      onChange={(event) =>
+                        setMonitorSourceType(
+                          event.target.value
+                        )
+                      }
+                    >
+                      {(
+                        monitorSourceTypes.length > 0
+                          ? monitorSourceTypes
+                          : ["rss"]
+                      ).map((item) => (
+                        <option key={item} value={item}>
+                          {sourceTypeText(item)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
                     订阅地址
 
                     <input
@@ -1455,6 +1526,8 @@ export default function App(
                           </strong>
 
                           <span className="reminder-time">
+                            {sourceTypeText(task.task_type)}
+                            {" · "}
                             每 {task.interval_minutes} 分钟
                             {" · "}
                             {MONITOR_STATUS_TEXT[

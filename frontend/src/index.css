@@ -705,6 +705,16 @@ textarea {
   min-width: 92px;
 }
 
+.monitor-form select {
+  border: 1px solid #dfe3e8;
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-size: 12px;
+  min-width: 150px;
+  background: #fff;
+  color: #252b35;
+}
+
 .monitor-form button {
   border: 1px solid #293344;
   background: #293344;

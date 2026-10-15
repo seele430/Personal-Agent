@@ -135,6 +135,13 @@ test.describe("Personal Agent Monitors", () => {
 
     await expect(page.getByText("运行中")).toBeVisible();
     await expect(page.getByText("已暂停")).toBeVisible();
+
+    // 每行标出数据源类型。
+    // 注意：下拉框里也有同样的字，且 <option> 永远"不可见"，
+    // 所以必须限定在列表行内断言。
+    await expect(
+      page.locator(".monitor-row").first(),
+    ).toContainText("RSS 订阅");
     await expect(page.getByText("HTTP 503")).toBeVisible();
 
     // 运行中显示"暂停"，已暂停显示"恢复"
@@ -215,6 +222,7 @@ test.describe("Personal Agent Monitors", () => {
     expect(created).toEqual({
       source_url: "https://example.com/feed.xml",
       interval_minutes: 60,
+      source_type: "rss",
     });
 
     await expect(
@@ -392,6 +400,63 @@ test.describe("Personal Agent Monitors", () => {
     await openTaskCenter(page);
 
     await expect.poll(() => calls.length).toBeGreaterThan(0);
+
+    expectNoUnmockedApi(unexpected);
+  });
+
+  // 7. 选择第二种数据源类型
+
+  test("可以选择第二种数据源类型", async ({ page }) => {
+    const unexpected = await setupPage(page);
+
+    let created: unknown = null;
+
+    await page.route(MONITORS_API, async (route) => {
+      const request = route.request();
+
+      if (request.method() === "POST") {
+        created = request.postDataJSON();
+
+        await route.fulfill({
+          status: 201,
+          contentType: "application/json",
+          body: JSON.stringify({ id: "http_text_new" }),
+        });
+
+        return;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          monitors: [],
+          source_types: ["rss", "http_text"],
+        }),
+      });
+    });
+
+    await login(page);
+    await openTaskCenter(page);
+
+    // 下拉选项由后端声明的支持列表决定
+    await page
+      .getByLabel("数据源类型")
+      .selectOption("http_text");
+
+    await page
+      .getByRole("textbox", { name: "订阅地址" })
+      .fill("https://example.com/page");
+
+    await page
+      .getByRole("button", { name: "创建监控任务" })
+      .click();
+
+    await expect.poll(() => created).toEqual({
+      source_url: "https://example.com/page",
+      interval_minutes: 30,
+      source_type: "http_text",
+    });
 
     expectNoUnmockedApi(unexpected);
   });
