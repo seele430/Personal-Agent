@@ -50,9 +50,9 @@ class TestDispatcherHistory(unittest.TestCase):
 
         with patch.object(
             monitor_dispatcher,
-            "run_rss_monitor",
+            "run_source",
             return_value=2
-        ) as mock_rss:
+        ) as mock_source:
 
             count = (
                 monitor_dispatcher.run_due_monitor_tasks()
@@ -60,9 +60,11 @@ class TestDispatcherHistory(unittest.TestCase):
 
         self.assertEqual(count, 1)
 
-        mock_rss.assert_called_once_with(
+        # 调度器按 task_type 分发数据源，不再硬编码 RSS
+        mock_source.assert_called_once_with(
+            source_type="rss",
             monitor_id=self.task_id,
-            feed_url=RSS_URL
+            source_url=RSS_URL
         )
 
         records = task_run_history.list_task_runs(
@@ -88,7 +90,7 @@ class TestDispatcherHistory(unittest.TestCase):
 
         with patch.object(
             monitor_dispatcher,
-            "run_rss_monitor",
+            "run_source",
             side_effect=TimeoutError(
                 "Simulated RSS timeout"
             )

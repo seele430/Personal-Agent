@@ -65,6 +65,27 @@ export async function installReminderMocks(page: Page): Promise<void> {
   );
 }
 
+export const INBOX_API = "**/api/inbox";
+
+/**
+ * 收件箱的默认 mock：空列表。
+ *
+ * 任务中心打开时会取一次自己的收件箱（任何角色都能取），
+ * 所以与提醒同理需要全局兜底。注意这个 pattern 不会命中
+ * `/api/inbox/{kind}/{id}/ack`，确认接口由用例自己 mock。
+ */
+export async function installInboxMocks(
+  page: Page,
+): Promise<void> {
+  await page.route(INBOX_API, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [] }),
+    }),
+  );
+}
+
 export async function blockUnmockedApi(page: Page): Promise<string[]> {
   const unexpected: string[] = [];
 
@@ -114,6 +135,10 @@ export async function installAuthMocks(
 
   // 已登录就一定会轮询站内提醒，这里一并兜底。
   await installReminderMocks(page);
+
+  // 任务中心打开时会取收件箱；没打开的用例不会命中，
+  // 但兜底放着可以让所有用例共用同一套 setup。
+  await installInboxMocks(page);
 }
 
 export function expectNoUnmockedApi(unexpected: string[]): void {

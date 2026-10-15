@@ -159,6 +159,123 @@ async function readReminders(
   };
 }
 
+type MonitorTask = {
+  id: string;
+  owner_id: string;
+  task_type: string;
+  source_url: string;
+  interval_minutes: number;
+  status: "active" | "paused";
+  last_checked_at: string | null;
+  next_run_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  archived_at: string | null;
+};
+
+type MonitorListResponse = {
+  monitors?: unknown;
+  source_types?: unknown;
+};
+
+// 收件箱条目：非站长用户的结果与到点提醒都汇总到这里。
+// kind 决定确认时打到哪个来源。
+type InboxItem = {
+  kind: "monitor" | "reminder";
+  id: number;
+  message: string;
+  created_at: string;
+};
+
+type InboxResponse = {
+  items?: unknown;
+};
+
+async function readInbox(
+  response: Response
+): Promise<InboxItem[]> {
+  const value: unknown = await response.json();
+
+  if (!value || typeof value !== "object") {
+    throw new Error("服务器返回格式不正确");
+  }
+
+  const data = value as InboxResponse;
+
+  return Array.isArray(data.items)
+    ? (data.items as InboxItem[])
+    : [];
+}
+
+const MONITOR_STATUS_TEXT: Record<string, string> = {
+  active: "运行中",
+  paused: "已暂停",
+};
+
+// 数据源类型的中文名。后端会给出支持的列表，
+// 这里只负责把已知类型翻译得好看一点。
+const MONITOR_SOURCE_TEXT: Record<string, string> = {
+  rss: "RSS 订阅",
+  http_text: "网页内容变化",
+};
+
+function sourceTypeText(sourceType: string): string {
+  return MONITOR_SOURCE_TEXT[sourceType] ?? sourceType;
+}
+
+const MONITOR_MIN_INTERVAL = 15;
+
+async function readMonitors(
+  response: Response
+): Promise<{
+  monitors: MonitorTask[];
+  sourceTypes: string[];
+}> {
+  const value: unknown = await response.json();
+
+  if (!value || typeof value !== "object") {
+    throw new Error("服务器返回格式不正确");
+  }
+
+  const data = value as MonitorListResponse;
+
+  return {
+    monitors: Array.isArray(data.monitors)
+      ? (data.monitors as MonitorTask[])
+      : [],
+    sourceTypes: Array.isArray(data.source_types)
+      ? (data.source_types as unknown[]).filter(
+          (item): item is string =>
+            typeof item === "string"
+        )
+      : [],
+  };
+}
+
+// 后端的 detail 已经是给人看的中文，直接展示，
+// 前端不再自己造一套文案（否则两处措辞会漂移）。
+async function readDetail(
+  response: Response,
+  fallback: string
+): Promise<string> {
+  try {
+    const value: unknown = await response.json();
+
+    if (
+      value &&
+      typeof value === "object" &&
+      typeof (value as { detail?: unknown }).detail ===
+        "string"
+    ) {
+      return (value as { detail: string }).detail;
+    }
+  } catch {
+    // 解析失败就用兜底文案
+  }
+
+  return fallback;
+}
+
 const CHAT_KEY = "personal-agent-dev-chat";
 const DRAFT_KEY = "personal-agent-dev-draft";
 
@@ -275,7 +392,9 @@ export default function App(
     useState<string | null>(null);
 
   const [view, setView] =
-    useState<"chat" | "reminders" | "quota">("chat");
+    useState<"chat" | "reminders" | "quota" | "monitors">(
+      "chat"
+    );
 
   const [quota, setQuota] = useState<QuotaReport | null>(
     null
@@ -283,6 +402,41 @@ export default function App(
 
   const [quotaError, setQuotaError] = useState("");
   const [quotaLoading, setQuotaLoading] = useState(false);
+
+  const [monitors, setMonitors] = useState<MonitorTask[]>(
+    []
+  );
+
+  const [monitorError, setMonitorError] = useState("");
+  const [monitorNotice, setMonitorNotice] = useState("");
+  const [monitorForbidden, setMonitorForbidden] =
+    useState(false);
+
+  const [monitorBusy, setMonitorBusy] = useState<
+    string | null
+  >(null);
+
+  const [monitorUrl, setMonitorUrl] = useState("");
+  const [monitorInterval, setMonitorInterval] =
+    useState("30");
+
+  // 数据源类型：默认 RSS；后端返回支持列表后校正选择。
+  const [monitorSourceType, setMonitorSourceType] =
+    useState("rss");
+
+  const [monitorSourceTypes, setMonitorSourceTypes] =
+    useState<string[]>([]);
+
+  const [notifications, setNotifications] = useState<
+    InboxItem[]
+  >([]);
+
+  const [notificationError, setNotificationError] =
+    useState("");
+
+  const [notificationBusy, setNotificationBusy] = useState<
+    number | null
+  >(null);
 
   const [reminders, setReminders] =
     useState<Reminder[]>([]);
@@ -899,6 +1053,256 @@ export default function App(
     }
   }
 
+  // ========================================
+  // 收件箱（任何角色都能看自己的）
+  // ========================================
+
+  async function loadNotifications() {
+    if (!authToken) return;
+
+    try {
+      const response = await fetch("/api/inbox", {
+        headers: authHeaders(),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          await readDetail(
+            response,
+            `读取收件箱失败（${response.status}）`
+          )
+        );
+      }
+
+      setNotifications(await readInbox(response));
+      setNotificationError("");
+    } catch (cause) {
+      setNotificationError(
+        cause instanceof Error
+          ? cause.message
+          : "读取收件箱失败"
+      );
+    }
+  }
+
+  async function acknowledgeNotification(
+    kind: InboxItem["kind"],
+    notificationId: number
+  ) {
+    setNotificationBusy(notificationId);
+
+    try {
+      const response = await fetch(
+        `/api/inbox/${kind}/${notificationId}/ack`,
+        {
+          method: "POST",
+          headers: authHeaders(),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          await readDetail(
+            response,
+            `确认失败（${response.status}）`
+          )
+        );
+      }
+
+      await loadNotifications();
+    } catch (cause) {
+      setNotificationError(
+        cause instanceof Error
+          ? cause.message
+          : "确认失败"
+      );
+    } finally {
+      setNotificationBusy(null);
+    }
+  }
+
+  // ========================================
+  // 监控任务（任务中心）
+  // ========================================
+
+  async function loadMonitors() {
+    if (!authToken) return;
+
+    try {
+      const response = await fetch("/api/monitors", {
+        headers: authHeaders(),
+      });
+
+      // 普通用户没有管理权限：这不是错误，是权限边界。
+      if (response.status === 403) {
+        setMonitorForbidden(true);
+        setMonitors([]);
+        setMonitorError("");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          await readDetail(
+            response,
+            `读取监控任务失败（${response.status}）`
+          )
+        );
+      }
+
+      setMonitorForbidden(false);
+
+      const data = await readMonitors(response);
+
+      setMonitors(data.monitors);
+
+      // 以后端声明的支持列表为准：当前选择不在列表里就回退到第一个，
+      // 避免界面停在一个引擎其实不支持的类型上。
+      if (data.sourceTypes.length > 0) {
+        setMonitorSourceTypes(data.sourceTypes);
+
+        setMonitorSourceType((current) =>
+          data.sourceTypes.includes(current)
+            ? current
+            : data.sourceTypes[0]
+        );
+      }
+
+      setMonitorError("");
+    } catch (cause) {
+      setMonitorError(
+        cause instanceof Error
+          ? cause.message
+          : "读取监控任务失败"
+      );
+    }
+  }
+
+  async function createMonitor() {
+    const minutes = Number(monitorInterval);
+
+    if (
+      !Number.isInteger(minutes) ||
+      minutes < MONITOR_MIN_INTERVAL
+    ) {
+      setMonitorNotice("");
+      setMonitorError(
+        `检查间隔必须是 ${MONITOR_MIN_INTERVAL} 分钟以上的整数`
+      );
+      return;
+    }
+
+    setMonitorBusy("create");
+
+    try {
+      const response = await fetch("/api/monitors", {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          source_url: monitorUrl.trim(),
+          interval_minutes: minutes,
+          source_type: monitorSourceType,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          await readDetail(
+            response,
+            `创建失败（${response.status}）`
+          )
+        );
+      }
+
+      setMonitorUrl("");
+      setMonitorNotice(
+        "监控任务已创建，稍后会开始首次抓取。"
+      );
+      setMonitorError("");
+
+      await loadMonitors();
+    } catch (cause) {
+      setMonitorNotice("");
+      setMonitorError(
+        cause instanceof Error ? cause.message : "创建失败"
+      );
+    } finally {
+      setMonitorBusy(null);
+    }
+  }
+
+  async function changeMonitorState(
+    taskId: string,
+    action: "pause" | "resume"
+  ) {
+    setMonitorBusy(taskId);
+
+    try {
+      const response = await fetch(
+        `/api/monitors/${encodeURIComponent(
+          taskId
+        )}/${action}`,
+        {
+          method: "POST",
+          headers: authHeaders(),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          await readDetail(
+            response,
+            `操作失败（${response.status}）`
+          )
+        );
+      }
+
+      await loadMonitors();
+    } catch (cause) {
+      setMonitorError(
+        cause instanceof Error ? cause.message : "操作失败"
+      );
+    } finally {
+      setMonitorBusy(null);
+    }
+  }
+
+  async function archiveMonitor(taskId: string) {
+    setMonitorBusy(taskId);
+
+    try {
+      const response = await fetch(
+        `/api/monitors/${encodeURIComponent(taskId)}`,
+        {
+          method: "DELETE",
+          headers: authHeaders(),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          await readDetail(
+            response,
+            `归档失败（${response.status}）`
+          )
+        );
+      }
+
+      setMonitorNotice("监控任务已归档。");
+
+      await loadMonitors();
+    } catch (cause) {
+      setMonitorError(
+        cause instanceof Error ? cause.message : "归档失败"
+      );
+    } finally {
+      setMonitorBusy(null);
+    }
+  }
+
   // 打开页面取一次到期提醒，之后定时轮询。
   useEffect(() => {
     if (!authToken) return;
@@ -920,6 +1324,13 @@ export default function App(
 
     if (view === "quota") {
       void loadQuota();
+    }
+
+    // 监控任务同样按需读取：没打开就不发请求。
+    // 站内通知也在这里取 —— 它不属于监控权限，任何角色都能看自己的。
+    if (view === "monitors") {
+      void loadNotifications();
+      void loadMonitors();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authToken, view]);
@@ -991,11 +1402,18 @@ export default function App(
             <span>额度</span>
           </button>
 
-          <div className="nav-item disabled">
+          <button
+            type="button"
+            className={`nav-item ${
+              view === "monitors" ? "selected" : ""
+            }`}
+            onClick={() => setView("monitors")}
+            aria-pressed={view === "monitors"}
+            aria-label="任务中心"
+          >
             <span className="nav-symbol">☷</span>
             <span>任务中心</span>
-            <small>即将推出</small>
-          </div>
+          </button>
         </div>
 
         <div className="sidebar-section">
@@ -1069,7 +1487,309 @@ export default function App(
           </section>
         )}
 
-        {view === "quota" ? (
+        {view === "monitors" ? (
+          <section
+            className="monitor-panel"
+            aria-label="监控任务"
+          >
+            <div className="reminder-head">
+              <div>
+                <h2>任务中心</h2>
+
+                <p className="reminder-hint">
+                  只支持公网 HTTPS 订阅源；同一台主机
+                  5 分钟内最多抓取一次。
+                  当前只有站长可以创建，通知发往站长的
+                  ntfy。
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void loadMonitors()}
+                aria-label="刷新监控任务"
+              >
+                刷新
+              </button>
+            </div>
+
+            {notificationError && (
+              <div
+                className="error-box"
+                data-testid="notification-error"
+              >
+                {notificationError}
+              </div>
+            )}
+
+            {notifications.length > 0 && (
+              <section
+                className="notice-panel"
+                aria-label="收件箱"
+              >
+                <h3>
+                  收件箱（{notifications.length}）
+                </h3>
+
+                <ul className="monitor-list">
+                  {notifications.map((item) => (
+                    <li
+                      className="monitor-row"
+                      key={`${item.kind}-${item.id}`}
+                    >
+                      <div className="reminder-main">
+                        <strong className="notice-message">
+                          {item.message}
+                        </strong>
+
+                        <span className="reminder-time">
+                          {item.kind === "reminder"
+                            ? "提醒"
+                            : "监控"}{" "}
+                          ·{" "}
+                          {formatRemindAt(
+                            item.created_at
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="reminder-actions">
+                        <button
+                          type="button"
+                          disabled={
+                            notificationBusy === item.id
+                          }
+                          aria-label={`知道了 ${item.kind} ${item.id}`}
+                          onClick={() =>
+                            void acknowledgeNotification(
+                              item.kind,
+                              item.id
+                            )
+                          }
+                        >
+                          知道了
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {monitorError && (
+              <div
+                className="error-box"
+                data-testid="monitor-error"
+              >
+                {monitorError}
+              </div>
+            )}
+
+            {monitorNotice && (
+              <div
+                className="notice-box"
+                data-testid="monitor-notice"
+              >
+                {monitorNotice}
+              </div>
+            )}
+
+            {monitorForbidden ? (
+              <p
+                className="reminder-empty"
+                data-testid="monitor-forbidden"
+              >
+                没有管理监控任务的权限（需要管理员或站长身份）。
+              </p>
+            ) : (
+              <>
+                <form
+                  className="monitor-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void createMonitor();
+                  }}
+                >
+                  <label>
+                    数据源类型
+
+                    <select
+                      aria-label="数据源类型"
+                      value={monitorSourceType}
+                      onChange={(event) =>
+                        setMonitorSourceType(
+                          event.target.value
+                        )
+                      }
+                    >
+                      {(
+                        monitorSourceTypes.length > 0
+                          ? monitorSourceTypes
+                          : ["rss"]
+                      ).map((item) => (
+                        <option key={item} value={item}>
+                          {sourceTypeText(item)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    订阅地址
+
+                    <input
+                      type="url"
+                      aria-label="订阅地址"
+                      placeholder="https://example.com/rss.xml"
+                      value={monitorUrl}
+                      onChange={(event) =>
+                        setMonitorUrl(event.target.value)
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    检查间隔（分钟）
+
+                    <input
+                      type="number"
+                      min={MONITOR_MIN_INTERVAL}
+                      max={1440}
+                      aria-label="检查间隔分钟数"
+                      value={monitorInterval}
+                      onChange={(event) =>
+                        setMonitorInterval(
+                          event.target.value
+                        )
+                      }
+                    />
+                  </label>
+
+                  <button
+                    type="submit"
+                    disabled={
+                      monitorBusy === "create" ||
+                      !monitorUrl.trim()
+                    }
+                    aria-label="创建监控任务"
+                  >
+                    {monitorBusy === "create"
+                      ? "创建中…"
+                      : "创建"}
+                  </button>
+                </form>
+
+                {monitors.length === 0 ? (
+                  <p
+                    className="reminder-empty"
+                    data-testid="monitor-empty"
+                  >
+                    还没有监控任务
+                  </p>
+                ) : (
+                  <ul className="monitor-list">
+                    {monitors.map((task) => (
+                      <li
+                        className={`monitor-row ${task.status}`}
+                        key={task.id}
+                      >
+                        <div className="reminder-main">
+                          <strong className="monitor-url">
+                            {task.source_url}
+                          </strong>
+
+                          <span className="reminder-time">
+                            {sourceTypeText(task.task_type)}
+                            {" · "}
+                            每 {task.interval_minutes} 分钟
+                            {" · "}
+                            {MONITOR_STATUS_TEXT[
+                              task.status
+                            ] ?? task.status}
+                          </span>
+
+                          {task.last_checked_at && (
+                            <span className="reminder-time">
+                              上次检查：
+                              {formatRemindAt(
+                                task.last_checked_at
+                              )}
+                            </span>
+                          )}
+
+                          {task.status === "active" &&
+                            task.next_run_at && (
+                              <span className="reminder-time">
+                                下次检查：
+                                {formatRemindAt(
+                                  task.next_run_at
+                                )}
+                              </span>
+                            )}
+
+                          {task.last_error && (
+                            <span className="monitor-error-text">
+                              {task.last_error}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="reminder-actions">
+                          {task.status === "active" ? (
+                            <button
+                              type="button"
+                              disabled={
+                                monitorBusy === task.id
+                              }
+                              aria-label={`暂停 ${task.id}`}
+                              onClick={() =>
+                                void changeMonitorState(
+                                  task.id,
+                                  "pause"
+                                )
+                              }
+                            >
+                              暂停
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={
+                                monitorBusy === task.id
+                              }
+                              aria-label={`恢复 ${task.id}`}
+                              onClick={() =>
+                                void changeMonitorState(
+                                  task.id,
+                                  "resume"
+                                )
+                              }
+                            >
+                              恢复
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            disabled={
+                              monitorBusy === task.id
+                            }
+                            aria-label={`归档 ${task.id}`}
+                            onClick={() =>
+                              void archiveMonitor(task.id)
+                            }
+                          >
+                            归档
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </section>
+        ) : view === "quota" ? (
           <section
             className="quota-panel"
             aria-label="我的额度"

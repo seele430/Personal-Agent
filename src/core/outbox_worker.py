@@ -6,6 +6,10 @@ import requests
 
 from src.config import paths
 from src.core.access_policy import decide_access, AccessAction
+from src.core.notification_delivery import (
+    NTFY,
+    channel_for_owner,
+)
 from src.core.task_engine import init_task_db
 from src.notification import send_notification
 
@@ -28,7 +32,7 @@ def process_one_notification():
 
         row = conn.execute(
             """
-            SELECT id, message, attempts
+            SELECT id, message, attempts, owner_id
             FROM notification_outbox
             WHERE (
                 status = 'pending'
@@ -51,7 +55,28 @@ def process_one_notification():
             print("没有待发送的通知")
             return False
 
-        notification_id, message, attempts = row
+        notification_id, message, attempts, owner_id = row
+
+        # 只有站长的通知才进全局 ntfy。
+        # 其他归属（管理员/普通用户）转站内，不碰网络 ——
+        # 否则别人的监控结果会推到站长手机上。
+        if channel_for_owner(owner_id) != NTFY:
+            conn.execute(
+                """
+                UPDATE notification_outbox
+                SET status = 'in_app',
+                    next_attempt_at = NULL
+                WHERE id = ?
+                  AND status IN ('pending', 'sending')
+                """,
+                (notification_id,)
+            )
+
+            print(
+                f"通知 {notification_id} 转站内投递"
+                f"（归属 {owner_id}）"
+            )
+            return False
 
         conn.execute(
             """

@@ -151,6 +151,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L1：订阅源 URL 安全策略（SSRF 防护，DNS 解析器注入）
+    "unit/test_url_policy.py": TestSchema(
+        layer="unit",
+        domain="rss",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="high",
+    ),
+
     # L1：提醒 eval 用例加载与判定（纯函数，不调用模型）
     "unit/test_reminder_eval.py": TestSchema(
         layer="unit",
@@ -172,6 +182,16 @@ TEST_SCHEMAS = {
         database="temporary_sqlite",
         authentication="none",
         external_network="none",
+        risk="high",
+    ),
+
+    # L2：任务引擎语义（基线 / 恰好一次 / 数据源注册表）
+    "integration/test_task_pipeline.py": TestSchema(
+        layer="integration",
+        domain="monitor",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
         risk="high",
     ),
 
@@ -438,6 +458,36 @@ TEST_SCHEMAS = {
     "test_reminder_api.py": TestSchema(
         layer="api",
         domain="reminder",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
+
+    # L3：监控任务 API（归属隔离 + 角色限制）
+    "test_monitor_api.py": TestSchema(
+        layer="api",
+        domain="monitor",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
+
+    # L3：站内通知 API（按人投递的读取与确认）
+    "test_notifications_api.py": TestSchema(
+        layer="api",
+        domain="monitor",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
+
+    # L3：统一收件箱（聚合监控通知与到点提醒）
+    "test_inbox_api.py": TestSchema(
+        layer="api",
+        domain="monitor",
         database="temporary_sqlite",
         authentication="mocked",
         external_network="none",

@@ -21,14 +21,27 @@ from src.core.access_policy import (
     decide_access,
     AccessAction,
 )
-from src.monitors.rss_monitor import run_rss_monitor
+from src.monitors.rate_limit import (
+    MIN_HOST_INTERVAL_SECONDS,
+    reserve_fetch,
+)
+from src.core.source_registry import (
+    DEFAULT_SOURCE_TYPE,
+    run_source,
+)
+from src.monitors.url_policy import (
+    UrlPolicyError,
+    check_host_allowed,
+    check_url_shape,
+)
 
 
 logger = logging.getLogger("personal_agent.dispatcher")
 
-ALLOWED_FEEDS = {
-    "https://blog.python.org/rss.xml"
-}
+# 数据源是否获准执行，统一由 URL 策略判断：
+# 协议 / 主机形态 / 字面量 IP（结构层），加上可选的域名白名单
+# （环境变量 RSS_ALLOWED_HOSTS，不设置 = 除策略外不做额外限制）。
+# 之前的硬编码单源白名单已由它取代，避免调度层与接口层两处判断漂移。
 
 LEASE_SECONDS = 300
 NETWORK_RETRY_SECONDS = 60
@@ -278,7 +291,6 @@ def claim_due_tasks(limit: int = 5) -> list[dict]:
                 FROM monitor_tasks
                 WHERE status = 'active'
                   AND archived_at IS NULL
-                  AND task_type = 'rss'
                   AND (
                       next_run_at IS NULL
                       OR next_run_at <= ?
@@ -333,12 +345,37 @@ def complete_task(
     task: dict,
     error: str | None = None,
     pause: bool = False,
-    retry_seconds: int | None = None
+    retry_seconds: int | None = None,
+    defer_seconds: int | None = None,
 ) -> bool:
-    """有效租约持有者更新任务状态。"""
+    """有效租约持有者更新任务状态。
+
+    defer_seconds 用于"这一轮先不抓"的顺延（例如同一主机刚被抓过）：
+    它既不记为失败，也不重置 last_checked_at。
+    """
 
     now = utc_now()
     now_text = now.isoformat()
+
+    if defer_seconds is not None:
+        if (
+            error is not None
+            or pause
+            or retry_seconds is not None
+        ):
+            raise ValueError(
+                "defer_seconds 不能与 error / pause / "
+                "retry_seconds 同时使用"
+            )
+
+        if (
+            isinstance(defer_seconds, bool)
+            or not isinstance(defer_seconds, int)
+            or defer_seconds < 1
+        ):
+            raise ValueError(
+                "defer_seconds 必须是正整数"
+            )
 
     if retry_seconds is not None:
         if (
@@ -350,7 +387,12 @@ def complete_task(
                 "retry_seconds 必须是正整数"
             )
 
-    if error is not None and retry_seconds is not None:
+    if defer_seconds is not None:
+        next_run = (
+            now + timedelta(seconds=defer_seconds)
+        ).isoformat()
+
+    elif error is not None and retry_seconds is not None:
         next_run = (
             now + timedelta(seconds=retry_seconds)
         ).isoformat()
@@ -365,7 +407,29 @@ def complete_task(
         sqlite3.connect(paths.tasks_db, timeout=10)
     ) as conn:
         with conn:
-            if pause:
+            if defer_seconds is not None:
+                # 顺延：只推下次执行时间，不动失败计数与 last_checked_at。
+                cursor = conn.execute(
+                    """
+                    UPDATE monitor_tasks
+                    SET next_run_at = ?,
+                        lease_token = NULL,
+                        lease_expires_at = NULL
+                    WHERE id = ?
+                      AND lease_token = ?
+                      AND lease_expires_at > ?
+                      AND status = 'active'
+                      AND archived_at IS NULL
+                    """,
+                    (
+                        next_run,
+                        task["id"],
+                        task["lease_token"],
+                        now_text
+                    )
+                )
+
+            elif pause:
                 cursor = conn.execute(
                     """
                     UPDATE monitor_tasks
@@ -457,14 +521,16 @@ def safe_complete_task(
     task: dict,
     error: str | None = None,
     pause: bool = False,
-    retry_seconds: int | None = None
+    retry_seconds: int | None = None,
+    defer_seconds: int | None = None,
 ) -> bool:
     try:
         return complete_task(
             task,
             error=error,
             pause=pause,
-            retry_seconds=retry_seconds
+            retry_seconds=retry_seconds,
+            defer_seconds=defer_seconds,
         )
     except Exception:
         logger.exception(
@@ -517,6 +583,46 @@ def run_due_monitor_tasks() -> int:
         task_id = task["id"]
         source_url = task["source_url"]
 
+        # 频率控制：同一台主机刚被抓过就整轮顺延。
+        # 放在 start_task_run 之前 —— 顺延等于"这一轮没有开始"，
+        # 不该留下执行历史，也不该计入失败次数。
+        try:
+            host = check_url_shape(source_url)
+
+        except UrlPolicyError:
+            # 数据源本身不合法，交给下面的授权分支处理
+            host = None
+
+        if host is not None:
+            try:
+                wait_seconds = reserve_fetch(host)
+
+            except Exception:
+                logger.exception(
+                    "任务 %s 频率检查失败，本轮跳过",
+                    task_id
+                )
+
+                safe_complete_task(
+                    task,
+                    defer_seconds=NETWORK_RETRY_SECONDS
+                )
+                continue
+
+            if wait_seconds:
+                logger.info(
+                    "任务 %s 顺延 %s 秒：主机 %s 刚抓过",
+                    task_id,
+                    wait_seconds,
+                    host
+                )
+
+                safe_complete_task(
+                    task,
+                    defer_seconds=wait_seconds
+                )
+                continue
+
         try:
             run_id = start_task_run(
                 task_id=task_id,
@@ -542,8 +648,13 @@ def run_due_monitor_tasks() -> int:
             )
             continue
 
-        if source_url not in ALLOWED_FEEDS:
-            reason = "数据源未获得执行许可"
+        try:
+            # 数据源授权与接口层共用同一份 URL 策略，
+            # 避免两处判断漂移（可选域名白名单见 RSS_ALLOWED_HOSTS）。
+            check_host_allowed(source_url)
+
+        except UrlPolicyError as error:
+            reason = f"数据源未获得执行许可：{error}"
 
             safe_complete_task(
                 task,
@@ -565,9 +676,13 @@ def run_due_monitor_tasks() -> int:
                 run_id
             )
 
-            count = run_rss_monitor(
+            count = run_source(
+                source_type=(
+                    task.get("task_type")
+                    or DEFAULT_SOURCE_TYPE
+                ),
                 monitor_id=task_id,
-                feed_url=source_url
+                source_url=source_url,
             )
 
             if (
