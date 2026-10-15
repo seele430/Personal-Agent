@@ -159,6 +159,47 @@ class KnowledgeStore:
                     """
                 )
 
+            # 向量（R3）：每个片段一行，float32 BLOB。
+            # 片段删除时级联清理，不留悬挂。
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS knowledge_embeddings (
+                    chunk_id INTEGER PRIMARY KEY
+                        REFERENCES knowledge_chunks(id)
+                        ON DELETE CASCADE,
+                    model TEXT NOT NULL,
+                    sha256 TEXT NOT NULL,
+                    dim INTEGER NOT NULL,
+                    vector BLOB NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS
+                    idx_knowledge_embeddings_model
+                ON knowledge_embeddings (model, chunk_id)
+                """
+            )
+
+            # 内容级缓存：同一段文本只算一次（模型级，不含 owner —— 见
+            # src/knowledge/embed.py 的说明）。
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS
+                    knowledge_embedding_cache (
+                    model TEXT NOT NULL,
+                    sha256 TEXT NOT NULL,
+                    dim INTEGER NOT NULL,
+                    vector BLOB NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (model, sha256)
+                )
+                """
+            )
+
     # ----------------------------------------------------------------
     # 写入
     # ----------------------------------------------------------------
@@ -742,3 +783,269 @@ class KnowledgeStore:
         return {
             row["id"]: row["document_id"] for row in rows
         }
+
+    # ----------------------------------------------------------------
+    # 向量（R3）
+    # ----------------------------------------------------------------
+
+    def chunks_missing_embedding(
+        self,
+        *,
+        owner_id: str,
+        model: str,
+    ) -> list[dict]:
+        """还缺该模型向量的片段（按 owner 收窄）。"""
+
+        if not isinstance(owner_id, str) or not owner_id.strip():
+            raise ValueError("owner_id 不能为空")
+
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError("model 不能为空")
+
+        self.init_db()
+
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                """
+                SELECT c.id AS chunk_id, c.text AS text
+                FROM knowledge_chunks c
+                JOIN knowledge_documents d
+                  ON d.id = c.document_id
+                LEFT JOIN knowledge_embeddings e
+                  ON e.chunk_id = c.id
+                 AND e.model = ?
+                WHERE d.owner_id = ?
+                  AND e.chunk_id IS NULL
+                ORDER BY c.id
+                """,
+                (model.strip(), owner_id.strip()),
+            ).fetchall()
+
+        return [dict(row) for row in rows]
+
+    def embedding_cache_get(
+        self,
+        *,
+        model: str,
+        digests: list[str],
+    ) -> dict:
+        """按内容哈希取缓存：`{sha256: (dim, blob)}`。"""
+
+        if not digests:
+            return {}
+
+        self.init_db()
+
+        found = {}
+        items = list(digests)
+
+        with closing(self._connect()) as conn:
+            # 分批查，避免 SQLite 变量上限
+            for start in range(0, len(items), 400):
+                batch = items[start:start + 400]
+                placeholders = ",".join("?" for _ in batch)
+
+                rows = conn.execute(
+                    f"""
+                    SELECT sha256, dim, vector
+                    FROM knowledge_embedding_cache
+                    WHERE model = ?
+                      AND sha256 IN ({placeholders})
+                    """,
+                    (model, *batch),
+                ).fetchall()
+
+                for row in rows:
+                    found[row["sha256"]] = (
+                        row["dim"],
+                        row["vector"],
+                    )
+
+        return found
+
+    def save_embedding_cache(
+        self,
+        *,
+        model: str,
+        entries: list,
+    ) -> int:
+        """写内容缓存：`entries` 是 `(sha256, dim, blob)` 列表。"""
+
+        if not entries:
+            return 0
+
+        self.init_db()
+
+        with closing(self._connect()) as conn, conn:
+            conn.executemany(
+                """
+                INSERT INTO knowledge_embedding_cache (
+                    model, sha256, dim, vector, created_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (model, sha256) DO UPDATE SET
+                    dim = excluded.dim,
+                    vector = excluded.vector
+                """,
+                [
+                    (
+                        model,
+                        digest,
+                        dim,
+                        blob,
+                        utc_now(),
+                    )
+                    for digest, dim, blob in entries
+                ],
+            )
+
+        return len(entries)
+
+    def save_chunk_embeddings(self, rows: list) -> int:
+        """写片段向量：`rows` 是 `(chunk_id, model, sha256, dim, blob)`。"""
+
+        if not rows:
+            return 0
+
+        self.init_db()
+
+        with closing(self._connect()) as conn, conn:
+            conn.executemany(
+                """
+                INSERT INTO knowledge_embeddings (
+                    chunk_id, model, sha256, dim, vector, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (chunk_id) DO UPDATE SET
+                    model = excluded.model,
+                    sha256 = excluded.sha256,
+                    dim = excluded.dim,
+                    vector = excluded.vector
+                """,
+                [
+                    (
+                        chunk_id,
+                        model,
+                        digest,
+                        dim,
+                        blob,
+                        utc_now(),
+                    )
+                    for chunk_id, model, digest, dim, blob in rows
+                ],
+            )
+
+        return len(rows)
+
+    def count_embeddings(
+        self,
+        *,
+        owner_id: str | None = None,
+        model: str | None = None,
+    ) -> int:
+        self.init_db()
+
+        with closing(self._connect()) as conn:
+            if owner_id is None:
+                return conn.execute(
+                    "SELECT COUNT(*) FROM knowledge_embeddings"
+                ).fetchone()[0]
+
+            return conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM knowledge_embeddings e
+                JOIN knowledge_chunks c
+                  ON c.id = e.chunk_id
+                JOIN knowledge_documents d
+                  ON d.id = c.document_id
+                WHERE d.owner_id = ?
+                  AND (? IS NULL OR e.model = ?)
+                """,
+                (owner_id, model, model),
+            ).fetchone()[0]
+
+    def search_vector(
+        self,
+        *,
+        owner_id: str,
+        query_vector,
+        model: str,
+        limit: int = 5,
+    ) -> list[dict]:
+        """暴力 cosine 检索：**先按 owner 收窄候选，再算相似度**。
+
+        绝不"先取全局 top-k 再过滤" —— 那既会召回塌陷，也可能把别人的
+        内容算进上下文。没有 numpy，点积用纯 Python（延迟由评测如实测出）。
+        """
+
+        if not isinstance(owner_id, str) or not owner_id.strip():
+            raise ValueError("owner_id 不能为空")
+
+        if type(limit) is not int or not 1 <= limit <= 50:
+            raise ValueError("limit 无效")
+
+        query_vector = [float(value) for value in query_vector]
+
+        if not query_vector:
+            raise ValueError("查询向量不能为空")
+
+        self.init_db()
+
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                """
+                SELECT c.id AS chunk_id,
+                       c.document_id AS document_id,
+                       c.seq AS seq,
+                       c.text AS text,
+                       d.title AS title,
+                       d.url AS url,
+                       e.dim AS dim,
+                       e.vector AS vector
+                FROM knowledge_embeddings e
+                JOIN knowledge_chunks c
+                  ON c.id = e.chunk_id
+                JOIN knowledge_documents d
+                  ON d.id = c.document_id
+                WHERE d.owner_id = ?
+                  AND e.model = ?
+                """,
+                (owner_id.strip(), model),
+            ).fetchall()
+
+        from src.knowledge.embed import (
+            blob_vector,
+            cosine,
+        )
+
+        scored = []
+
+        for row in rows:
+            # 维度不一致的行直接跳过：模型换了、或半途写入失败
+            if row["dim"] != len(query_vector):
+                continue
+
+            score = cosine(
+                query_vector,
+                blob_vector(row["vector"]),
+            )
+
+            scored.append(
+                {
+                    "chunk_id": row["chunk_id"],
+                    "document_id": row["document_id"],
+                    "seq": row["seq"],
+                    "text": row["text"],
+                    "title": row["title"],
+                    "url": row["url"],
+                    "score": score,
+                }
+            )
+
+        scored.sort(
+            key=lambda item: (-item["score"], item["chunk_id"])
+        )
+
+        return scored[:limit]
+

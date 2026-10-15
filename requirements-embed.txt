@@ -1,0 +1,18 @@
+# Optional local embedding stack (R3).
+#
+# You do NOT need this to run the project:
+#   - tests and the offline eval use HashingEmbedder (deterministic, zero deps)
+#   - a hosted OpenAI-compatible /embeddings endpoint needs no extra package
+# Install this only when you want real local sentence vectors.
+#
+# NOTE: comments are ASCII on purpose. A pip requirements file with UTF-8
+# Chinese comments but no BOM makes pip decode it as cp936 on a Chinese
+# Windows box and fail before installing anything.
+#
+# Install on this machine (PyPI via the Aliyun mirror, model via hf-mirror):
+#   $env:HF_ENDPOINT = 'https://hf-mirror.com'
+#   .\.venv\Scripts\python.exe -m pip install -r requirements-embed.txt -i https://mirrors.aliyun.com/pypi/simple/
+#
+# This pulls torch (CPU wheel, a few hundred MB) plus the model below (~95 MB).
+# Versions are intentionally unpinned: torch wheels are platform specific.
+sentence-transformers
