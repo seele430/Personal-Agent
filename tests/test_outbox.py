@@ -8,6 +8,13 @@ import requests
 
 from tests.helper import build_temp_paths, isolated_paths
 from src.core import outbox_worker
+from src.core.notification_delivery import (
+    IN_APP,
+    NTFY,
+    channel_for_owner,
+    channel_for_role,
+    role_of_user,
+)
 from src.core.task_engine import detect_new_items, init_task_db
 
 
@@ -29,6 +36,7 @@ class TestOutboxRetry(unittest.TestCase):
                         next_attempt_at TEXT,
                         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                         sent_at TEXT,
+                        owner_id TEXT,
                         UNIQUE (monitor_id, item_id)
                     )
                 """)
@@ -304,6 +312,167 @@ class TestOutboxOwnership(unittest.TestCase):
                 "rss_b": "owner_b",
             },
         )
+
+
+class TestDeliveryChannel(unittest.TestCase):
+    """按人投递：只有站长的通知才进全局 ntfy。
+
+    这是本轮要锁死的安全属性：
+    管理员/普通用户的任务结果**不能**推到站长手机上。
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+
+        temporary = build_temp_paths(self.temp)
+        self.db_path = temporary.tasks_db
+        self.auth_path = temporary.auth_users_db
+
+        isolated = isolated_paths(self.temp)
+        isolated.__enter__()
+        self.addCleanup(
+            isolated.__exit__, None, None, None
+        )
+
+        self.create_user("owner_001", "owner")
+        self.create_user("admin_001", "admin")
+
+    def create_user(self, user_id, role):
+        with closing(
+            sqlite3.connect(self.auth_path)
+        ) as conn, conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS auth_users (
+                    id TEXT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    active INTEGER NOT NULL DEFAULT 1
+                )
+                """
+            )
+
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO auth_users
+                (id, username, role, active)
+                VALUES (?, ?, ?, 1)
+                """,
+                (user_id, user_id, role),
+            )
+
+    def queue(self, owner_id, message="新内容"):
+        init_task_db()
+
+        with closing(
+            sqlite3.connect(self.db_path)
+        ) as conn, conn:
+            conn.execute(
+                """
+                INSERT INTO notification_outbox
+                (monitor_id, item_id, message, owner_id)
+                VALUES ('m1', ?, ?, ?)
+                """,
+                (f"item-{message}", message, owner_id),
+            )
+
+    def status_of(self, message):
+        with closing(
+            sqlite3.connect(self.db_path)
+        ) as conn:
+            return conn.execute(
+                """
+                SELECT status FROM notification_outbox
+                WHERE message = ?
+                """,
+                (message,),
+            ).fetchone()[0]
+
+    # ---------- 策略本身 ----------
+
+    def test_channel_for_role(self):
+        self.assertEqual(channel_for_role("owner"), NTFY)
+
+        for role in ("admin", "trusted", "member", None):
+            self.assertEqual(channel_for_role(role), IN_APP)
+
+    def test_role_lookup(self):
+        self.assertEqual(
+            role_of_user("owner_001"), "owner"
+        )
+        self.assertEqual(
+            role_of_user("admin_001"), "admin"
+        )
+        # 查不到就不猜
+        self.assertIsNone(role_of_user("ghost"))
+        self.assertIsNone(role_of_user(None))
+        self.assertIsNone(role_of_user(""))
+
+    def test_channel_for_owner(self):
+        self.assertEqual(
+            channel_for_owner("owner_001"), NTFY
+        )
+        self.assertEqual(
+            channel_for_owner("admin_001"), IN_APP
+        )
+        # 主人查不到 → 最保守：站内，不误推别人手机
+        self.assertEqual(channel_for_owner("ghost"), IN_APP)
+        # 迁移前没有归属的历史行沿用旧的全局推送
+        self.assertEqual(channel_for_owner(None), NTFY)
+
+    # ---------- worker 行为 ----------
+
+    def test_owner_notification_is_sent(self):
+        self.queue("owner_001")
+
+        with patch.object(
+            outbox_worker, "send_notification"
+        ) as sender:
+            result = outbox_worker.process_one_notification()
+
+        self.assertTrue(result)
+        sender.assert_called_once()
+        self.assertEqual(self.status_of("新内容"), "sent")
+
+    def test_admin_notification_is_diverted_to_in_app(self):
+        self.queue("admin_001")
+
+        with patch.object(
+            outbox_worker, "send_notification"
+        ) as sender:
+            result = outbox_worker.process_one_notification()
+
+        # 关键断言：没有发出任何网络请求
+        sender.assert_not_called()
+        self.assertFalse(result)
+        self.assertEqual(
+            self.status_of("新内容"), "in_app"
+        )
+
+    def test_unknown_owner_is_diverted(self):
+        self.queue("ghost")
+
+        with patch.object(
+            outbox_worker, "send_notification"
+        ) as sender:
+            outbox_worker.process_one_notification()
+
+        sender.assert_not_called()
+        self.assertEqual(
+            self.status_of("新内容"), "in_app"
+        )
+
+    def test_legacy_row_without_owner_still_sends(self):
+        self.queue(None)
+
+        with patch.object(
+            outbox_worker, "send_notification"
+        ) as sender:
+            outbox_worker.process_one_notification()
+
+        sender.assert_called_once()
+        self.assertEqual(self.status_of("新内容"), "sent")
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: fbda416ebee6b5dd -->
+<!-- membership-digest: e8bed794ced321f4 -->
 
 ## unit — L1 单元测试 (7 files)
 
@@ -63,7 +63,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_task_health.py` | tests/ 根 | task | temporary_sqlite | none | medium | registered-inferred |
 | `test_task_run_history.py` | tests/ 根 | task | temporary_sqlite | none | medium | registered-inferred |
 
-## api — L3 HTTP/API 测试 (11 files)
+## api — L3 HTTP/API 测试 (12 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -76,6 +76,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_chat_usage_http.py` | tests/ 根 | chat | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_login_rate_limit.py` | tests/ 根 | auth | temporary_sqlite | mocked | high | registered-inferred |
 | `test_monitor_api.py` | tests/ 根 | monitor | temporary_sqlite | none | high | registered-inferred |
+| `test_notifications_api.py` | tests/ 根 | monitor | temporary_sqlite | none | high | registered-inferred |
 | `test_reminder_api.py` | tests/ 根 | reminder | temporary_sqlite | none | high | registered |
 | `test_reminder_chat_http.py` | tests/ 根 | reminder | temporary_sqlite | mocked | high | registered |
 

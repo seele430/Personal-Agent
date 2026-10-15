@@ -474,6 +474,16 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
+    # L3：站内通知 API（按人投递的读取与确认）
+    "test_notifications_api.py": TestSchema(
+        layer="api",
+        domain="monitor",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",

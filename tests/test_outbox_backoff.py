@@ -29,7 +29,8 @@ class TestOutboxBackoff(unittest.TestCase):
                         message TEXT NOT NULL,
                         attempts INTEGER NOT NULL DEFAULT 0,
                         status TEXT NOT NULL,
-                        next_attempt_at TEXT
+                        next_attempt_at TEXT,
+                        owner_id TEXT
                     )
                 """)
 

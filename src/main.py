@@ -14,6 +14,7 @@ from src import api as legacy_chat
 from src.auth_api import router as auth_router
 from src.chat_secure_api import router as chat_router
 from src.monitors_api import router as monitor_router
+from src.notifications_api import router as notification_router
 from src.reminder_api import router as reminder_router
 from src.usage_api import router as usage_router
 
@@ -76,3 +77,6 @@ app.include_router(usage_router)
 
 # 监控任务（按归属隔离，全局调度）
 app.include_router(monitor_router)
+
+# 站内通知（非站长用户的投递渠道）
+app.include_router(notification_router)

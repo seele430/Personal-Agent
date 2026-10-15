@@ -8,6 +8,7 @@ import {
   blockUnmockedApi,
   expectNoUnmockedApi,
   installAuthMocks,
+  NOTIFICATIONS_API,
   type MockUser,
 } from "./support/mockAuth";
 
@@ -457,6 +458,87 @@ test.describe("Personal Agent Monitors", () => {
       interval_minutes: 30,
       source_type: "http_text",
     });
+
+    expectNoUnmockedApi(unexpected);
+  });
+
+  // 8. 没有监控权限的用户，仍然能看到并确认自己的站内通知
+
+  test("无权限的用户仍能看到并确认站内通知", async ({
+    page,
+  }) => {
+    const unexpected = await setupPage(page);
+
+    await page.route(MONITORS_API, (route) =>
+      route.fulfill({
+        status: 403,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: "没有管理监控任务的权限",
+        }),
+      }),
+    );
+
+    let notifications = [
+      {
+        id: 5,
+        monitor_id: "m1",
+        item_id: "i1",
+        message:
+          "RSS 更新：新文章\nhttps://example.com/a",
+        created_at: "2026-10-15T10:00:00+00:00",
+      },
+    ];
+
+    const acks: string[] = [];
+
+    await page.route(NOTIFICATIONS_API, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ notifications }),
+      }),
+    );
+
+    await page.route(
+      "**/api/notifications/*/ack",
+      async (route) => {
+        acks.push(route.request().url());
+        notifications = [];
+
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            id: 5,
+            status: "read",
+            changed: true,
+          }),
+        });
+      },
+    );
+
+    await login(page);
+    await openTaskCenter(page);
+
+    // 监控部分明确说没权限
+    await expect(
+      page.getByTestId("monitor-forbidden"),
+    ).toBeVisible();
+
+    // 但通知照常可见 —— 它不属于监控权限
+    await expect(page.getByLabel("我的通知")).toBeVisible();
+    await expect(page.getByText(/RSS 更新/)).toBeVisible();
+
+    await page
+      .getByRole("button", { name: "知道了 5" })
+      .click();
+
+    await expect(
+      page.getByLabel("我的通知"),
+    ).toHaveCount(0);
+
+    expect(acks.length).toBe(1);
 
     expectNoUnmockedApi(unexpected);
   });

@@ -6,6 +6,13 @@ from src.config import paths
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 
+class NotificationNotFound(Exception):
+    """站内通知不存在，或不属于当前用户。"""
+
+
+MAX_IN_APP_NOTIFICATIONS = 50
+
+
 # 连接写法说明：
 #   with closing(sqlite3.connect(...)) as conn, conn:
 # 内层 conn 负责事务（成功提交、异常回滚），
@@ -66,6 +73,118 @@ def init_task_db():
                 "ALTER TABLE notification_outbox "
                 "ADD COLUMN owner_id TEXT"
             )
+
+
+def list_in_app_notifications(
+    user_id: str,
+    *,
+    limit: int = MAX_IN_APP_NOTIFICATIONS,
+) -> list[dict]:
+    """读取某个用户尚未确认的站内通知。
+
+    只按服务端认证后的 user_id 过滤，
+    不接受调用方传入的其它身份。
+    """
+
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise ValueError("user_id 不能为空")
+
+    if type(limit) is not int or not 1 <= limit <= 200:
+        raise ValueError("limit 无效")
+
+    init_task_db()
+
+    with closing(
+        sqlite3.connect(paths.tasks_db, timeout=10)
+    ) as conn:
+        conn.row_factory = sqlite3.Row
+
+        rows = conn.execute(
+            """
+            SELECT id, monitor_id, item_id, message,
+                   created_at
+            FROM notification_outbox
+            WHERE owner_id = ?
+              AND status = 'in_app'
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (user_id.strip(), limit),
+        ).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def mark_notification_read(
+    *,
+    user_id: str,
+    notification_id: int,
+) -> dict:
+    """把一条站内通知标记为已读（只能操作自己的）。"""
+
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise ValueError("user_id 不能为空")
+
+    if (
+        type(notification_id) is not int
+        or notification_id <= 0
+    ):
+        raise ValueError("通知 ID 无效")
+
+    init_task_db()
+
+    with closing(
+        sqlite3.connect(paths.tasks_db, timeout=10)
+    ) as conn:
+
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+
+            row = conn.execute(
+                """
+                SELECT id, status
+                FROM notification_outbox
+                WHERE id = ? AND owner_id = ?
+                """,
+                (notification_id, user_id.strip()),
+            ).fetchone()
+
+            if row is None:
+                raise NotificationNotFound(
+                    "通知不存在或无权访问"
+                )
+
+            if row[1] != "in_app":
+                conn.commit()
+
+                return {
+                    "id": notification_id,
+                    "status": row[1],
+                    "changed": False,
+                }
+
+            conn.execute(
+                """
+                UPDATE notification_outbox
+                SET status = 'read'
+                WHERE id = ?
+                  AND owner_id = ?
+                  AND status = 'in_app'
+                """,
+                (notification_id, user_id.strip()),
+            )
+
+            conn.commit()
+
+            return {
+                "id": notification_id,
+                "status": "read",
+                "changed": True,
+            }
+
+        except Exception:
+            conn.rollback()
+            raise
 
 
 def detect_new_items(

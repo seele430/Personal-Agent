@@ -178,6 +178,35 @@ type MonitorListResponse = {
   source_types?: unknown;
 };
 
+// 站内通知：非站长用户的结果通过这里送达。
+type InAppNotification = {
+  id: number;
+  monitor_id: string;
+  item_id: string;
+  message: string;
+  created_at: string;
+};
+
+type NotificationListResponse = {
+  notifications?: unknown;
+};
+
+async function readNotifications(
+  response: Response
+): Promise<InAppNotification[]> {
+  const value: unknown = await response.json();
+
+  if (!value || typeof value !== "object") {
+    throw new Error("服务器返回格式不正确");
+  }
+
+  const data = value as NotificationListResponse;
+
+  return Array.isArray(data.notifications)
+    ? (data.notifications as InAppNotification[])
+    : [];
+}
+
 const MONITOR_STATUS_TEXT: Record<string, string> = {
   active: "运行中",
   paused: "已暂停",
@@ -397,6 +426,17 @@ export default function App(
 
   const [monitorSourceTypes, setMonitorSourceTypes] =
     useState<string[]>([]);
+
+  const [notifications, setNotifications] = useState<
+    InAppNotification[]
+  >([]);
+
+  const [notificationError, setNotificationError] =
+    useState("");
+
+  const [notificationBusy, setNotificationBusy] = useState<
+    number | null
+  >(null);
 
   const [reminders, setReminders] =
     useState<Reminder[]>([]);
@@ -1014,6 +1054,75 @@ export default function App(
   }
 
   // ========================================
+  // 站内通知（任何角色都能看自己的）
+  // ========================================
+
+  async function loadNotifications() {
+    if (!authToken) return;
+
+    try {
+      const response = await fetch("/api/notifications", {
+        headers: authHeaders(),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          await readDetail(
+            response,
+            `读取通知失败（${response.status}）`
+          )
+        );
+      }
+
+      setNotifications(
+        await readNotifications(response)
+      );
+      setNotificationError("");
+    } catch (cause) {
+      setNotificationError(
+        cause instanceof Error
+          ? cause.message
+          : "读取通知失败"
+      );
+    }
+  }
+
+  async function acknowledgeNotification(
+    notificationId: number
+  ) {
+    setNotificationBusy(notificationId);
+
+    try {
+      const response = await fetch(
+        `/api/notifications/${notificationId}/ack`,
+        {
+          method: "POST",
+          headers: authHeaders(),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          await readDetail(
+            response,
+            `确认失败（${response.status}）`
+          )
+        );
+      }
+
+      await loadNotifications();
+    } catch (cause) {
+      setNotificationError(
+        cause instanceof Error
+          ? cause.message
+          : "确认失败"
+      );
+    } finally {
+      setNotificationBusy(null);
+    }
+  }
+
+  // ========================================
   // 监控任务（任务中心）
   // ========================================
 
@@ -1219,7 +1328,9 @@ export default function App(
     }
 
     // 监控任务同样按需读取：没打开就不发请求。
+    // 站内通知也在这里取 —— 它不属于监控权限，任何角色都能看自己的。
     if (view === "monitors") {
+      void loadNotifications();
       void loadMonitors();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1402,6 +1513,64 @@ export default function App(
                 刷新
               </button>
             </div>
+
+            {notificationError && (
+              <div
+                className="error-box"
+                data-testid="notification-error"
+              >
+                {notificationError}
+              </div>
+            )}
+
+            {notifications.length > 0 && (
+              <section
+                className="notice-panel"
+                aria-label="我的通知"
+              >
+                <h3>
+                  我的通知（{notifications.length}）
+                </h3>
+
+                <ul className="monitor-list">
+                  {notifications.map((item) => (
+                    <li
+                      className="monitor-row"
+                      key={item.id}
+                    >
+                      <div className="reminder-main">
+                        <strong className="notice-message">
+                          {item.message}
+                        </strong>
+
+                        <span className="reminder-time">
+                          {formatRemindAt(
+                            item.created_at
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="reminder-actions">
+                        <button
+                          type="button"
+                          disabled={
+                            notificationBusy === item.id
+                          }
+                          aria-label={`知道了 ${item.id}`}
+                          onClick={() =>
+                            void acknowledgeNotification(
+                              item.id
+                            )
+                          }
+                        >
+                          知道了
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
             {monitorError && (
               <div

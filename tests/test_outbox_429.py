@@ -27,7 +27,8 @@ class TestOutbox429(unittest.TestCase):
                         message TEXT NOT NULL,
                         status TEXT NOT NULL,
                         attempts INTEGER NOT NULL DEFAULT 0,
-                        next_attempt_at TEXT
+                        next_attempt_at TEXT,
+                        owner_id TEXT
                     )
                 """)
 

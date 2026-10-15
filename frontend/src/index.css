@@ -776,6 +776,26 @@ textarea {
   margin-bottom: 12px;
 }
 
+/* 站内通知：非站长用户的投递区 */
+
+.notice-panel {
+  max-width: 760px;
+  margin-bottom: 20px;
+}
+
+.notice-panel h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #293344;
+}
+
+.notice-message {
+  font-size: 13px;
+  /* 通知正文里可能有换行（例如 "标题\n链接"） */
+  white-space: pre-line;
+  word-break: break-word;
+}
+
 /* Responsive */
 
 @media (max-width: 700px) {
