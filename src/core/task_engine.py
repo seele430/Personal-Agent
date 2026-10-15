@@ -51,6 +51,22 @@ def init_task_db():
             )
         """)
 
+        # 通知必须能归属到人。
+        # 与 monitor_tasks.archived_at 一样，用非破坏性迁移补列：
+        # 旧记录保持 NULL —— 既有的"不把历史数据自动分配给站长"政策。
+        columns = {
+            row[1]
+            for row in conn.execute(
+                "PRAGMA table_info(notification_outbox)"
+            )
+        }
+
+        if "owner_id" not in columns:
+            conn.execute(
+                "ALTER TABLE notification_outbox "
+                "ADD COLUMN owner_id TEXT"
+            )
+
 
 def detect_new_items(
     monitor_id: str,
@@ -73,6 +89,33 @@ def detect_new_items(
 
     with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
+
+        # 通知要归属到监控任务的主人。
+        # 任务的 owner_id 就在同一个库的 monitor_tasks 上。
+        # 独立使用任务引擎（表不存在）或任务查不到时保持 NULL：
+        # 宁可标记为"未归属"，也不猜一个归属。
+        owner_id = None
+
+        has_monitor_tasks = conn.execute(
+            """
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'monitor_tasks'
+            """
+        ).fetchone() is not None
+
+        if has_monitor_tasks:
+            owner_row = conn.execute(
+                """
+                SELECT owner_id
+                FROM monitor_tasks
+                WHERE id = ?
+                """,
+                (monitor_id,)
+            ).fetchone()
+
+            if owner_row is not None:
+                owner_id = owner_row[0]
 
         initialized = conn.execute(
             """
@@ -111,10 +154,10 @@ def detect_new_items(
                 conn.execute(
                     """
                     INSERT OR IGNORE INTO notification_outbox
-                    (monitor_id, item_id, message, status)
-                    VALUES (?, ?, ?, 'pending')
+                    (monitor_id, item_id, message, status, owner_id)
+                    VALUES (?, ?, ?, 'pending', ?)
                     """,
-                    (monitor_id, item_id, message)
+                    (monitor_id, item_id, message, owner_id)
                 )
 
                 new_articles.append(article)
