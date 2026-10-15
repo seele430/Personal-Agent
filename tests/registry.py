@@ -524,6 +524,16 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
+    # L2：向量与融合（确定性向量 / 内容缓存 / owner 隔离 / RRF 名次融合）
+    "test_knowledge_vector.py": TestSchema(
+        layer="integration",
+        domain="knowledge",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",

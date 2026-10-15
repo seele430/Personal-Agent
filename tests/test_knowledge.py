@@ -208,7 +208,9 @@ class TestSearch(KnowledgeTestCase):
             store=self.store,
         )
 
-        self.assertEqual(outcome["mode"], "fts")
+        self.assertEqual(outcome["mode"], "bm25")
+        # 实际走的通道在 channels 里（bm25 通道如实标注 fts/like）
+        self.assertEqual(outcome["channels"]["bm25"], "fts")
         self.assertEqual(len(outcome["hits"]), 1)
         self.assertEqual(outcome["hits"][0]["rank"], 1)
 
@@ -220,7 +222,7 @@ class TestSearch(KnowledgeTestCase):
         )
 
         # trigram 至少要 3 个字符，2 字必须走兜底
-        self.assertEqual(outcome["mode"], "like")
+        self.assertEqual(outcome["channels"]["bm25"], "like")
         self.assertEqual(len(outcome["hits"]), 1)
 
     def test_mixed_query_keeps_short_term(self):
@@ -232,7 +234,7 @@ class TestSearch(KnowledgeTestCase):
             store=self.store,
         )
 
-        self.assertEqual(outcome["mode"], "like")
+        self.assertEqual(outcome["channels"]["bm25"], "like")
         self.assertEqual(len(outcome["hits"]), 1)
 
     def test_terms_are_anded(self):
@@ -254,7 +256,7 @@ class TestSearch(KnowledgeTestCase):
                 )
 
                 self.assertIn(
-                    outcome["mode"], ("fts", "like")
+                    outcome["channels"]["bm25"], ("fts", "like")
                 )
 
     def test_empty_query_is_rejected(self):
@@ -270,7 +272,7 @@ class TestSearch(KnowledgeTestCase):
             retrieve(
                 owner_id="alice",
                 query="事件循环",
-                mode="vector",
+                mode="ghost",
                 store=self.store,
             )
 

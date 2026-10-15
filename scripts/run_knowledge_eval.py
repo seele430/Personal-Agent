@@ -58,6 +58,8 @@ atexit.register(
 
 from src.knowledge import (  # noqa: E402
     KnowledgeStore,
+    build_embedder,
+    index_embeddings,
     ingest_upload,
     retrieve,
 )
@@ -297,10 +299,140 @@ def run_citation_eval(
     }
 
 
+def evaluate(
+    *,
+    cases: list[dict],
+    store: KnowledgeStore,
+    doc_ids: dict,
+    k: int,
+    mode: str,
+    embedder=None,
+) -> dict:
+    """按一种检索模式跑完全部查询，返回 summary 与逐条结果。"""
+
+    hit_at = {1: 0, 3: 0, 5: 0, 10: 0}
+    reciprocal = []
+    latencies = []
+    channels = {}
+    results = []
+
+    for case in cases:
+        outcome = retrieve(
+            owner_id="eval_owner",
+            query=case["query"],
+            k=k,
+            mode=mode,
+            store=store,
+            embedder=embedder,
+        )
+
+        rank = None
+
+        for hit in outcome["hits"]:
+            if doc_ids.get(
+                hit["document_id"]
+            ) == case["expect_doc"]:
+                rank = hit["rank"]
+                break
+
+        for cutoff in hit_at:
+            if rank is not None and rank <= cutoff:
+                hit_at[cutoff] += 1
+
+        reciprocal.append(
+            1.0 / rank if rank else 0.0
+        )
+        latencies.append(outcome["latency_ms"])
+
+        channel = (
+            outcome["channels"].get("bm25")
+            or outcome["channels"].get("vector")
+            or mode
+        )
+        channels[channel] = channels.get(channel, 0) + 1
+
+        results.append(
+            {
+                "id": case["id"],
+                "category": case["category"],
+                "query": case["query"],
+                "expect_doc": case["expect_doc"],
+                "rank": rank,
+                "mode": mode,
+                "channel": channel,
+                "latency_ms": outcome["latency_ms"],
+            }
+        )
+
+    total = len(cases)
+    by_category = {}
+
+    for case in results:
+        bucket = by_category.setdefault(
+            case["category"], {"total": 0, "hit@5": 0}
+        )
+        bucket["total"] += 1
+
+        if case["rank"] is not None and case["rank"] <= 5:
+            bucket["hit@5"] += 1
+
+    return {
+        "mode": mode,
+        "summary": {
+            "queries": total,
+            "k": k,
+            "recall_at_1": round(hit_at[1] / total, 4),
+            "recall_at_3": round(hit_at[3] / total, 4),
+            "recall_at_5": round(hit_at[5] / total, 4),
+            "recall_at_10": round(hit_at[10] / total, 4),
+            "mrr": round(
+                statistics.fmean(reciprocal), 4
+            ),
+            "p50_latency_ms": percentile(
+                latencies, 0.5
+            ),
+            "p95_latency_ms": percentile(
+                latencies, 0.95
+            ),
+            "channels": channels,
+            "by_category": {
+                name: {
+                    "queries": bucket["total"],
+                    "recall_at_5": round(
+                        bucket["hit@5"] / bucket["total"],
+                        4,
+                    ),
+                }
+                for name, bucket in sorted(
+                    by_category.items()
+                )
+            },
+        },
+        "cases": results,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--k", type=int, default=10)
     parser.add_argument("--corpus", default=str(CORPUS))
+    parser.add_argument(
+        "--mode",
+        choices=("bm25", "vector", "hybrid"),
+        default="bm25",
+        help="检索模式（默认 bm25，即 R2 的基线）",
+    )
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="同一批查询跑 bm25 / vector / hybrid 三组并对照",
+    )
+    parser.add_argument(
+        "--embedding-provider",
+        choices=("hashing", "openai", "local"),
+        default=None,
+        help="向量来源：hashing（词法，离线）/ openai / local",
+    )
     parser.add_argument(
         "--citations",
         action="store_true",
@@ -340,90 +472,58 @@ def main() -> int:
         )
         doc_ids[result["id"]] = row["id"]
 
-    hit_at = {1: 0, 3: 0, 5: 0, 10: 0}
-    reciprocal = []
-    latencies = []
-    modes = {}
-    results = []
+    embedding_needed = (
+        args.compare or args.mode in ("vector", "hybrid")
+    )
 
-    for case in cases:
-        outcome = retrieve(
+    embedder = None
+
+    if embedding_needed:
+        embedder = build_embedder(args.embedding_provider)
+
+        indexed = index_embeddings(
             owner_id="eval_owner",
-            query=case["query"],
-            k=args.k,
             store=store,
+            embedder=embedder,
         )
 
-        rank = None
-
-        for hit in outcome["hits"]:
-            if doc_ids.get(
-                hit["document_id"]
-            ) == case["expect_doc"]:
-                rank = hit["rank"]
-                break
-
-        for cutoff in hit_at:
-            if rank is not None and rank <= cutoff:
-                hit_at[cutoff] += 1
-
-        reciprocal.append(
-            1.0 / rank if rank else 0.0
-        )
-        latencies.append(outcome["latency_ms"])
-        modes[outcome["mode"]] = (
-            modes.get(outcome["mode"], 0) + 1
-        )
-
-        results.append(
-            {
-                "id": case["id"],
-                "category": case["category"],
-                "query": case["query"],
-                "expect_doc": case["expect_doc"],
-                "rank": rank,
-                "mode": outcome["mode"],
-                "latency_ms": outcome["latency_ms"],
-            }
-        )
-
-    total = len(cases)
-
-    by_category = {}
-
-    for case in results:
-        bucket = by_category.setdefault(
-            case["category"], {"total": 0, "hit@5": 0}
-        )
-        bucket["total"] += 1
-
-        if case["rank"] is not None and case["rank"] <= 5:
-            bucket["hit@5"] += 1
-
-    summary = {
-        "queries": total,
-        "corpus_documents": len(rows),
-        "k": args.k,
-        "recall_at_1": round(hit_at[1] / total, 4),
-        "recall_at_3": round(hit_at[3] / total, 4),
-        "recall_at_5": round(hit_at[5] / total, 4),
-        "recall_at_10": round(hit_at[10] / total, 4),
-        "mrr": round(statistics.fmean(reciprocal), 4),
-        "p50_latency_ms": percentile(latencies, 0.5),
-        "p95_latency_ms": percentile(latencies, 0.95),
-        "channels": modes,
-        "by_category": {
-            name: {
-                "queries": bucket["total"],
-                "recall_at_5": round(
-                    bucket["hit@5"] / bucket["total"], 4
-                ),
-            }
-            for name, bucket in sorted(
-                by_category.items()
+        print(
+            "  embeddings  %s（新算 %d 段 / 命中缓存 %d 段）"
+            % (
+                embedder.name,
+                indexed["embedded"],
+                indexed["cached"],
             )
-        },
-    }
+        )
+
+        if embedder.name.startswith("hashing"):
+            print(
+                "  ！HashingEmbedder 是**词法**向量，不是语义向量："
+                "它只证明链路能跑，别把这些数字当成语义检索的效果"
+            )
+
+    modes_to_run = (
+        ["bm25", "vector", "hybrid"]
+        if args.compare
+        else [args.mode]
+    )
+
+    reports = [
+        evaluate(
+            cases=cases,
+            store=store,
+            doc_ids=doc_ids,
+            k=args.k,
+            mode=mode,
+            embedder=embedder,
+        )
+        for mode in modes_to_run
+    ]
+
+    primary = reports[0]
+    summary = primary["summary"]
+    results = primary["cases"]
+    total = len(cases)
 
     citation = None
 
@@ -450,9 +550,20 @@ def main() -> int:
         "started_at": datetime.now(
             timezone.utc
         ).isoformat(),
-        "strategy": "bm25-trigram",
+        "strategy": "+".join(modes_to_run),
+        "embedder": (
+            embedder.name if embedder is not None else None
+        ),
         "corpus": Path(args.corpus).name,
+        "corpus_documents": len(rows),
         "summary": summary,
+        "comparison": [
+            {
+                "mode": report["mode"],
+                **report["summary"],
+            }
+            for report in reports
+        ],
         "cases": results,
     }
 
@@ -476,7 +587,8 @@ def main() -> int:
         % (len(rows), Path(args.corpus).name)
     )
     print("  queries     %d" % total)
-    print("  channel     %s" % modes)
+    print("  mode        %s" % primary["mode"])
+    print("  channel     %s" % summary["channels"])
     print("-" * 56)
     print("  recall@1    %.4f" % summary["recall_at_1"])
     print("  recall@3    %.4f" % summary["recall_at_3"])
@@ -496,6 +608,35 @@ def main() -> int:
             "  %-11s recall@5 %.4f (%d queries)"
             % (name, bucket["recall_at_5"], bucket["queries"])
         )
+
+    if args.compare:
+        print("-" * 56)
+        print(
+            "  %-8s %-9s %-9s %-9s %-9s %s"
+            % (
+                "mode",
+                "recall@1",
+                "recall@5",
+                "MRR",
+                "p95 ms",
+                "channels",
+            )
+        )
+
+        for report in reports:
+            row = report["summary"]
+
+            print(
+                "  %-8s %-9.4f %-9.4f %-9.4f %-9d %s"
+                % (
+                    report["mode"],
+                    row["recall_at_1"],
+                    row["recall_at_5"],
+                    row["mrr"],
+                    row["p95_latency_ms"],
+                    row["channels"],
+                )
+            )
 
     if citation is not None:
         print("-" * 56)
