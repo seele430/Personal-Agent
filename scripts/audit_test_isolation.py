@@ -53,6 +53,7 @@ REAL_DATABASE_FILES = (
     "auth_users.db",
     "reminders.db",
     "ai_usage.db",
+    "knowledge.db",
 )
 
 TEMP_MARKERS = (

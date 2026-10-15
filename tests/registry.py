@@ -504,6 +504,16 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
+    # L2：知识库（摄取幂等 / 归属隔离 / BM25 与短查询兜底）
+    "test_knowledge.py": TestSchema(
+        layer="integration",
+        domain="knowledge",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",
