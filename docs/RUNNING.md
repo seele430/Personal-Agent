@@ -28,7 +28,7 @@
 脚本会：检查 venv、检查端口、启动四个进程、把日志写到 `.run\*.log`、
 等 API 就绪、打印面板地址。**按 `Ctrl+C` 会一并停掉所有子进程。**
 
-窗口被强杀、进程成了孤儿时：
+窗口被强杀、进程留在后台没人管时：
 
 ```powershell
 .\scripts\run-dev.ps1 -Stop
@@ -158,6 +158,11 @@ Personal Agent - service self-check
   （要么补一个静态挂载，要么前面放 nginx）。
 - **三个后端进程都是手动常驻**，没有进程守护（systemd / nssm / 计划任务都没有配），
   线上要自己包一层。
-- **提醒有两套并存**：旧的 `reminders` 表由 `scheduler.py` 直推 ntfy；
-  新的 `reminder_requests` 表走按人投递。两条链路都在跑，尚未合并。
+- **提醒的投递已经从旧表切到新表**：调度器现在从 `reminder_requests`
+  （按人投递的权威记录）取件，`delivery='ntfy'` 的到期提醒才外推；旧表
+  `reminders` 退化为**站长提醒的历史镜像**，由 `mark_sent()` 与新表同事务
+  更新。另外保留一条**互斥**的兼容路径，专门送"没有任何新表记录指向"的
+  历史待发行（旧的 `create_reminder` 已废弃，这类行只可能来自迁移之前），
+  两条路径不会重复推送。旧表本身还没删 —— 删它需要重建带 CHECK 约束的
+  `reminder_requests`，属于下一步。
 - **收件箱上限 50 条**，未做分页。
