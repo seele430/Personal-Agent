@@ -484,6 +484,16 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
+    # L3：统一收件箱（聚合监控通知与到点提醒）
+    "test_inbox_api.py": TestSchema(
+        layer="api",
+        domain="monitor",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",

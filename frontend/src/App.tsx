@@ -178,32 +178,32 @@ type MonitorListResponse = {
   source_types?: unknown;
 };
 
-// 站内通知：非站长用户的结果通过这里送达。
-type InAppNotification = {
+// 收件箱条目：非站长用户的结果与到点提醒都汇总到这里。
+// kind 决定确认时打到哪个来源。
+type InboxItem = {
+  kind: "monitor" | "reminder";
   id: number;
-  monitor_id: string;
-  item_id: string;
   message: string;
   created_at: string;
 };
 
-type NotificationListResponse = {
-  notifications?: unknown;
+type InboxResponse = {
+  items?: unknown;
 };
 
-async function readNotifications(
+async function readInbox(
   response: Response
-): Promise<InAppNotification[]> {
+): Promise<InboxItem[]> {
   const value: unknown = await response.json();
 
   if (!value || typeof value !== "object") {
     throw new Error("服务器返回格式不正确");
   }
 
-  const data = value as NotificationListResponse;
+  const data = value as InboxResponse;
 
-  return Array.isArray(data.notifications)
-    ? (data.notifications as InAppNotification[])
+  return Array.isArray(data.items)
+    ? (data.items as InboxItem[])
     : [];
 }
 
@@ -428,7 +428,7 @@ export default function App(
     useState<string[]>([]);
 
   const [notifications, setNotifications] = useState<
-    InAppNotification[]
+    InboxItem[]
   >([]);
 
   const [notificationError, setNotificationError] =
@@ -1054,14 +1054,14 @@ export default function App(
   }
 
   // ========================================
-  // 站内通知（任何角色都能看自己的）
+  // 收件箱（任何角色都能看自己的）
   // ========================================
 
   async function loadNotifications() {
     if (!authToken) return;
 
     try {
-      const response = await fetch("/api/notifications", {
+      const response = await fetch("/api/inbox", {
         headers: authHeaders(),
       });
 
@@ -1069,32 +1069,31 @@ export default function App(
         throw new Error(
           await readDetail(
             response,
-            `读取通知失败（${response.status}）`
+            `读取收件箱失败（${response.status}）`
           )
         );
       }
 
-      setNotifications(
-        await readNotifications(response)
-      );
+      setNotifications(await readInbox(response));
       setNotificationError("");
     } catch (cause) {
       setNotificationError(
         cause instanceof Error
           ? cause.message
-          : "读取通知失败"
+          : "读取收件箱失败"
       );
     }
   }
 
   async function acknowledgeNotification(
+    kind: InboxItem["kind"],
     notificationId: number
   ) {
     setNotificationBusy(notificationId);
 
     try {
       const response = await fetch(
-        `/api/notifications/${notificationId}/ack`,
+        `/api/inbox/${kind}/${notificationId}/ack`,
         {
           method: "POST",
           headers: authHeaders(),
@@ -1526,17 +1525,17 @@ export default function App(
             {notifications.length > 0 && (
               <section
                 className="notice-panel"
-                aria-label="我的通知"
+                aria-label="收件箱"
               >
                 <h3>
-                  我的通知（{notifications.length}）
+                  收件箱（{notifications.length}）
                 </h3>
 
                 <ul className="monitor-list">
                   {notifications.map((item) => (
                     <li
                       className="monitor-row"
-                      key={item.id}
+                      key={`${item.kind}-${item.id}`}
                     >
                       <div className="reminder-main">
                         <strong className="notice-message">
@@ -1544,6 +1543,10 @@ export default function App(
                         </strong>
 
                         <span className="reminder-time">
+                          {item.kind === "reminder"
+                            ? "提醒"
+                            : "监控"}{" "}
+                          ·{" "}
                           {formatRemindAt(
                             item.created_at
                           )}
@@ -1556,9 +1559,10 @@ export default function App(
                           disabled={
                             notificationBusy === item.id
                           }
-                          aria-label={`知道了 ${item.id}`}
+                          aria-label={`知道了 ${item.kind} ${item.id}`}
                           onClick={() =>
                             void acknowledgeNotification(
+                              item.kind,
                               item.id
                             )
                           }

@@ -17,7 +17,7 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: e8bed794ced321f4 -->
+<!-- membership-digest: 63bcf7bc56ec5866 -->
 
 ## unit — L1 单元测试 (7 files)
 
@@ -63,7 +63,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_task_health.py` | tests/ 根 | task | temporary_sqlite | none | medium | registered-inferred |
 | `test_task_run_history.py` | tests/ 根 | task | temporary_sqlite | none | medium | registered-inferred |
 
-## api — L3 HTTP/API 测试 (12 files)
+## api — L3 HTTP/API 测试 (13 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -74,6 +74,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_chat_request_validation_http.py` | tests/ 根 | chat | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_chat_secure_api.py` | tests/ 根 | chat | temporary_sqlite | mocked | high | registered-inferred |
 | `test_chat_usage_http.py` | tests/ 根 | chat | temporary_sqlite | mocked | medium | registered-inferred |
+| `test_inbox_api.py` | tests/ 根 | monitor | temporary_sqlite | none | high | registered-inferred |
 | `test_login_rate_limit.py` | tests/ 根 | auth | temporary_sqlite | mocked | high | registered-inferred |
 | `test_monitor_api.py` | tests/ 根 | monitor | temporary_sqlite | none | high | registered-inferred |
 | `test_notifications_api.py` | tests/ 根 | monitor | temporary_sqlite | none | high | registered-inferred |

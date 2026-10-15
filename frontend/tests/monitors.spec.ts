@@ -7,8 +7,8 @@ import {
 import {
   blockUnmockedApi,
   expectNoUnmockedApi,
+  INBOX_API,
   installAuthMocks,
-  NOTIFICATIONS_API,
   type MockUser,
 } from "./support/mockAuth";
 
@@ -462,9 +462,9 @@ test.describe("Personal Agent Monitors", () => {
     expectNoUnmockedApi(unexpected);
   });
 
-  // 8. 没有监控权限的用户，仍然能看到并确认自己的站内通知
+  // 8. 没有监控权限的用户，仍然能看到并确认自己的收件箱
 
-  test("无权限的用户仍能看到并确认站内通知", async ({
+  test("无权限的用户仍能看到并确认收件箱", async ({
     page,
   }) => {
     const unexpected = await setupPage(page);
@@ -479,32 +479,40 @@ test.describe("Personal Agent Monitors", () => {
       }),
     );
 
-    let notifications = [
+    let items = [
       {
+        kind: "monitor",
         id: 5,
-        monitor_id: "m1",
-        item_id: "i1",
-        message:
-          "RSS 更新：新文章\nhttps://example.com/a",
+        message: "RSS 更新：新文章\nhttps://example.com/a",
         created_at: "2026-10-15T10:00:00+00:00",
+      },
+      {
+        kind: "reminder",
+        id: 9,
+        message: "该喝水了",
+        created_at: "2026-10-15T09:00:00+00:00",
       },
     ];
 
     const acks: string[] = [];
 
-    await page.route(NOTIFICATIONS_API, (route) =>
+    await page.route(INBOX_API, (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ notifications }),
+        body: JSON.stringify({ items }),
       }),
     );
 
+    // 收件箱聚合两种来源，确认时按 kind 路由
     await page.route(
-      "**/api/notifications/*/ack",
+      "**/api/inbox/*/*/ack",
       async (route) => {
         acks.push(route.request().url());
-        notifications = [];
+
+        items = items.filter(
+          (item) => item.kind !== "monitor",
+        );
 
         await route.fulfill({
           status: 200,
@@ -526,19 +534,21 @@ test.describe("Personal Agent Monitors", () => {
       page.getByTestId("monitor-forbidden"),
     ).toBeVisible();
 
-    // 但通知照常可见 —— 它不属于监控权限
-    await expect(page.getByLabel("我的通知")).toBeVisible();
+    // 收件箱照常可见 —— 它不属于监控权限
+    await expect(page.getByLabel("收件箱")).toBeVisible();
     await expect(page.getByText(/RSS 更新/)).toBeVisible();
+    await expect(page.getByText("该喝水了")).toBeVisible();
 
     await page
-      .getByRole("button", { name: "知道了 5" })
+      .getByRole("button", { name: "知道了 monitor 5" })
       .click();
 
-    await expect(
-      page.getByLabel("我的通知"),
-    ).toHaveCount(0);
+    // 确认的是监控那条，提醒那条还在
+    await expect(page.getByText(/RSS 更新/)).toHaveCount(0);
+    await expect(page.getByText("该喝水了")).toBeVisible();
 
     expect(acks.length).toBe(1);
+    expect(acks[0]).toContain("/api/inbox/monitor/5/ack");
 
     expectNoUnmockedApi(unexpected);
   });
