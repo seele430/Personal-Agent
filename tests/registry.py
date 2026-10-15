@@ -185,6 +185,16 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
+    # L2：任务引擎语义（基线 / 恰好一次 / 数据源注册表）
+    "integration/test_task_pipeline.py": TestSchema(
+        layer="integration",
+        domain="monitor",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="high",
+    ),
+
     # L2：运行时安全守卫（故意触发拦截，不产生真实网络流量）
     "integration/test_test_safety.py": TestSchema(
         layer="integration",

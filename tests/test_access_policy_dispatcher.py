@@ -13,6 +13,7 @@ import requests
 from tests.helper import isolate_paths
 from src.core import monitor_registry
 from src.core import monitor_dispatcher
+from src.core import source_registry
 from src.core import task_run_history
 from src.monitors import rate_limit
 from src.monitors.rate_limit import (
@@ -106,7 +107,7 @@ class TestAccessPolicyDispatcher(unittest.TestCase):
 
         with patch.object(
             monitor_dispatcher,
-            "run_rss_monitor",
+            "run_source",
             side_effect=error
         ):
             return (
@@ -203,7 +204,7 @@ class TestAccessPolicyDispatcher(unittest.TestCase):
     def test_timeout_is_recorded(self):
         with patch.object(
             monitor_dispatcher,
-            "run_rss_monitor",
+            "run_source",
             side_effect=TimeoutError(
                 "Simulated RSS timeout"
             )
@@ -244,7 +245,7 @@ class TestAccessPolicyDispatcher(unittest.TestCase):
 
         with patch.object(
             monitor_dispatcher,
-            "run_rss_monitor",
+            "run_source",
             return_value=0
         ):
             result = (
@@ -272,7 +273,7 @@ class TestAccessPolicyDispatcher(unittest.TestCase):
 
         with patch.object(
             monitor_dispatcher,
-            "run_rss_monitor",
+            "run_source",
             return_value=0,
         ):
             self.assertEqual(
@@ -290,7 +291,7 @@ class TestAccessPolicyDispatcher(unittest.TestCase):
 
         with patch.object(
             monitor_dispatcher,
-            "run_rss_monitor",
+            "run_source",
             return_value=0,
         ) as monitor:
             # 返回值是"本轮领取到的任务数"，顺延的任务仍然被领取过
@@ -375,7 +376,7 @@ class TestAccessPolicyDispatcher(unittest.TestCase):
             ),
             patch.object(
                 monitor_dispatcher,
-                "run_rss_monitor",
+                "run_source",
                 return_value=0,
             ) as monitor,
         ):
@@ -392,6 +393,45 @@ class TestAccessPolicyDispatcher(unittest.TestCase):
         self.assertIn(
             "未获得执行许可", state["last_error"]
         )
+
+
+    # ---------- 数据源分发 ----------
+
+    def test_dispatcher_routes_by_source_type(self):
+        # 建一个第二种数据源的任务，并用假 handler 替换注册表：
+        # 验证调度器是按 task_type 分发，而不是硬编码 RSS。
+        second = monitor_registry.create_monitor_task(
+            "test_owner",
+            "https://example.com/feed",
+            30,
+            "http_text",
+        )
+
+        with closing(
+            sqlite3.connect(self.db_path)
+        ) as conn, conn:
+            conn.execute(
+                "UPDATE monitor_tasks SET next_run_at = ?",
+                (PAST,),
+            )
+
+        seen = []
+
+        def fake_handler(monitor_id, source_url):
+            seen.append(monitor_id)
+            return 0
+
+        with patch.dict(
+            source_registry.SOURCE_HANDLERS,
+            {
+                "rss": fake_handler,
+                "http_text": fake_handler,
+            },
+        ):
+            monitor_dispatcher.run_due_monitor_tasks()
+
+        self.assertIn(self.task_id, seen)
+        self.assertIn(second, seen)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,10 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from src.config import paths
+from src.core.source_registry import (
+    DEFAULT_SOURCE_TYPE,
+    require_source_type,
+)
 from src.core.task_engine import init_task_db
 from src.monitors.url_policy import check_url_shape
 
@@ -74,12 +78,19 @@ def validate_owner_task(owner_id: str, task_id: str):
 def create_monitor_task(
     owner_id: str,
     source_url: str,
-    interval_minutes: int = 30
+    interval_minutes: int = 30,
+    source_type: str = DEFAULT_SOURCE_TYPE,
 ) -> str:
-    """创建 RSS 监控任务。"""
+    """创建一个监控任务。
+
+    `source_type` 由数据源注册表校验：调度器按它查 handler，
+    所以"能建但跑不了"的类型在建的时候就该被拒绝。
+    """
 
     if not isinstance(owner_id, str) or not owner_id.strip():
         raise ValueError("owner_id 不能为空")
+
+    require_source_type(source_type)
 
     if (
         isinstance(interval_minutes, bool)
@@ -90,10 +101,10 @@ def create_monitor_task(
 
     # 建任务时只做结构校验（协议 / 主机形态 / 字面量 IP）。
     # DNS 可以在建任务之后才变化，所以真正的解析校验放在
-    # 每次抓取前做，见 src/monitors/url_policy.check_fetch_url。
+    # 每次抓取前做，见 src/monitors/url_policy.resolve_for_fetch。
     check_url_shape(source_url)
 
-    task_id = "rss_" + uuid4().hex
+    task_id = f"{source_type}_" + uuid4().hex
 
     next_run = (
         datetime.now(timezone.utc)
@@ -115,11 +126,12 @@ def create_monitor_task(
                     status,
                     next_run_at
                 )
-                VALUES (?, ?, 'rss', ?, ?, 'active', ?)
+                VALUES (?, ?, ?, ?, ?, 'active', ?)
                 """,
                 (
                     task_id,
                     owner_id,
+                    source_type,
                     source_url,
                     interval_minutes,
                     next_run

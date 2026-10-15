@@ -233,7 +233,7 @@ class TestFetchRssPolicy(unittest.TestCase):
 
     def test_plain_http_is_rejected_before_request(self):
         with patch(
-            "src.monitors.rss._pinned_session",
+            "src.monitors.http_fetch._pinned_session",
         ) as session_factory:
             with self.assertRaises(UrlPolicyError):
                 fetch_rss(
@@ -255,7 +255,7 @@ class TestFetchRssPolicy(unittest.TestCase):
         session = FakeSession(response)
 
         with patch(
-            "src.monitors.rss._pinned_session",
+            "src.monitors.http_fetch._pinned_session",
             return_value=session,
         ) as session_factory:
             with self.assertRaises(UrlPolicyError):
@@ -293,7 +293,7 @@ class TestFetchRssPolicy(unittest.TestCase):
         )
 
         with patch(
-            "src.monitors.rss._pinned_session",
+            "src.monitors.http_fetch._pinned_session",
             return_value=FakeSession(response),
         ):
             with self.assertRaises(UrlPolicyError):
@@ -309,7 +309,7 @@ class TestFetchRssPolicy(unittest.TestCase):
         )
 
         with patch(
-            "src.monitors.rss._pinned_session",
+            "src.monitors.http_fetch._pinned_session",
             return_value=FakeSession(response),
         ):
             with self.assertRaises(UrlPolicyError):
@@ -322,7 +322,7 @@ class TestFetchRssPolicy(unittest.TestCase):
         response = FakeResponse(status_code=302)
 
         with patch(
-            "src.monitors.rss._pinned_session",
+            "src.monitors.http_fetch._pinned_session",
             return_value=FakeSession(response),
         ):
             with self.assertRaises(ValueError):
@@ -338,7 +338,7 @@ class TestFetchRssPolicy(unittest.TestCase):
 
         with (
             patch(
-                "src.monitors.rss._pinned_session",
+                "src.monitors.http_fetch._pinned_session",
                 return_value=FakeSession(response),
             ),
             patch(
@@ -359,7 +359,7 @@ class TestFetchRssPolicy(unittest.TestCase):
         )
 
         with patch(
-            "src.monitors.rss._pinned_session",
+            "src.monitors.http_fetch._pinned_session",
             return_value=FakeSession(response),
         ):
             with self.assertRaises(UrlPolicyError):
@@ -372,7 +372,7 @@ class TestFetchRssPolicy(unittest.TestCase):
         response = FakeResponse(status_code=429)
 
         with patch(
-            "src.monitors.rss._pinned_session",
+            "src.monitors.http_fetch._pinned_session",
             return_value=FakeSession(response),
         ):
             with self.assertRaises(

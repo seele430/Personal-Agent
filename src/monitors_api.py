@@ -15,6 +15,10 @@ from pydantic import BaseModel
 
 from src.auth_api import get_current_user
 from src.core import monitor_registry
+from src.core.source_registry import (
+    DEFAULT_SOURCE_TYPE,
+    known_source_types,
+)
 from src.monitors.url_policy import UrlPolicyError
 
 
@@ -34,6 +38,7 @@ MAX_INTERVAL_MINUTES = 24 * 60
 class MonitorCreate(BaseModel):
     source_url: str
     interval_minutes: int = DEFAULT_INTERVAL_MINUTES
+    source_type: str = DEFAULT_SOURCE_TYPE
 
 
 def _require_manage_role(user: dict) -> None:
@@ -67,7 +72,9 @@ def list_monitors(
     return {
         "monitors": monitor_registry.list_monitor_tasks(
             user["id"]
-        )
+        ),
+        # 引擎支持的数据源类型，供界面下拉使用
+        "source_types": known_source_types(),
     }
 
 
@@ -106,6 +113,7 @@ def create_monitor(
             user["id"],
             payload.source_url,
             payload.interval_minutes,
+            payload.source_type,
         )
 
     except UrlPolicyError as error:
@@ -124,6 +132,7 @@ def create_monitor(
         "id": task_id,
         "source_url": payload.source_url.strip(),
         "interval_minutes": payload.interval_minutes,
+        "source_type": payload.source_type,
         "status": "active",
     }
 

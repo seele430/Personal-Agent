@@ -25,7 +25,10 @@ from src.monitors.rate_limit import (
     MIN_HOST_INTERVAL_SECONDS,
     reserve_fetch,
 )
-from src.monitors.rss_monitor import run_rss_monitor
+from src.core.source_registry import (
+    DEFAULT_SOURCE_TYPE,
+    run_source,
+)
 from src.monitors.url_policy import (
     UrlPolicyError,
     check_host_allowed,
@@ -288,7 +291,6 @@ def claim_due_tasks(limit: int = 5) -> list[dict]:
                 FROM monitor_tasks
                 WHERE status = 'active'
                   AND archived_at IS NULL
-                  AND task_type = 'rss'
                   AND (
                       next_run_at IS NULL
                       OR next_run_at <= ?
@@ -674,9 +676,13 @@ def run_due_monitor_tasks() -> int:
                 run_id
             )
 
-            count = run_rss_monitor(
+            count = run_source(
+                source_type=(
+                    task.get("task_type")
+                    or DEFAULT_SOURCE_TYPE
+                ),
                 monitor_id=task_id,
-                feed_url=source_url
+                source_url=source_url,
             )
 
             if (
