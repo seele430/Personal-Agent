@@ -4,7 +4,9 @@ from unittest.mock import patch
 
 import requests
 
+from src.monitors.rss import fetch_rss
 from src.monitors.rss_monitor import run_rss_monitor
+from src.monitors.url_policy import UrlPolicyError
 
 
 MONITOR_ID = "test_rss_errors"
@@ -156,6 +158,212 @@ class TestRSSErrors(unittest.TestCase):
                     MONITOR_ID,
                     RSS_URL
                 )
+
+
+def public_resolver(hostname, port=None):
+    """假 DNS：任何域名都解析到公网地址。"""
+
+    return [(2, 1, 6, "", ("1.1.1.1", 0))]
+
+
+class FakeResponse:
+    """requests.Response 的最小替身。"""
+
+    def __init__(
+        self,
+        status_code=200,
+        headers=None,
+        chunks=None,
+    ):
+        self.status_code = status_code
+        self.headers = headers or {}
+        self._chunks = chunks or []
+        self.closed = False
+        self.url = ""
+
+    @property
+    def is_redirect(self):
+        return self.status_code in (301, 302, 303, 307, 308)
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            response = requests.Response()
+            response.status_code = self.status_code
+            response.url = self.url
+
+            raise requests.HTTPError(
+                f"HTTP {self.status_code}",
+                response=response,
+            )
+
+    def iter_content(self, chunk_size=0):
+        for chunk in self._chunks:
+            yield chunk
+
+    def close(self):
+        self.closed = True
+
+
+class TestFetchRssPolicy(unittest.TestCase):
+    """抓取路径上的 SSRF 防护。
+
+    这些断言是"重定向不能绕过防护"的直接证据：
+    被拦下的那一跳必须**在发出请求之前**就失败。
+    """
+
+    def test_plain_http_is_rejected_before_request(self):
+        calls = []
+
+        def fake_get(url, **kwargs):
+            calls.append(url)
+
+        with patch(
+            "src.monitors.rss.requests.get",
+            side_effect=fake_get,
+        ):
+            with self.assertRaises(UrlPolicyError):
+                fetch_rss(
+                    "http://blog.python.org/rss.xml",
+                    resolver=public_resolver,
+                )
+
+        self.assertEqual(calls, [])
+
+    def test_redirect_to_internal_address_is_blocked(self):
+        calls = []
+
+        response = FakeResponse(
+            status_code=302,
+            headers={
+                "Location": "https://127.0.0.1/secret"
+            },
+        )
+
+        def fake_get(url, **kwargs):
+            calls.append(url)
+            return response
+
+        with patch(
+            "src.monitors.rss.requests.get",
+            side_effect=fake_get,
+        ):
+            with self.assertRaises(UrlPolicyError):
+                fetch_rss(
+                    RSS_URL,
+                    resolver=public_resolver,
+                )
+
+        # 只请求了起点；内网那一跳被拦在请求之前
+        self.assertEqual(calls, [RSS_URL])
+        self.assertTrue(response.closed)
+
+    def test_redirect_to_metadata_service_is_blocked(self):
+        response = FakeResponse(
+            status_code=301,
+            headers={
+                "Location": (
+                    "https://169.254.169.254"
+                    "/latest/meta-data/"
+                )
+            },
+        )
+
+        with patch(
+            "src.monitors.rss.requests.get",
+            return_value=response,
+        ):
+            with self.assertRaises(UrlPolicyError):
+                fetch_rss(
+                    RSS_URL,
+                    resolver=public_resolver,
+                )
+
+    def test_too_many_redirects(self):
+        response = FakeResponse(
+            status_code=302,
+            headers={"Location": RSS_URL},
+        )
+
+        with patch(
+            "src.monitors.rss.requests.get",
+            return_value=response,
+        ):
+            with self.assertRaises(UrlPolicyError):
+                fetch_rss(
+                    RSS_URL,
+                    resolver=public_resolver,
+                )
+
+    def test_redirect_without_location_is_rejected(self):
+        response = FakeResponse(status_code=302)
+
+        with patch(
+            "src.monitors.rss.requests.get",
+            return_value=response,
+        ):
+            with self.assertRaises(ValueError):
+                fetch_rss(
+                    RSS_URL,
+                    resolver=public_resolver,
+                )
+
+    def test_oversized_body_is_rejected(self):
+        response = FakeResponse(
+            chunks=[b"x" * 64, b"y" * 64],
+        )
+
+        with (
+            patch(
+                "src.monitors.rss.requests.get",
+                return_value=response,
+            ),
+            patch(
+                "src.monitors.rss.MAX_RESPONSE_BYTES",
+                100,
+            ),
+        ):
+            with self.assertRaises(UrlPolicyError):
+                fetch_rss(
+                    RSS_URL,
+                    resolver=public_resolver,
+                )
+
+    def test_declared_oversized_body_is_rejected(self):
+        response = FakeResponse(
+            headers={"Content-Length": "999999999"},
+            chunks=[b"<rss></rss>"],
+        )
+
+        with patch(
+            "src.monitors.rss.requests.get",
+            return_value=response,
+        ):
+            with self.assertRaises(UrlPolicyError):
+                fetch_rss(
+                    RSS_URL,
+                    resolver=public_resolver,
+                )
+
+    def test_http_error_keeps_response_for_retry_policy(self):
+        response = FakeResponse(status_code=429)
+
+        with patch(
+            "src.monitors.rss.requests.get",
+            return_value=response,
+        ):
+            with self.assertRaises(
+                requests.HTTPError
+            ) as context:
+                fetch_rss(
+                    RSS_URL,
+                    resolver=public_resolver,
+                )
+
+        # rss_monitor 依赖 exc.response.status_code 决定重试策略
+        self.assertEqual(
+            context.exception.response.status_code,
+            429,
+        )
 
 
 if __name__ == "__main__":

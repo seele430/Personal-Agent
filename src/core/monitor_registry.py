@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from src.config import paths
 from src.core.task_engine import init_task_db
+from src.monitors.url_policy import check_url_shape
 
 # =====================================
 # Database Initialization
@@ -87,9 +88,10 @@ def create_monitor_task(
     ):
         raise ValueError("检查间隔必须是至少 15 分钟的整数")
 
-    # 当前开发版仅支持已验证的官方 RSS
-    if source_url != "https://blog.python.org/rss.xml":
-        raise ValueError("当前仅支持 Python 官方博客 RSS")
+    # 建任务时只做结构校验（协议 / 主机形态 / 字面量 IP）。
+    # DNS 可以在建任务之后才变化，所以真正的解析校验放在
+    # 每次抓取前做，见 src/monitors/url_policy.check_fetch_url。
+    check_url_shape(source_url)
 
     task_id = "rss_" + uuid4().hex
 
