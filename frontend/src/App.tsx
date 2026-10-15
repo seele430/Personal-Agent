@@ -1498,9 +1498,9 @@ export default function App(
 
                 <p className="reminder-hint">
                   只支持公网 HTTPS 订阅源；同一台主机
-                  5 分钟内最多抓取一次。
-                  当前只有站长可以创建，通知发往站长的
-                  ntfy。
+                  5 分钟内最多抓取一次。站长与管理员可以创建；
+                  只有站长的结果推到手机，其他角色落在下面的
+                  收件箱里。
                 </p>
               </div>
 

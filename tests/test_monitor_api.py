@@ -210,20 +210,35 @@ class TestMonitorAPI(unittest.TestCase):
         # 一个都不许落地
         self.assertEqual(self.list_ids(), [])
 
-    # 6. 管理员能看不能建
+    # 6. 管理员可以创建（按人投递落地后放宽）；普通成员仍然不行
 
-    def test_admin_cannot_create(self):
+    def test_admin_can_create(self):
         response = self.client.post(
             "/monitors",
             headers=self.headers("admin-token"),
             json={"source_url": RSS_URL},
         )
 
+        self.assertEqual(response.status_code, 201)
+
+        # 只落在自己名下：站长看不到管理员的任务
+        self.assertEqual(
+            self.list_ids("admin-token"),
+            [response.json()["id"]],
+        )
+        self.assertEqual(self.list_ids(), [])
+
+    def test_member_cannot_create(self):
+        response = self.client.post(
+            "/monitors",
+            headers=self.headers("member-token"),
+            json={"source_url": RSS_URL},
+        )
+
         self.assertEqual(response.status_code, 403)
 
-        self.assertEqual(
-            self.list_ids("admin-token"), []
-        )
+        # 一个都不许落地
+        self.assertEqual(self.list_ids("admin-token"), [])
 
     # 7. 暂停与恢复
 
