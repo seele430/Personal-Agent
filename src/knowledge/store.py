@@ -8,6 +8,10 @@
    重复摄取同一份内容只留一条文档（与监控的 seen_items 同一思路）；
 3. **索引与片段同事务**：FTS 行与 chunk 行一起写、一起删，
    不允许出现"检索得到但记录已删"的悬挂。
+4. **引用可回溯**：模型回复里的 `[n]` 解析后写回
+   `knowledge_retrievals.cited_chunk_ids`，与 `top_chunk_ids`
+   同序（即 `[n]` 的编号），于是"检索到了但没用"和
+   "引用错了"可以分开复盘。
 
 中文检索的坑（实测 sqlite 3.49）：FTS5 的 `unicode61` 不分中文词，
 而 `trigram` 需要查询**至少 3 个字符**才命中。所以：
@@ -132,10 +136,28 @@ class KnowledgeStore:
                     k INTEGER NOT NULL,
                     latency_ms INTEGER NOT NULL,
                     top_chunk_ids TEXT,
+                    cited_chunk_ids TEXT,
                     created_at TEXT NOT NULL
                 )
                 """
             )
+
+            # 迁移：老库没有引用列（R4 新增）。
+            # 建表语句对老库无效（IF NOT EXISTS），所以这里补一次。
+            columns = {
+                row[1]
+                for row in conn.execute(
+                    "PRAGMA table_info(knowledge_retrievals)"
+                )
+            }
+
+            if "cited_chunk_ids" not in columns:
+                conn.execute(
+                    """
+                    ALTER TABLE knowledge_retrievals
+                    ADD COLUMN cited_chunk_ids TEXT
+                    """
+                )
 
     # ----------------------------------------------------------------
     # 写入
@@ -597,3 +619,126 @@ class KnowledgeStore:
             )
 
         return cursor.lastrowid
+
+    @staticmethod
+    def _parse_ids(value) -> list[int]:
+        """把审计里的逗号分隔 ID 串解析回整数列表。"""
+
+        return [
+            int(part)
+            for part in str(value or "").split(",")
+            if part.strip().isdigit()
+        ]
+
+    def record_citations(
+        self,
+        *,
+        retrieval_id: int,
+        chunk_ids: list[int],
+    ) -> bool:
+        """把模型实际引用的片段回写到审计行（引用可回溯）。"""
+
+        if type(retrieval_id) is not int or retrieval_id <= 0:
+            raise ValueError("无效的检索记录 ID")
+
+        ids = [
+            item
+            for item in chunk_ids
+            if type(item) is int and item > 0
+        ]
+
+        if not ids:
+            raise ValueError("引用片段不能为空")
+
+        self.init_db()
+
+        with closing(self._connect()) as conn, conn:
+            cursor = conn.execute(
+                """
+                UPDATE knowledge_retrievals
+                SET cited_chunk_ids = ?
+                WHERE id = ?
+                """,
+                (
+                    ",".join(str(item) for item in ids),
+                    retrieval_id,
+                ),
+            )
+
+        return cursor.rowcount == 1
+
+    def list_retrievals(
+        self,
+        user_id: str,
+        *,
+        limit: int = 20,
+    ) -> list[dict]:
+        """按用户列出最近的检索审计。"""
+
+        if not isinstance(user_id, str) or not user_id.strip():
+            raise ValueError("user_id 不能为空")
+
+        if type(limit) is not int or not 1 <= limit <= 200:
+            raise ValueError("limit 无效")
+
+        self.init_db()
+
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, request_id, user_id, mode, k,
+                       latency_ms, top_chunk_ids,
+                       cited_chunk_ids, created_at
+                FROM knowledge_retrievals
+                WHERE user_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (user_id.strip(), limit),
+            ).fetchall()
+
+        return [
+            {
+                **dict(row),
+                "top_chunk_ids": self._parse_ids(
+                    row["top_chunk_ids"]
+                ),
+                "cited_chunk_ids": self._parse_ids(
+                    row["cited_chunk_ids"]
+                ),
+            }
+            for row in rows
+        ]
+
+    def chunk_documents(
+        self,
+        chunk_ids: list[int],
+    ) -> dict[int, int]:
+        """chunk_id → document_id（把引用回溯到文档）。"""
+
+        ids = [
+            item
+            for item in chunk_ids
+            if type(item) is int and item > 0
+        ]
+
+        if not ids:
+            return {}
+
+        self.init_db()
+
+        placeholders = ",".join("?" for _ in ids)
+
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                f"""
+                SELECT id, document_id
+                FROM knowledge_chunks
+                WHERE id IN ({placeholders})
+                """,
+                tuple(ids),
+            ).fetchall()
+
+        return {
+            row["id"]: row["document_id"] for row in rows
+        }

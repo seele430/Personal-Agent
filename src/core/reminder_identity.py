@@ -100,6 +100,16 @@ def bind_authenticated_reminder(
         _current_identity.reset(token)
 
 
+def current_identity() -> ReminderIdentity | None:
+    """读取当前上下文里的登录身份；没有认证上下文时返回 None。
+
+    供"有身份才做、没身份就跳过"的能力（例如知识库检索注入）使用：
+    调用方拿到 None 时应当跳过，而不是回退到某个默认用户。
+    """
+
+    return _current_identity.get()
+
+
 def create_reminder_for_current_user(
     message: str,
     minutes: int,

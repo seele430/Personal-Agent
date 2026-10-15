@@ -22,8 +22,14 @@ from src.core.reminder_identity import (
     ReminderDeliveryUnavailable,
     cancel_reminder_for_current_user as cancel_reminder,
     create_reminder_for_current_user as create_reminder,
+    current_identity,
     list_reminders_for_current_user as list_reminders,
     update_reminder_for_current_user as update_reminder,
+)
+from src.knowledge.inject import (
+    CITATION_RULE,
+    InjectedContext,
+    build_retrieval_context,
 )
 from src.tools.reminder import init_db
 
@@ -504,14 +510,21 @@ def _format_reminder_result(
 # 主聊天函数
 # ==========================================
 
-def build_system_prompt(now: datetime) -> str:
+def build_system_prompt(
+    now: datetime,
+    *,
+    with_knowledge: bool = False,
+) -> str:
     """聊天 system prompt。
 
     now 必须带时区。chat() 传入当前时间；
     eval 传入固定参考时间，保证两边提示词完全一致。
+
+    with_knowledge=True 时追加引用规则：只有真的注入了检索片段
+    才加，没有命中时不留"要求引用"的空指令。
     """
 
-    return (
+    prompt = (
         "你是 Personal Agent，中文私人助手。"
         f"当前本地时间："
         f"{now.isoformat()}。"
@@ -531,6 +544,11 @@ def build_system_prompt(now: datetime) -> str:
         "只有工具返回成功，才能说提醒已保存。"
         "提醒已保存不代表通知已经送达。"
     )
+
+    if with_knowledge:
+        prompt += CITATION_RULE
+
+    return prompt
 
 
 # ==========================================
@@ -684,24 +702,86 @@ def _execute_reminder_tool(tool_call) -> dict:
     return _format_reminder_result(created)
 
 
+def _knowledge_context(query: str) -> InjectedContext | None:
+    """按当前登录身份检索知识库；没有身份就不检索。
+
+    没有认证上下文时**绝不**回退到某个默认用户 —— 那等于把别人的
+    记忆喂进这次对话。检索失败也不影响聊天：只是这一轮不注入。
+    """
+
+    identity = current_identity()
+
+    if identity is None:
+        return None
+
+    try:
+        return build_retrieval_context(
+            owner_id=identity.user_id,
+            query=query,
+            request_id=identity.request_id,
+        )
+
+    except Exception:
+        logger.exception(
+            "知识库检索失败，本轮不注入检索片段 "
+            "user_id=%s",
+            identity.user_id,
+        )
+
+        return None
+
+
+def _record_citations(
+    knowledge: InjectedContext | None,
+    reply: str,
+) -> None:
+    """把回复里的 [n] 落回审计；失败不影响已经生成的回复。"""
+
+    if knowledge is None or knowledge.empty:
+        return
+
+    try:
+        knowledge.record_citations(reply)
+
+    except Exception:
+        logger.exception("知识库引用回写失败")
+
+
 def chat(user_input: str) -> str:
 
     validate_user_input(user_input)
 
     init_db()
 
+    # 检索只在有登录身份时发生（见 _knowledge_context）。
+    knowledge = _knowledge_context(user_input)
+
+    has_context = (
+        knowledge is not None and not knowledge.empty
+    )
+
     messages = [
         {
             "role": "system",
             "content": build_system_prompt(
-                datetime.now().astimezone()
+                datetime.now().astimezone(),
+                with_knowledge=has_context,
             ),
         },
-        {
-            "role": "user",
-            "content": user_input,
-        },
     ]
+
+    if has_context:
+        # 片段放在 system 之后、用户消息之前：
+        # 它是对模型可见的资料，不是用户说的话。
+        messages.append({
+            "role": "system",
+            "content": knowledge.text,
+        })
+
+    messages.append({
+        "role": "user",
+        "content": user_input,
+    })
 
     # 第一次模型调用
     response = _completion(
@@ -714,7 +794,11 @@ def chat(user_input: str) -> str:
     tool_calls = assistant_message.tool_calls
 
     if not tool_calls:
-        return assistant_message.content or ""
+        reply = assistant_message.content or ""
+
+        _record_citations(knowledge, reply)
+
+        return reply
 
     # 不允许一次执行多条提醒。
     if len(tool_calls) > MAX_REMINDER_TOOL_CALLS:
@@ -764,7 +848,11 @@ def chat(user_input: str) -> str:
         tool_choice="none",
     )
 
-    return (
+    reply = (
         final_response.choices[0].message.content
         or ""
     )
+
+    _record_citations(knowledge, reply)
+
+    return reply

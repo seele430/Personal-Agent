@@ -17,7 +17,7 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 7f90391f4dd74333 -->
+<!-- membership-digest: 269f66dc37891af1 -->
 
 ## unit — L1 单元测试 (7 files)
 
@@ -31,7 +31,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 | `unit/test_url_policy.py` | tests/unit/ | rss | none | mocked | high | registered-inferred |
 
-## integration — L2 数据集成测试 (29 files)
+## integration — L2 数据集成测试 (30 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -55,6 +55,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_chat_quota.py` | tests/ 根 | chat | temporary_sqlite | none | medium | registered-inferred |
 | `test_dispatcher_history.py` | tests/ 根 | dispatcher | temporary_sqlite | none | medium | registered-inferred |
 | `test_knowledge.py` | tests/ 根 | knowledge | temporary_sqlite | none | high | registered-inferred |
+| `test_knowledge_inject.py` | tests/ 根 | knowledge | temporary_sqlite | mocked | high | registered-inferred |
 | `test_monitor_lease.py` | tests/ 根 | monitor | temporary_sqlite | none | medium | registered-inferred |
 | `test_outbox.py` | tests/ 根 | outbox | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_outbox_429.py` | tests/ 根 | outbox | temporary_sqlite | mocked | medium | registered-inferred |

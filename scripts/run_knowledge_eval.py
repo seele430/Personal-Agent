@@ -1,4 +1,4 @@
-"""知识库检索评测：known-item 查询 + recall@k / MRR / 延迟。
+"""知识库检索评测：known-item 查询 + recall@k / MRR / 延迟（+ 可选引用命中率）。
 
 **方法学（如实标注，别把数字讲成它不代表的含义）**
 
@@ -14,17 +14,29 @@
 语料是 `scripts/build_knowledge_corpus.py` 抓下来的**真实**快照，
 所以同一份语料任何时候跑出来的数字都可复现、可前后对比。
 
+引用命中率（`--citations`）会真实跑一遍模型，因此**产生模型费用**；
+默认关闭。判定完全走落库的检索审计 `knowledge_retrievals`：
+`top_chunk_ids` 是这轮真正注入的片段顺序（即 `[n]` 的编号），
+`cited_chunk_ids` 是模型回复里出现的 `[n]` 映射回来的 chunk。
+于是"检索到了但模型没用"和"引用了错误的片段"能被分开看见。
+
 用法：
     .\\.venv\\Scripts\\python.exe scripts\\run_knowledge_eval.py
     .\\.venv\\Scripts\\python.exe scripts\\run_knowledge_eval.py --k 5
+    .\\.venv\\Scripts\\python.exe scripts\\run_knowledge_eval.py --citations --citation-limit 10
 """
 
 import argparse
+import atexit
 import json
+import os
 import re
+import shutil
 import statistics
 import sys
 import tempfile
+import time
+import uuid
 
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,7 +46,21 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.knowledge import KnowledgeStore, ingest_upload, retrieve
+# 评测数据目录必须在导入 src.config 之前确定：
+# 这样 src.agent 在请求路径上构造的 KnowledgeStore 也落在临时目录，
+# 绝不会写进项目真实知识库（含 ai_usage）。
+WORKDIR = Path(tempfile.mkdtemp(prefix="kb_eval_")).resolve()
+os.environ["PERSONAL_AGENT_DATA_DIR"] = str(WORKDIR)
+
+atexit.register(
+    lambda: shutil.rmtree(WORKDIR, ignore_errors=True)
+)
+
+from src.knowledge import (  # noqa: E402
+    KnowledgeStore,
+    ingest_upload,
+    retrieve,
+)
 
 
 CORPUS = ROOT / "evals" / "knowledge" / "corpus.jsonl"
@@ -131,8 +157,6 @@ def build_cases(rows: list[dict]) -> list[dict]:
             )
 
         # 混合类：稀有词 + 一个中等频率词（出现在 2~5 篇里）。
-        # 单稀有词查询几乎"一对一"，太容易；混入有竞争的词之后，
-        # 排序能力才真的被考验到。
         medium = [
             token
             for token in dict.fromkeys(tokens(row["text"]))
@@ -165,11 +189,128 @@ def percentile(values: list[int], ratio: float) -> int:
     return ordered[index]
 
 
+def run_citation_eval(
+    *,
+    cases: list[dict],
+    store: KnowledgeStore,
+    doc_ids: dict,
+    limit: int,
+    owner_id: str = "eval_owner",
+) -> dict:
+    """真实跑一遍模型，量"检索到了，模型有没有用上"。
+
+    会产生模型费用；调用方必须已经确认愿意承担。
+    """
+
+    from unittest.mock import patch
+
+    from src import agent
+    from src.core.ai_usage import AIUsageStore
+    from src.core.reminder_identity import (
+        bind_authenticated_reminder,
+    )
+
+    usage = AIUsageStore(
+        store.db_path.parent / "ai_usage.db"
+    )
+
+    results = []
+    cited_count = 0
+    hit_count = 0
+    latencies = []
+
+    with patch.object(
+        agent, "_get_usage_store", return_value=usage
+    ):
+        for case in cases[:limit]:
+            request_id = "eval" + uuid.uuid4().hex
+            started = time.perf_counter()
+
+            with bind_authenticated_reminder(
+                user_id=owner_id,
+                request_id=request_id,
+                role="owner",
+            ):
+                with agent.track_chat_usage(
+                    owner_id, request_id
+                ):
+                    reply = agent.chat(case["query"])
+
+            latency_ms = int(
+                (time.perf_counter() - started) * 1000
+            )
+            latencies.append(latency_ms)
+
+            audit = store.list_retrievals(
+                owner_id, limit=1
+            )[0]
+
+            cited_chunks = audit["cited_chunk_ids"]
+            documents = store.chunk_documents(cited_chunks)
+
+            cited_docs = {
+                doc_ids.get(document_id)
+                for document_id in documents.values()
+                if doc_ids.get(document_id) is not None
+            }
+
+            expected = case["expect_doc"]
+            has_citation = bool(cited_chunks)
+            hit = expected in cited_docs
+
+            if has_citation:
+                cited_count += 1
+
+            if hit:
+                hit_count += 1
+
+            results.append(
+                {
+                    "id": case["id"],
+                    "query": case["query"],
+                    "expect_doc": expected,
+                    "cited_chunk_ids": cited_chunks,
+                    "cited_docs": sorted(cited_docs),
+                    "hit": hit,
+                    "latency_ms": latency_ms,
+                    "reply": reply[:400],
+                }
+            )
+
+    total = len(results)
+    usage_summary = usage.user_summary(owner_id)
+
+    return {
+        "model": agent.MODEL,
+        "cases": total,
+        "cited_rate": (
+            round(cited_count / total, 4) if total else 0.0
+        ),
+        "citation_hit_rate": (
+            round(hit_count / total, 4) if total else 0.0
+        ),
+        "p95_latency_ms": percentile(latencies, 0.95),
+        "observed_tokens": (
+            usage_summary["observed_total_tokens"]
+        ),
+        "results": results,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--k", type=int, default=10)
+    parser.add_argument("--corpus", default=str(CORPUS))
     parser.add_argument(
-        "--corpus", default=str(CORPUS)
+        "--citations",
+        action="store_true",
+        help="额外真实跑一遍模型，量引用命中率（产生费用）",
+    )
+    parser.add_argument(
+        "--citation-limit",
+        type=int,
+        default=10,
+        help="引用评测最多跑多少条查询（控制费用）",
     )
     args = parser.parse_args()
 
@@ -186,8 +327,7 @@ def main() -> int:
         return 1
 
     # 评测永远在临时库里跑：绝不碰真实知识库
-    workdir = Path(tempfile.mkdtemp(prefix="kb_eval_"))
-    store = KnowledgeStore(workdir / "knowledge.db")
+    store = KnowledgeStore(WORKDIR / "knowledge.db")
 
     doc_ids = {}
 
@@ -285,6 +425,20 @@ def main() -> int:
         },
     }
 
+    citation = None
+
+    if args.citations:
+        if not os.getenv("OPENAI_API_KEY"):
+            print("")
+            print("没有 OPENAI_API_KEY，跳过引用评测")
+        else:
+            citation = run_citation_eval(
+                cases=cases,
+                store=store,
+                doc_ids=doc_ids,
+                limit=args.citation_limit,
+            )
+
     RESULTS.mkdir(parents=True, exist_ok=True)
 
     stamp = datetime.now(timezone.utc).strftime(
@@ -292,17 +446,22 @@ def main() -> int:
     )
     target = RESULTS / f"eval_{stamp}.json"
 
+    payload = {
+        "started_at": datetime.now(
+            timezone.utc
+        ).isoformat(),
+        "strategy": "bm25-trigram",
+        "corpus": Path(args.corpus).name,
+        "summary": summary,
+        "cases": results,
+    }
+
+    if citation is not None:
+        payload["citations"] = citation
+
     target.write_text(
         json.dumps(
-            {
-                "started_at": datetime.now(
-                    timezone.utc
-                ).isoformat(),
-                "strategy": "bm25-trigram",
-                "corpus": Path(args.corpus).name,
-                "summary": summary,
-                "cases": results,
-            },
+            payload,
             ensure_ascii=False,
             indent=2,
         ),
@@ -336,6 +495,25 @@ def main() -> int:
         print(
             "  %-11s recall@5 %.4f (%d queries)"
             % (name, bucket["recall_at_5"], bucket["queries"])
+        )
+
+    if citation is not None:
+        print("-" * 56)
+        print(
+            "  citations   %d cases (%s)"
+            % (citation["cases"], citation["model"])
+        )
+        print(
+            "  cited%%      %.4f"
+            % citation["cited_rate"]
+        )
+        print(
+            "  cite-hit%%   %.4f"
+            % citation["citation_hit_rate"]
+        )
+        print(
+            "  tokens      %d"
+            % citation["observed_tokens"]
         )
 
     print("=" * 56)
