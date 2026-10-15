@@ -43,9 +43,11 @@ class TestRSSErrors(unittest.TestCase):
 
         self.assertEqual(result, 0)
         mock_fetch.assert_called_once_with(RSS_URL)
+        # label 由数据源声明，通知文案前缀不写死
         mock_detect.assert_called_once_with(
             MONITOR_ID,
-            articles
+            articles,
+            label="RSS 更新",
         )
 
     def test_new_items_count(self):

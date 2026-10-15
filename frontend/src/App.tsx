@@ -223,6 +223,35 @@ function sourceTypeText(sourceType: string): string {
   return MONITOR_SOURCE_TEXT[sourceType] ?? sourceType;
 }
 
+// 「立即检查」返回的是**排队**结果，不是执行结果：
+// 调度器每 60 秒扫一次，而且每主机 5 分钟的频率限制照旧生效。
+function readDeferredSeconds(value: unknown): number {
+  if (!value || typeof value !== "object") {
+    return 0;
+  }
+
+  const wait = (value as {
+    deferred_seconds?: unknown;
+  }).deferred_seconds;
+
+  return typeof wait === "number" && wait > 0
+    ? Math.round(wait)
+    : 0;
+}
+
+function formatWait(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds} 秒`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+
+  return rest === 0
+    ? `${minutes} 分钟`
+    : `${minutes} 分 ${rest} 秒`;
+}
+
 const MONITOR_MIN_INTERVAL = 15;
 
 async function readMonitors(
@@ -1234,6 +1263,57 @@ export default function App(
     }
   }
 
+  async function checkMonitor(taskId: string) {
+    setMonitorBusy(taskId);
+
+    try {
+      const response = await fetch(
+        `/api/monitors/${encodeURIComponent(
+          taskId
+        )}/check`,
+        {
+          method: "POST",
+          headers: authHeaders(),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          await readDetail(
+            response,
+            `检查失败（${response.status}）`
+          )
+        );
+      }
+
+      const wait = readDeferredSeconds(
+        await response.json()
+      );
+
+      setMonitorError("");
+
+      // 如实说明是"排队"，不是"已经跑完"
+      setMonitorNotice(
+        wait > 0
+          ? `已排队：该主机最近抓取过，将在 ${formatWait(
+              wait
+            )}后自动执行`
+          : "已排队，最多 1 分钟内执行（调度器每 60 秒扫一次）"
+      );
+
+      await loadMonitors();
+    } catch (cause) {
+      setMonitorNotice("");
+      setMonitorError(
+        cause instanceof Error
+          ? cause.message
+          : "检查失败"
+      );
+    } finally {
+      setMonitorBusy(null);
+    }
+  }
+
   async function changeMonitorState(
     taskId: string,
     action: "pause" | "resume"
@@ -1735,6 +1815,21 @@ export default function App(
                         </div>
 
                         <div className="reminder-actions">
+                          {task.status === "active" && (
+                            <button
+                              type="button"
+                              disabled={
+                                monitorBusy === task.id
+                              }
+                              aria-label={`检查 ${task.id}`}
+                              onClick={() =>
+                                void checkMonitor(task.id)
+                              }
+                            >
+                              检查
+                            </button>
+                          )}
+
                           {task.status === "active" ? (
                             <button
                               type="button"

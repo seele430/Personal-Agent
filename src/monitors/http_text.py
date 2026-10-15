@@ -52,8 +52,14 @@ def run_http_text_monitor(
 
     item = {
         "id": digest,
-        "title": f"网页内容更新（{len(normalized)} 字符）",
+        "title": f"正文 {len(normalized)} 字符",
         "link": source_url,
     }
 
-    return len(detect_new_items(monitor_id, [item]))
+    return len(
+        detect_new_items(
+            monitor_id,
+            [item],
+            label="页面更新",
+        )
+    )

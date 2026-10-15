@@ -64,7 +64,8 @@ def run_rss_monitor(
 
     new_articles = detect_new_items(
         monitor_id,
-        articles
+        articles,
+        label="RSS 更新",
     )
 
 

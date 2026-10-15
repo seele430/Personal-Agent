@@ -184,6 +184,41 @@ def resume_monitor(
     return {"id": task_id, "status": "active"}
 
 
+@router.post("/monitors/{task_id}/check")
+def check_monitor_now(
+    task_id: str,
+    response: Response,
+    user: dict = Depends(get_current_user),
+):
+    """请求立即检查一次（排队，不绕过频率限制）。"""
+
+    response.headers["Cache-Control"] = "no-store"
+
+    _require_manage_role(user)
+
+    try:
+        queued = monitor_registry.request_monitor_check(
+            user["id"], task_id
+        )
+
+    except monitor_registry.MonitorNotActive as error:
+        raise HTTPException(
+            status_code=409,
+            detail=str(error),
+        ) from None
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from None
+
+    if queued is None:
+        raise _not_found() from None
+
+    return queued
+
+
 @router.delete("/monitors/{task_id}")
 def archive_monitor(
     task_id: str,

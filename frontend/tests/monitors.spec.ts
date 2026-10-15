@@ -552,4 +552,71 @@ test.describe("Personal Agent Monitors", () => {
 
     expectNoUnmockedApi(unexpected);
   });
+
+  // 9. 立即检查：排队语义，且如实回报频率限制
+
+  test("立即检查会排队并如实显示等待时间", async ({
+    page,
+  }) => {
+    const unexpected = await setupPage(page);
+
+    await page.route(MONITORS_API, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          monitors: [task({ id: "rss_001" })],
+        }),
+      }),
+    );
+
+    const checks: string[] = [];
+    let deferred = 0;
+
+    await page.route(
+      "**/api/monitors/*/check",
+      async (route) => {
+        checks.push(route.request().url());
+
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            id: "rss_001",
+            status: "queued",
+            deferred_seconds: deferred,
+          }),
+        });
+      },
+    );
+
+    await login(page);
+    await openTaskCenter(page);
+
+    // 第一次：这个主机没抓过，应该马上就能跑
+    await page
+      .getByRole("button", { name: "检查 rss_001" })
+      .click();
+
+    await expect(
+      page.getByTestId("monitor-notice"),
+    ).toContainText("最多 1 分钟内执行");
+
+    // 第二次：被每主机频率限制挡住，必须如实报等待时间，
+    // 不能假装"马上就会跑"
+    deferred = 240;
+
+    await page
+      .getByRole("button", { name: "检查 rss_001" })
+      .click();
+
+    await expect(
+      page.getByTestId("monitor-notice"),
+    ).toContainText("4 分钟");
+
+    expect(checks.length).toBe(2);
+    expect(checks[0]).toContain("/check");
+
+    expectNoUnmockedApi(unexpected);
+  });
 });

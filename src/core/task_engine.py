@@ -189,11 +189,17 @@ def mark_notification_read(
 
 def detect_new_items(
     monitor_id: str,
-    articles: list[dict]
+    articles: list[dict],
+    *,
+    label: str = "更新",
 ) -> list[dict]:
     """
     首次检查建立基线。
-    后续发现新文章时，将通知保存到 Outbox。
+    后续发现新内容时，将通知保存到 Outbox。
+
+    `label` 是通知文案的前缀，由数据源自己声明（RSS 用
+    "RSS 更新"、网页内容变化用"页面更新"）—— 写死成 "RSS 更新"
+    会让非 RSS 源的通知自相矛盾。
     """
 
     if not monitor_id.strip():
@@ -268,7 +274,7 @@ def detect_new_items(
                 title = article.get("title") or "新文章"
                 link = article.get("link") or ""
 
-                message = f"RSS 更新：{title}\n{link}"
+                message = f"{label}：{title}\n{link}"
 
                 conn.execute(
                     """
