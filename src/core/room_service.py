@@ -102,12 +102,14 @@ def approve_and_expand(
     room_store: RoomStore,
     hand_id: int,
     owner_id: str,
-    word_limit: int = 300,
+    word_limit: int | None = None,
     speak=None,
 ) -> dict:
-    """批准举手并生成展开内容（S5b）。
+    """批准举手并生成回应（S5b 展开 / S5c 插话）。
 
-    展开内容记入 messages（speaker=bot, role=expand）。
+    - `kind=expand`：话题 = 该 turn 的用户消息，默认 300 字；
+    - `kind=object`：话题 = 原 Bot 最近的展开内容（追问/质疑它），默认 80 字。
+    回应记入 messages（speaker=bot, role=kind）。
     """
 
     from src.core.bot_store import BotStore
@@ -132,22 +134,33 @@ def approve_and_expand(
     if bot is None:
         return {"approved": True, "content": ""}
 
-    # 话题 = 该 turn 的用户消息。
     messages = room_store.list_messages(
         room_id=hand["room_id"],
         owner_id=owner_id,
         turn_id=hand["turn_id"],
     )
-    topic = next(
-        (
+
+    if hand["kind"] == "object":
+        # 插话针对最近的展开内容。
+        expands = [
             message["content"]
             for message in messages
-            if message["speaker"] == "user"
-        ),
-        "",
-    )
+            if message["role"] == "expand"
+        ]
+        topic = expands[-1] if expands else ""
+        limit = word_limit or 80
+    else:
+        topic = next(
+            (
+                message["content"]
+                for message in messages
+                if message["speaker"] == "user"
+            ),
+            "",
+        )
+        limit = word_limit or 300
 
-    content = speak(bot, topic, word_limit=word_limit)
+    content = speak(bot, topic, word_limit=limit)
 
     if content:
         room_store.add_message(
@@ -155,7 +168,7 @@ def approve_and_expand(
             turn_id=hand["turn_id"],
             speaker="bot",
             bot_id=hand["bot_id"],
-            role="expand",
+            role=hand["kind"],
             content=content,
             owner_id=owner_id,
         )
@@ -163,5 +176,6 @@ def approve_and_expand(
     return {
         "approved": True,
         "bot_id": hand["bot_id"],
+        "kind": hand["kind"],
         "content": content,
     }
