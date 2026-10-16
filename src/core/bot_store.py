@@ -334,6 +334,32 @@ class BotStore:
 
         return dict(row) if row else None
 
+    def get_visible_bot(
+        self,
+        *,
+        bot_id: int,
+        owner_id: str,
+    ) -> dict | None:
+        """用户可见且启用的 Bot（站长 Bot 或自己的 Bot）。"""
+
+        if type(bot_id) is not int or bot_id <= 0:
+            raise BotError("无效的 Bot ID")
+
+        owner_id = owner_id.strip()
+
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM bots
+                WHERE id = ?
+                  AND enabled = 1
+                  AND (owner_id IS NULL OR owner_id = ?)
+                """,
+                (bot_id, owner_id),
+            ).fetchone()
+
+        return dict(row) if row else None
+
     def count_owned(self, owner_id: str) -> int:
         owner_id = owner_id.strip()
 

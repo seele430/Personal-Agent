@@ -510,10 +510,30 @@ def _format_reminder_result(
 # 主聊天函数
 # ==========================================
 
+TOOL_RULES = (
+    "用户要求提醒且时间明确时，可以调用 create_reminder。"
+    "用户想知道自己有哪些提醒时，调用 list_reminders。"
+    "取消或修改提醒需要提醒编号："
+    "先用 list_reminders 取得编号，或使用用户明确说出的编号；"
+    "没有编号时先询问，绝不猜测编号。"
+    "取消和修改只对尚未发送的提醒有效。"
+    "用户给出具体钟点（如今晚8点、明天9点）时，"
+    "按当前本地时间换算成整数分钟后调用，"
+    "并在回复中说明换算后的提醒时间。"
+    "只有日期或时段、没有具体钟点（如下周一早上），"
+    "或时间已经过去时，先询问，不要猜测。"
+    "缺少时间时先询问，不要猜测。"
+    "工具返回失败时必须明确告知用户。"
+    "只有工具返回成功，才能说提醒已保存。"
+    "提醒已保存不代表通知已经送达。"
+)
+
+
 def build_system_prompt(
     now: datetime,
     *,
     with_knowledge: bool = False,
+    bot: dict | None = None,
 ) -> str:
     """聊天 system prompt。
 
@@ -522,28 +542,25 @@ def build_system_prompt(
 
     with_knowledge=True 时追加引用规则：只有真的注入了检索片段
     才加，没有命中时不留"要求引用"的空指令。
+
+    bot=None 时是默认个人助手；bot 传入时用身份卡（persona /
+    system_prompt）覆盖人设，但保留工具调用能力（S3）。
     """
 
-    prompt = (
-        "你是 Personal Agent，中文私人助手。"
-        f"当前本地时间："
-        f"{now.isoformat()}。"
-        "用户要求提醒且时间明确时，可以调用 create_reminder。"
-        "用户想知道自己有哪些提醒时，调用 list_reminders。"
-        "取消或修改提醒需要提醒编号："
-        "先用 list_reminders 取得编号，或使用用户明确说出的编号；"
-        "没有编号时先询问，绝不猜测编号。"
-        "取消和修改只对尚未发送的提醒有效。"
-        "用户给出具体钟点（如今晚8点、明天9点）时，"
-        "按当前本地时间换算成整数分钟后调用，"
-        "并在回复中说明换算后的提醒时间。"
-        "只有日期或时段、没有具体钟点（如下周一早上），"
-        "或时间已经过去时，先询问，不要猜测。"
-        "缺少时间时先询问，不要猜测。"
-        "工具返回失败时必须明确告知用户。"
-        "只有工具返回成功，才能说提醒已保存。"
-        "提醒已保存不代表通知已经送达。"
-    )
+    if bot is None:
+        prompt = (
+            "你是 Personal Agent，中文私人助手。"
+            f"当前本地时间：{now.isoformat()}。"
+        )
+    else:
+        prompt = (
+            f"你是「{bot['name']}」，一个 Bot。"
+            f"你的天然立场（persona）：{bot['persona']}。"
+            f"行为指令：{bot['system_prompt']}。"
+            f"当前本地时间：{now.isoformat()}。"
+        )
+
+    prompt += TOOL_RULES
 
     if with_knowledge:
         prompt += CITATION_RULE
@@ -747,7 +764,7 @@ def _record_citations(
         logger.exception("知识库引用回写失败")
 
 
-def chat(user_input: str) -> str:
+def chat(user_input: str, *, bot: dict | None = None) -> str:
 
     validate_user_input(user_input)
 
@@ -766,6 +783,7 @@ def chat(user_input: str) -> str:
             "content": build_system_prompt(
                 datetime.now().astimezone(),
                 with_knowledge=has_context,
+                bot=bot,
             ),
         },
     ]

@@ -30,6 +30,7 @@ from fastapi.responses import JSONResponse
 from src import agent
 from src import api as legacy_chat
 from src.auth_api import get_current_user
+from src.core.bot_store import BotStore
 
 from src.core.ai_budget import (
     BudgetExceeded,
@@ -344,6 +345,21 @@ def chat_endpoint(
     user_id = user["id"]
     role = user["role"]
 
+    # 可选：单人聊天选中的 Bot（S3）。校验失败不消耗预算。
+    bot = None
+
+    if request.bot_id is not None:
+        bot = BotStore().get_visible_bot(
+            bot_id=request.bot_id,
+            owner_id=user_id,
+        )
+
+        if bot is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Bot 不存在或无权访问",
+            )
+
     # ======================================
     # 身份、次数、并发与预算准入
     # ======================================
@@ -480,7 +496,10 @@ def chat_endpoint(
                 request_id,
             ) as usage_scope:
 
-                reply = legacy_chat.chat(message)
+                if bot is None:
+                    reply = legacy_chat.chat(message)
+                else:
+                    reply = legacy_chat.chat(message, bot=bot)
 
         if (
             not isinstance(reply, str)

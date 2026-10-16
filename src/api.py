@@ -132,6 +132,9 @@ class ChatRequest(BaseModel):
 
     request_id: str | None = None
 
+    # 可选：单人聊天时选中的 Bot（S3）。
+    bot_id: int | None = None
+
 
 # ==========================================
 # 请求工具

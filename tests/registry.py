@@ -564,6 +564,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：单人聊天身份卡接入 + Bot 可见性（system prompt 纯函数 + SQLite）
+    "test_bot_chat.py": TestSchema(
+        layer="integration",
+        domain="bot",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",
