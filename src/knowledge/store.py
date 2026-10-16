@@ -87,10 +87,32 @@ class KnowledgeStore:
                     url TEXT,
                     sha256 TEXT NOT NULL,
                     created_at TEXT NOT NULL,
+                    expires_at TEXT,
+                    archived INTEGER NOT NULL DEFAULT 0,
                     UNIQUE (owner_id, sha256)
                 )
                 """
             )
+
+            # 迁移：老库没有过期 / 归档列（R5 新增）。
+            doc_columns = {
+                row[1]
+                for row in conn.execute(
+                    "PRAGMA table_info(knowledge_documents)"
+                )
+            }
+
+            if "expires_at" not in doc_columns:
+                conn.execute(
+                    "ALTER TABLE knowledge_documents "
+                    "ADD COLUMN expires_at TEXT"
+                )
+
+            if "archived" not in doc_columns:
+                conn.execute(
+                    "ALTER TABLE knowledge_documents "
+                    "ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"
+                )
 
             conn.execute(
                 """
@@ -214,6 +236,7 @@ class KnowledgeStore:
         url: str | None = None,
         source_ref: str | None = None,
         bot_id: str | None = None,
+        expires_at: str | None = None,
         now: datetime | None = None,
     ) -> dict:
         """摄取一份文档；内容相同则直接返回已有记录（幂等）。"""
@@ -260,14 +283,28 @@ class KnowledgeStore:
                         "sha256": digest,
                     }
 
+                # 内容更新归档（R5）：同一 source_ref 的新版本进来，
+                # 旧版本标记 archived，从检索候选剔除。
+                if source_ref and source_ref.strip():
+                    conn.execute(
+                        """
+                        UPDATE knowledge_documents
+                        SET archived = 1
+                        WHERE owner_id = ?
+                          AND source_ref = ?
+                          AND archived = 0
+                        """,
+                        (owner_id, source_ref.strip()),
+                    )
+
                 cursor = conn.execute(
                     """
                     INSERT INTO knowledge_documents (
                         owner_id, bot_id, source_type,
                         source_ref, title, url,
-                        sha256, created_at
+                        sha256, created_at, expires_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         owner_id,
@@ -278,6 +315,7 @@ class KnowledgeStore:
                         url,
                         digest,
                         utc_now(now),
+                        expires_at,
                     ),
                 )
 
@@ -332,19 +370,24 @@ class KnowledgeStore:
         owner_id: str,
         *,
         limit: int = 50,
+        include_archived: bool = False,
     ) -> list[dict]:
         self.init_db()
 
+        clause = "" if include_archived else "AND d.archived = 0"
+
         with closing(self._connect()) as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT d.id, d.title, d.url, d.source_type,
                        d.source_ref, d.created_at,
+                       d.expires_at, d.archived,
                        COUNT(c.id) AS chunks
                 FROM knowledge_documents d
                 LEFT JOIN knowledge_chunks c
                        ON c.document_id = d.id
                 WHERE d.owner_id = ?
+                  {clause}
                 GROUP BY d.id
                 ORDER BY d.id DESC
                 LIMIT ?
@@ -447,6 +490,32 @@ class KnowledgeStore:
                 conn.rollback()
                 raise
 
+    def set_expiry(
+        self,
+        *,
+        owner_id: str,
+        document_id: int,
+        expires_at: str | None,
+    ) -> bool:
+        """设置（或清除）文档过期时间。`None` = 永不过期（R5 软过期）。"""
+
+        if type(document_id) is not int or document_id <= 0:
+            raise ValueError("无效的文档 ID")
+
+        self.init_db()
+
+        with closing(self._connect()) as conn, conn:
+            cursor = conn.execute(
+                """
+                UPDATE knowledge_documents
+                SET expires_at = ?
+                WHERE id = ? AND owner_id = ?
+                """,
+                (expires_at, document_id, owner_id),
+            )
+
+        return cursor.rowcount == 1
+
     # ----------------------------------------------------------------
     # 检索（BM25）
     # ----------------------------------------------------------------
@@ -524,10 +593,12 @@ class KnowledgeStore:
                   ON d.id = c.document_id
                 WHERE knowledge_chunks_fts MATCH ?
                   AND d.owner_id = ?
+                  AND d.archived = 0
+                  AND (d.expires_at IS NULL OR d.expires_at > ?)
                 ORDER BY score
                 LIMIT ?
                 """,
-                (phrase, owner_id, limit),
+                (phrase, owner_id, utc_now(), limit),
             ).fetchall()
 
         return [dict(row) for row in rows]
@@ -604,11 +675,13 @@ class KnowledgeStore:
                 JOIN knowledge_documents d
                   ON d.id = c.document_id
                 WHERE d.owner_id = ?
+                  AND d.archived = 0
+                  AND (d.expires_at IS NULL OR d.expires_at > ?)
                   AND {where}
                 ORDER BY c.id
                 LIMIT ?
                 """,
-                (owner_id, *params, limit),
+                (owner_id, utc_now(), *params, limit),
             ).fetchall()
 
         return [dict(row) for row in rows]
@@ -1010,8 +1083,10 @@ class KnowledgeStore:
                   ON d.id = c.document_id
                 WHERE d.owner_id = ?
                   AND e.model = ?
+                  AND d.archived = 0
+                  AND (d.expires_at IS NULL OR d.expires_at > ?)
                 """,
-                (owner_id.strip(), model),
+                (owner_id.strip(), model, utc_now()),
             ).fetchall()
 
         from src.knowledge.embed import (

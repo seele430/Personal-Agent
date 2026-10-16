@@ -534,6 +534,16 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
+    # L2：知识库软过期与归档（过期后检索不到 / 同 source_ref 归档旧版本）
+    "test_knowledge_r5.py": TestSchema(
+        layer="integration",
+        domain="knowledge",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",
