@@ -568,6 +568,68 @@ def build_system_prompt(
     return prompt
 
 
+def utter(
+    bot: dict,
+    topic: str,
+    *,
+    word_limit: int = 80,
+) -> str:
+    """让 Bot 就 topic 说一句核心观点（S4 发言）。
+
+    与 chat 不同：纯生成一句话，不调工具、不注入知识库。
+    限字数（word_limit），逼 Bot 只说最核心的判断。
+    """
+
+    if not isinstance(bot, dict) or not bot.get("name"):
+        raise ValueError("bot 无效")
+
+    if not isinstance(topic, str) or not topic.strip():
+        raise ValueError("话题不能为空")
+
+    if type(word_limit) is not int or word_limit < 10:
+        raise ValueError("字数限制无效")
+
+    topic = topic.strip()
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                f"你是「{bot['name']}」，一个 Bot。"
+                f"你的天然立场（persona）：{bot['persona']}。"
+                f"行为指令：{bot['system_prompt']}。"
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"话题：{topic}。"
+                f"请只用一句不超过 {word_limit} 字的话，"
+                f"给出你最核心的判断或观点。"
+                f"不要附和，不要展开，不要提问，直接说结论。"
+            ),
+        },
+    ]
+
+    # 中文 1 字 ≈ 1–2 token，留余量。
+    kwargs = {
+        "model": MODEL,
+        "messages": messages,
+        "max_tokens": word_limit * 2 + 64,
+    }
+
+    if _is_deepseek_flash():
+        kwargs["extra_body"] = {
+            "thinking": {"type": "disabled"},
+        }
+
+    response = client.chat.completions.create(**kwargs)
+
+    content = response.choices[0].message.content or ""
+
+    return content.strip()
+
+
 # ==========================================
 # 执行一次提醒工具调用
 # ==========================================

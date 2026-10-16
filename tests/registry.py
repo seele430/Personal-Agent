@@ -594,6 +594,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L1：Bot 发言函数（utter：身份卡 + 限字数，client 被 patch）
+    "test_utter.py": TestSchema(
+        layer="unit",
+        domain="bot",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",
