@@ -144,6 +144,75 @@ class TestRoomAPI(unittest.TestCase):
 
         self.assertEqual(result.status_code, 404)
 
+    def test_decision_requires_summary(self):
+        room = self.make_room()
+        bot = self.make_bot()
+        self.client.post(
+            f"/rooms/{room['id']}/bots",
+            headers=self.headers(),
+            json={"bot_id": bot["id"]},
+        )
+
+        with patch.object(agent, "utter", return_value="观点"):
+            sent = self.client.post(
+                f"/rooms/{room['id']}/messages",
+                headers=self.headers(),
+                json={"message": "怎么看？"},
+            )
+
+        turn_id = sent.json()["turn_id"]
+
+        result = self.client.post(
+            f"/rooms/{room['id']}/turns/{turn_id}/decision",
+            headers=self.headers(),
+            json={"option": "做"},
+        )
+
+        self.assertEqual(result.status_code, 409)
+
+    def test_decision_success(self):
+        room = self.make_room()
+        bot = self.make_bot()
+        self.client.post(
+            f"/rooms/{room['id']}/bots",
+            headers=self.headers(),
+            json={"bot_id": bot["id"]},
+        )
+        self.bots.set_default_bot(user_id="alice", bot_id=bot["id"])
+
+        with patch.object(agent, "utter", return_value="观点"):
+            sent = self.client.post(
+                f"/rooms/{room['id']}/messages",
+                headers=self.headers(),
+                json={"message": "怎么看？"},
+            )
+
+        turn_id = sent.json()["turn_id"]
+
+        with patch.object(
+            agent,
+            "host_summary",
+            return_value={
+                "consensus": "一致",
+                "disagreement": "分歧",
+                "options": [{"label": "做", "risk": "贵"}],
+            },
+        ):
+            self.client.post(
+                f"/rooms/{room['id']}/turns/{turn_id}/summary",
+                headers=self.headers(),
+            )
+
+        with patch.object(agent, "chat", return_value="已执行"):
+            result = self.client.post(
+                f"/rooms/{room['id']}/turns/{turn_id}/decision",
+                headers=self.headers(),
+                json={"option": "做"},
+            )
+
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json()["reply"], "已执行")
+
 
 if __name__ == "__main__":
     unittest.main()

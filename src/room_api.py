@@ -5,6 +5,9 @@
 - 发消息会真实调用模型让各 Bot 发言（走 `room_service.run_room_turn`）。
 """
 
+import json
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -153,6 +156,10 @@ class HandReject(BaseModel):
     unfair: bool = False
 
 
+class Decision(BaseModel):
+    option: str = Field(min_length=1, max_length=200)
+
+
 @router.post("/rooms/{room_id}/hands")
 def raise_hand(
     room_id: int,
@@ -243,3 +250,100 @@ def summarize_turn(
 
     except RoomError:
         raise _not_found() from None
+
+
+@router.post("/rooms/{room_id}/turns/{turn_id}/decision")
+def make_decision(
+    room_id: int,
+    turn_id: str,
+    payload: Decision,
+    user: dict = Depends(get_current_user),
+):
+    """用户选择一个决策选项，由默认 Bot 执行工具（S6 收口）。"""
+
+    from src import agent
+    from src.core.bot_store import BotStore
+    from src.core.reminder_identity import bind_authenticated_reminder
+
+    store = _open_store()
+
+    try:
+        messages = store.list_messages(
+            room_id=room_id,
+            owner_id=user["id"],
+            turn_id=turn_id,
+        )
+
+    except RoomError:
+        raise _not_found() from None
+
+    summary_msg = next(
+        (
+            message
+            for message in reversed(messages)
+            if message["role"] == "summary"
+        ),
+        None,
+    )
+
+    if summary_msg is None:
+        raise HTTPException(
+            status_code=409,
+            detail="还没有汇总，请先触发 summary",
+        )
+
+    summary = json.loads(summary_msg["content"])
+    options = summary.get("options", [])
+
+    chosen = next(
+        (
+            option
+            for option in options
+            if option.get("label") == payload.option
+        ),
+        None,
+    )
+
+    if chosen is None:
+        raise HTTPException(
+            status_code=422,
+            detail="选项不存在",
+        )
+
+    default_bot = BotStore(store.db_path).get_default_bot(user["id"])
+
+    if default_bot is None:
+        raise HTTPException(
+            status_code=409,
+            detail="没有可用的默认 Bot",
+        )
+
+    instruction = (
+        f"用户选择了这个决策：{chosen['label']}。"
+        f"代价/风险：{chosen.get('risk', '')}。"
+        f"请执行这个决策。"
+    )
+
+    request_id = uuid.uuid4().hex
+
+    with bind_authenticated_reminder(
+        user_id=user["id"],
+        request_id=request_id,
+        role=user["role"],
+    ):
+        reply = agent.chat(instruction, bot=default_bot)
+
+    store.add_message(
+        room_id=room_id,
+        turn_id=turn_id,
+        speaker="bot",
+        bot_id=default_bot["id"],
+        role="decision",
+        content=reply,
+        owner_id=user["id"],
+    )
+
+    return {
+        "decision": chosen["label"],
+        "reply": reply,
+    }
