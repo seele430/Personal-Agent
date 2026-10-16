@@ -17,7 +17,7 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 49f1feba23864496 -->
+<!-- membership-digest: 853410c6ecf42ed2 -->
 
 ## unit — L1 单元测试 (7 files)
 
@@ -69,11 +69,12 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_task_health.py` | tests/ 根 | task | temporary_sqlite | none | medium | registered-inferred |
 | `test_task_run_history.py` | tests/ 根 | task | temporary_sqlite | none | medium | registered-inferred |
 
-## api — L3 HTTP/API 测试 (13 files)
+## api — L3 HTTP/API 测试 (14 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
 | `test_auth_api.py` | tests/ 根 | auth | temporary_sqlite | mocked | high | registered-inferred |
+| `test_bot_api.py` | tests/ 根 | bot | temporary_sqlite | none | medium | registered-inferred |
 | `test_chat_budget_http.py` | tests/ 根 | billing | temporary_sqlite | mocked | high | registered-inferred |
 | `test_chat_quota_http.py` | tests/ 根 | chat | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_chat_reconciliation_http.py` | tests/ 根 | billing | temporary_sqlite | mocked | high | registered-inferred |

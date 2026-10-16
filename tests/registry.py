@@ -554,6 +554,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L3：Bot 管理接口（创建 / 列表 / 身份卡 / 禁用，模拟身份）
+    "test_bot_api.py": TestSchema(
+        layer="api",
+        domain="bot",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",

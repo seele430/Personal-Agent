@@ -12,6 +12,7 @@ from fastapi import FastAPI
 
 from src import api as legacy_chat
 from src.auth_api import router as auth_router
+from src.bot_api import router as bot_router
 from src.chat_secure_api import router as chat_router
 from src.inbox_api import router as inbox_router
 from src.monitors_api import router as monitor_router
@@ -66,6 +67,9 @@ def health():
 
 # 登录、身份查询和退出登录
 app.include_router(auth_router)
+
+# Bot 管理（创建/列表/身份卡/禁用）
+app.include_router(bot_router)
 
 # 已认证聊天、额度及费用保护
 app.include_router(chat_router)
