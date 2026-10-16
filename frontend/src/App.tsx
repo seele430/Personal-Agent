@@ -7,6 +7,8 @@ import {
   type KeyboardEvent,
 } from "react";
 
+import BotsView from "./BotsView";
+
 type MessageStatus =
   | "pending"
   | "sent"
@@ -420,10 +422,9 @@ export default function App(
   const [checkingId, setCheckingId] =
     useState<string | null>(null);
 
-  const [view, setView] =
-    useState<"chat" | "reminders" | "quota" | "monitors">(
-      "chat"
-    );
+  const [view, setView] = useState<
+    "chat" | "reminders" | "quota" | "monitors" | "bots"
+  >("chat");
 
   const [quota, setQuota] = useState<QuotaReport | null>(
     null
@@ -1494,6 +1495,19 @@ export default function App(
             <span className="nav-symbol">☷</span>
             <span>任务中心</span>
           </button>
+
+          <button
+            type="button"
+            className={`nav-item ${
+              view === "bots" ? "selected" : ""
+            }`}
+            onClick={() => setView("bots")}
+            aria-pressed={view === "bots"}
+            aria-label="Bot 管理"
+          >
+            <span className="nav-symbol">✦</span>
+            <span>Bot 管理</span>
+          </button>
         </div>
 
         <div className="sidebar-section">
@@ -2006,6 +2020,8 @@ export default function App(
               </div>
             )}
           </section>
+        ) : view === "bots" ? (
+          <BotsView authToken={authToken} />
         ) : view === "reminders" ? (
           <section
             className="reminder-panel"

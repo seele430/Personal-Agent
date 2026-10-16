@@ -163,3 +163,35 @@ def enable_bot(
         raise _not_found() from None
 
     return {"enabled": True}
+
+
+@router.get("/bots/default")
+def get_default_bot(
+    user: dict = Depends(get_current_user),
+):
+    """当前用户的默认 Bot（未设置时回退站长 Bot）。"""
+
+    return {
+        "bot": _open_store().get_default_bot(user["id"]),
+    }
+
+
+@router.post("/bots/{bot_id}/default")
+def set_default_bot(
+    bot_id: int,
+    user: dict = Depends(get_current_user),
+):
+    """把某个 Bot 设为当前用户的默认 Bot。"""
+
+    try:
+        _open_store().set_default_bot(
+            user_id=user["id"],
+            bot_id=bot_id,
+        )
+
+    except BotError as error:
+        raise HTTPException(
+            status_code=422, detail=str(error)
+        ) from None
+
+    return {"default": True}
