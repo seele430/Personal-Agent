@@ -33,6 +33,7 @@ class BotCreate(BaseModel):
     persona: str
     system_prompt: str
     api_source: str = "platform"
+    avatar: str = "default"
     expertise: str | None = None
     style: str | None = None
 
@@ -42,6 +43,7 @@ class BotUpdate(BaseModel):
     persona: str | None = None
     system_prompt: str | None = None
     api_source: str | None = None
+    avatar: str | None = None
     expertise: str | None = None
     style: str | None = None
 
@@ -69,6 +71,7 @@ def create_bot(
             persona=payload.persona,
             system_prompt=payload.system_prompt,
             api_source=payload.api_source,
+            avatar=payload.avatar,
             expertise=payload.expertise,
             style=payload.style,
         )

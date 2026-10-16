@@ -30,6 +30,7 @@ class BotStoreTestCase(unittest.TestCase):
                 "system_prompt", "在 persona 立场下发言"
             ),
             api_source=kw.get("api_source", "platform"),
+            avatar=kw.get("avatar", "default"),
         )
 
     def seed(self, name="站长助手"):
@@ -64,6 +65,17 @@ class TestCreateBot(BotStoreTestCase):
     def test_invalid_api_source_rejected(self):
         with self.assertRaises(BotError):
             self.create(api_source="ghost")
+
+    def test_default_avatar(self):
+        self.assertEqual(self.create()["avatar"], "default")
+
+    def test_custom_avatar(self):
+        bot = self.create(avatar="deepseek")
+        self.assertEqual(bot["avatar"], "deepseek")
+
+    def test_invalid_avatar_rejected(self):
+        with self.assertRaises(BotError):
+            self.create(avatar="ghost")
 
 
 class TestBotCap(BotStoreTestCase):

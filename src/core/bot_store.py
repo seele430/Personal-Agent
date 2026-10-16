@@ -22,6 +22,20 @@ from src.config import paths
 MAX_BOTS_PER_USER = 3
 API_SOURCES = ("platform", "byok")
 
+# 头像风格标识（key），前端映射到对应的风格化图标。
+# 只用风格化/抽象图标，不用各厂商官方 logo 原图（商标版权）。
+AVATARS = (
+    "default",
+    "deepseek",
+    "doubao",
+    "qwen",
+    "kimi",
+    "ernie",
+    "claude",
+    "gpt",
+    "gemini",
+)
+
 
 class BotError(ValueError):
     """Bot 域的业务错误。"""
@@ -54,6 +68,7 @@ class BotStore:
                     style TEXT,
                     api_source TEXT NOT NULL
                         CHECK (api_source IN ('platform', 'byok')),
+                    avatar TEXT NOT NULL DEFAULT 'default',
                     enabled INTEGER NOT NULL DEFAULT 1
                         CHECK (enabled IN (0, 1)),
                     created_at INTEGER NOT NULL
@@ -67,6 +82,20 @@ class BotStore:
                 ON bots (owner_id, id)
                 """
             )
+
+            # 迁移：老库没有 avatar 列（S1 后续补充）。
+            columns = {
+                row[1]
+                for row in conn.execute(
+                    "PRAGMA table_info(bots)"
+                )
+            }
+
+            if "avatar" not in columns:
+                conn.execute(
+                    "ALTER TABLE bots "
+                    "ADD COLUMN avatar TEXT NOT NULL DEFAULT 'default'"
+                )
 
     # ----------------------------------------------------------------
     # 校验
@@ -92,6 +121,14 @@ class BotStore:
             )
         return value
 
+    @staticmethod
+    def _avatar(value):
+        if value not in AVATARS:
+            raise BotError(
+                "avatar 必须是 " + "/".join(AVATARS) + " 之一"
+            )
+        return value
+
     # ----------------------------------------------------------------
     # 写入
     # ----------------------------------------------------------------
@@ -104,6 +141,7 @@ class BotStore:
         persona: str,
         system_prompt: str,
         api_source: str,
+        avatar: str = "default",
         expertise: str | None = None,
         style: str | None = None,
         now: int | None = None,
@@ -120,6 +158,7 @@ class BotStore:
             system_prompt, "system_prompt", max_len=4000
         )
         api_source = self._api_source(api_source)
+        avatar = self._avatar(avatar)
         expertise = (
             self._text(expertise, "expertise", max_len=200)
             if expertise
@@ -154,9 +193,9 @@ class BotStore:
                     """
                     INSERT INTO bots (
                         owner_id, name, persona, system_prompt,
-                        expertise, style, api_source, created_at
+                        expertise, style, api_source, avatar, created_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         owner_id,
@@ -166,6 +205,7 @@ class BotStore:
                         expertise,
                         style,
                         api_source,
+                        avatar,
                         now,
                     ),
                 )
@@ -185,6 +225,7 @@ class BotStore:
             "expertise": expertise,
             "style": style,
             "api_source": api_source,
+            "avatar": avatar,
             "enabled": True,
         }
 
@@ -194,6 +235,7 @@ class BotStore:
         name: str,
         persona: str,
         system_prompt: str,
+        avatar: str = "default",
         expertise: str | None = None,
         style: str | None = None,
         now: int | None = None,
@@ -208,6 +250,7 @@ class BotStore:
         system_prompt = self._text(
             system_prompt, "system_prompt", max_len=4000
         )
+        avatar = self._avatar(avatar)
         expertise = (
             self._text(expertise, "expertise", max_len=200)
             if expertise
@@ -225,11 +268,19 @@ class BotStore:
                 """
                 INSERT INTO bots (
                     owner_id, name, persona, system_prompt,
-                    expertise, style, api_source, created_at
+                    expertise, style, api_source, avatar, created_at
                 )
-                VALUES (NULL, ?, ?, ?, ?, ?, 'platform', ?)
+                VALUES (NULL, ?, ?, ?, ?, ?, 'platform', ?, ?)
                 """,
-                (name, persona, system_prompt, expertise, style, now),
+                (
+                    name,
+                    persona,
+                    system_prompt,
+                    expertise,
+                    style,
+                    avatar,
+                    now,
+                ),
             )
 
         return {
@@ -241,6 +292,7 @@ class BotStore:
             "expertise": expertise,
             "style": style,
             "api_source": "platform",
+            "avatar": avatar,
             "enabled": True,
         }
 
@@ -311,7 +363,7 @@ class BotStore:
 
         allowed = {
             "name", "persona", "system_prompt",
-            "expertise", "style", "api_source",
+            "expertise", "style", "api_source", "avatar",
         }
         limits = {
             "name": 50,
@@ -329,6 +381,8 @@ class BotStore:
 
             if key == "api_source":
                 updates[key] = self._api_source(value)
+            elif key == "avatar":
+                updates[key] = self._avatar(value)
             elif value is not None:
                 updates[key] = self._text(
                     value, key, max_len=limits[key]

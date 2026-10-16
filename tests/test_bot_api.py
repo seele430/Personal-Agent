@@ -77,6 +77,7 @@ class TestBotAPI(unittest.TestCase):
                     "system_prompt", "在 persona 立场下发言"
                 ),
                 "api_source": kw.get("api_source", "platform"),
+                "avatar": kw.get("avatar", "default"),
             },
         )
 
@@ -123,6 +124,12 @@ class TestBotAPI(unittest.TestCase):
         result = self.create(api_source="ghost")
 
         self.assertEqual(result.status_code, 422)
+
+    def test_custom_avatar(self):
+        result = self.create(avatar="qwen")
+
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json()["avatar"], "qwen")
 
     def test_update_own_bot(self):
         created = self.create().json()
