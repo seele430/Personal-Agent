@@ -1,7 +1,7 @@
 # Personal Agent — 产品与开发总计划
 
-**版本：** v1.0 roadmap · 2026-10-10  
-**状态：** 产品方向已确认；开发仍在本地原型阶段  
+**版本：** v2.0 roadmap · 2026-10-16  
+**状态：** 产品方向已确认；M0–M2、M4、M7 已完成，M6 半成品（BYOK 未做），M3/M5/M8/M9/M10 未开工  
 **本机项目：** `C:\Users\123\Personal Agent`  
 **核心原则：** 不推倒重来、可测试增量交付、安全优先、严格控制预算。
 
@@ -47,51 +47,50 @@
 - 不允许 AI 自动写入并执行未知工具代码；不允许任意地址网络访问或任意服务器文件访问。
 - 工具复用**不是权限共享**：跨用户/跨 Bot 必须授权。
 
-## 3. 已验证事实（不要误当成生产就绪）
-- Python 3.12、venv 激活。
-- DeepSeek API 正常返回；`src/agent.py` 文件名逗号错误已修正。
-- `src/notification.py` → ntfy → 安卓手机，已收到测试消息。
-- SQLite + APScheduler 的 1 分钟提醒，已收到。
-- DeepSeek Tool Calling 创建提醒，已收到。
-- FastAPI `/chat` Swagger 请求返回 HTTP 200。
-- `feedparser` 6.0.14 已安装；`src/monitors/rss.py` 已存在。
-- **RSS 实际请求目前失败**：之前给的 `https://www.python.org/blogs/rss/` 返回 HTTP 404。这是测试订阅 URL 问题，**不是 `feedparser` 安装失败，也不意味着 RSS 模块整体无法工作**。更换到 Python Insider 官方新 RSS `https://blog.python.org/rss.xml` 重新测试（2026 年官方迁移公告证实新 URL）。
-- **尚未验证：** RSS 正常解析、自动 RSS 监控、通用任务引擎、React、多用户、邀请码、配额统计、长期记忆、多 Bot 房间、Docker 云端部署。
+## 3. 已验证事实（截至 2026-10-16，均有测试/实测为据）
+- Python 3.12、venv 激活（本机 `py`/`python` 启动器是坏的，一律用 `.venv\Scripts\python.exe`）。
+- DeepSeek API 正常返回；**DeepSeek 无 `/embeddings` 端点（实测 404）**，向量化走本地 `bge-small-zh-v1.5` 或别家 OpenAI 兼容服务。
+- ntfy 手机通知、SQLite + APScheduler 定时提醒、FastAPI `/chat` 均已收到/返回 200。
+- **RSS 已跑通**（官方源 `https://blog.python.org/rss.xml`），含 SSRF 防护（URL 策略 + DNS 校验 + 按主机限流）。
+- **通用任务引擎已跑通**（Source→Condition→Action，source-pluggable，SQLite 存任务/基线/状态，重启恢复）。
+- **React 前端 + 登录/邀请已跑通**：`frontend/`（Vite + TS）+ 7 个 Playwright spec（auth/chat/monitors/quota/reminders）。
+- **配额/计费已跑通**：每用户每日请求数 + Token 预算，预留→结算→对账，含并发超支测试。
+- **长期记忆已跑通（M7 全量 R1–R5）**：SQLite + FTS5(BM25) + 本地语义向量（bge-small-zh）+ RRF 融合；软过期 + 归档。离线评测 40 文档 / 66 query：BM25 recall@5=0.9848 已是天花板，向量/hybrid 无召回增益 → 当前量级不上向量库（结论见 `docs/MEMORY_RAG_PLAN.md` §4.5）。
+- **测试工程化**：56 个测试文件 / **513 用例全绿**，audit + 受保护运行器 + GitHub Actions（audit/backend/frontend 三 job）。
+- **尚未做：** PostgreSQL（M3）、Bot 实体与多 Bot 房间（M5/M8）、BYOK（M6 后半）、Docker 云端（M9）、商品监控/PWA（M10）。
 
-## 4. 分阶段开发路线与验收门槛
+## 4. 分阶段开发路线与验收门槛（2026-10-16 更新）
 
-| 阶段 | 范围 | 可验证的完成标准 |
-| --- | --- | --- |
-| **M0 已完成** | DeepSeek、提醒、ntfy、FastAPI | 已有本地实测记录 |
-| **M1 当前** | RSS fetch、安全 URL 策略与测试 | 官方 RSS 返回文章；处理 404/超时/空 Feed；有单元测试 |
-| **M2** | 通用任务引擎（Source→Condition→Action） | SQLite 存任务/基线/状态；首次不通知旧文章；新增文章恰好通知一次；重启恢复 |
-| **M3** | PostgreSQL schema + 数据迁移 | user/bot/room/message/task/usage/credential 表可迁移且有测试 |
-| **M4** | 极简白色 React UI + 登录/邀请制 | 5–10 测试账户可用；登录/退出/邀请码流程；移动端可操作 |
-| **M5** | Bot Studio、独立存储、共享 Skills | 可创建/修改/禁用 Bot，最多 3 个；权限隔离 |
-| **M6** | BYOK、平台额度、管理员后台 | 每用户/每 Bot 计量；邀请码提升额度；预警和熔断；绕过/并发测试 |
-| **M7** | 短期摘要 + 长期检索记忆（细化见 `docs/MEMORY_RAG_PLAN.md`） | 独立 Bot 记忆、聊天室共享上下文；Token 预算可验证 |
-| **M8** | 多 Bot 讨论协调器 | 限轮次/调用/预算；可取消、可追踪执行链路 |
-| **M9** | 安全与工程化、Docker 云端运行 | 认证/SSRF/权限/限流/备份恢复/Worker 恢复/日志/CI；本地关机仍能收到云端提醒 |
-| **M10 可选** | 商品监控、社交公开更新、PWA | 只接合规可用数据源，真实演示及测试 |
+| 阶段 | 范围 | 状态 | 可验证的完成标准 |
+| --- | --- | --- | --- |
+| **M0** | DeepSeek、提醒、ntfy、FastAPI | ✅ 完成 | 已有本地实测记录 |
+| **M1** | RSS fetch、安全 URL 策略 | ✅ 完成 | 官方 RSS 返回文章；SSRF 防护（URL 策略/DNS/限流）；`test_rss_errors` + `test_url_policy` |
+| **M2** | 通用任务引擎（Source→Condition→Action） | ✅ 完成 | SQLite 存任务/基线/状态；恰好一次通知；重启恢复；`test_task_pipeline` 等 |
+| **M3** | PostgreSQL schema + 数据迁移 | ❌ 未开工 | user/bot/room/message/task/usage/credential 表可迁移且有测试 |
+| **M4** | 极简白色 React UI + 登录/邀请制 | ✅ 完成 | 登录/退出/邀请码；7 个 Playwright spec；移动端可操作 |
+| **M5** | Bot Studio、独立存储、共享 Skills | ❌ 未开工 | 可创建/修改/禁用 Bot，最多 3 个；权限隔离 |
+| **M6** | BYOK、平台额度、管理员后台 | ⚠️ 半成品 | 额度/计量/预警/熔断已做；**BYOK 未做**（`api_key` 仅从环境变量读平台 key） |
+| **M7** | 短期摘要 + 长期检索记忆（细化见 `docs/MEMORY_RAG_PLAN.md`） | ✅ 完成 | R1–R5 全落地；513 用例；离线评测三组对照见 §3 |
+| **M8** | 多 Bot 讨论协调器 | ❌ 未开工 | 限轮次/调用/预算；可取消、可追踪执行链路 |
+| **M9** | 安全与工程化、Docker 云端运行 | ❌ 未开工（部分安全已做） | 认证/SSRF/限流/CI 已就绪；Docker/备份恢复/Worker 恢复未做 |
+| **M10 可选** | 商品监控、社交公开更新、PWA | ❌ 未开工 | 只接合规可用数据源，真实演示及测试 |
 
-**各阶段安全要求不许拖到最后：** 例如 M1 的网络安全、M3–M5 的用户隔离、M6 的额度强制检查必须伴随功能落地。
+**各阶段安全要求不许拖到最后：** 例如 M1 的网络安全、M3–M5 的用户隔离、M6 的额度强制检查必须伴随功能落地（M1/M6 的安全要求已随功能落地）。
 
-## 5. 当前立即执行的一步：修复 RSS 测试地址
+**当前状态小结：** 核心闭环（登录/邀请 → 聊天 → 提醒 → 监控 → 通知 → 配额 → 知识库）已通；最大的产品缺口是 **M5/M8 的 Bot 层**（产品北极星「最多 3 个 Bot + 多 Bot 聊天室」尚未实现）与 M6 的 BYOK。
 
-截图报错：
-`requests.exceptions.HTTPError: 404 Client Error: Not Found for url: https://www.python.org/blogs/rss/`
+## 5. 下一个里程碑：M5 Bot Studio（产品北极星的核心缺口）
 
-原因：测试地址返回 404；无需重装 `feedparser` 或推倒 `rss.py`。
+产品定义第一句是「用户可创建最多 3 个自定义 Bot，在单人聊天或多 Bot 聊天室中协作」，但这个能力当前**完全不存在**（`create_bot`/`list_bots` 全仓 0 命中，无 bot/room API）。这是 M5 + M8 的共同前置，建议作为下一个里程碑。
 
-项目根目录激活 venv 后执行：
+**M5 的拆解（建议，动手前先写进 Backlog 并确认）：**
 
-```powershell
-python -c "from src.monitors.rss import fetch_rss; articles = fetch_rss('https://blog.python.org/rss.xml'); print('文章数量:', len(articles)); print(articles[:3])"
-```
+1. **Bot 实体**：`bots` 表（owner_id、name、system_prompt、skills、enabled），单用户最多 3 个，归属隔离下推。
+2. **独立存储**：Bot 专属记忆沿用现有 `knowledge_documents.bot_id` 字段（M7 已预留），聊天记录按 bot_id 隔离。
+3. **共享 Skills**：统一工具注册表 + 参数校验 + 单 Bot 权限表；首批复用 reminder / notification / RSS。
+4. **单人聊天 + 多 Bot 房间**（M8 顺延）：限轮次/调用/预算，可取消。
 
-测试成功：返回文章数量、文章标题与链接。失败则记录报错，再检查连接、重定向和解析；不要盲改代码。
-
-**上线前**的 `fetch_rss()` 必须增加 SSRF 防护（限制内部地址、重定向与 DNS）、响应体积限制、合法协议/域名策略、速率限制、超时与统一异常格式。
+**动手前的约束（沿用 M7 的取舍结论）：** 继续 SQLite，不急着上 PostgreSQL（M3）——5–10 位邀请用户的量级下，SQLite 足够；等有实测数据再决定迁移。
 
 ## 6. 每周防偏航检查（每周一次 + 每个里程碑结束）
 
@@ -120,4 +119,4 @@ python -c "from src.monitors.rss import fetch_rss; articles = fetch_rss('https:/
 
 新增需求先写入 Backlog，按 **必须（MVP）/重要（V1）/以后（V2）** 分类；附带对应成本、安全影响、最小验证方法。只有当前阶段验收后，才安排相关迭代。
 
-**本周下一步仅做一件事：把 RSS 官方订阅源读取测试跑通。**
+**下一里程碑：M5 Bot Studio（先拆解 + Backlog，再动手）。**
