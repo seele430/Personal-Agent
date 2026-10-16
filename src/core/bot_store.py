@@ -97,6 +97,17 @@ class BotStore:
                     "ADD COLUMN avatar TEXT NOT NULL DEFAULT 'default'"
                 )
 
+            # 用户默认 Bot（S6）：未设置时回退到第一个站长 Bot。
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_defaults (
+                    user_id TEXT PRIMARY KEY,
+                    default_bot_id INTEGER
+                        REFERENCES bots(id) ON DELETE SET NULL
+                )
+                """
+            )
+
     # ----------------------------------------------------------------
     # 校验
     # ----------------------------------------------------------------
@@ -459,3 +470,82 @@ class BotStore:
             )
 
         return cursor.rowcount == 1
+
+    # ----------------------------------------------------------------
+    # 默认 Bot（S6）
+    # ----------------------------------------------------------------
+
+    def set_default_bot(
+        self,
+        *,
+        user_id: str,
+        bot_id: int,
+    ) -> bool:
+        """设置用户的默认 Bot。校验 Bot 可见（站长或自己的）。"""
+
+        if not isinstance(user_id, str) or not user_id.strip():
+            raise BotError("user_id 不能为空")
+
+        if type(bot_id) is not int or bot_id <= 0:
+            raise BotError("无效的 Bot ID")
+
+        user_id = user_id.strip()
+
+        if self.get_visible_bot(
+            bot_id=bot_id, owner_id=user_id
+        ) is None:
+            raise BotError("Bot 不存在或无权访问")
+
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                """
+                INSERT INTO user_defaults (user_id, default_bot_id)
+                VALUES (?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    default_bot_id = excluded.default_bot_id
+                """,
+                (user_id, bot_id),
+            )
+
+        return True
+
+    def get_default_bot(self, user_id: str) -> dict | None:
+        """获取用户的默认 Bot；未设置时回退到第一个站长 Bot。"""
+
+        if not isinstance(user_id, str) or not user_id.strip():
+            raise BotError("user_id 不能为空")
+
+        user_id = user_id.strip()
+
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                """
+                SELECT default_bot_id FROM user_defaults
+                WHERE user_id = ?
+                """,
+                (user_id,),
+            ).fetchone()
+
+            default_id = row["default_bot_id"] if row else None
+
+            if default_id is not None:
+                bot_row = conn.execute(
+                    """
+                    SELECT * FROM bots
+                    WHERE id = ? AND enabled = 1
+                    """,
+                    (default_id,),
+                ).fetchone()
+
+                if bot_row is not None:
+                    return dict(bot_row)
+
+            platform = conn.execute(
+                """
+                SELECT * FROM bots
+                WHERE owner_id IS NULL AND enabled = 1
+                ORDER BY id LIMIT 1
+                """,
+            ).fetchone()
+
+        return dict(platform) if platform else None

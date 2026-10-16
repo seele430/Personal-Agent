@@ -203,5 +203,40 @@ class TestUpdate(BotStoreTestCase):
         self.assertTrue(self.store.get_bot(bot["id"])["enabled"])
 
 
+class TestDefaultBot(BotStoreTestCase):
+
+    def test_get_default_falls_back_to_platform(self):
+        platform = self.seed(name="站长助手")
+        self.create(name="我的 bot")
+
+        default = self.store.get_default_bot("alice")
+
+        # 未设置时回退到站长 Bot
+        self.assertEqual(default["id"], platform["id"])
+
+    def test_set_and_get_default(self):
+        self.seed(name="站长助手")
+        bot = self.create(name="我的 bot")
+
+        self.store.set_default_bot(user_id="alice", bot_id=bot["id"])
+
+        default = self.store.get_default_bot("alice")
+        self.assertEqual(default["id"], bot["id"])
+
+    def test_cannot_set_others_bot_as_default(self):
+        self.seed(name="站长助手")
+        bob_bot = self.create(owner="bob", name="bob 的")
+
+        with self.assertRaises(BotError):
+            self.store.set_default_bot(
+                user_id="alice", bot_id=bob_bot["id"]
+            )
+
+    def test_no_platform_bot_returns_none(self):
+        self.create()  # 只有自己的 bot，无站长 bot，也没设 default
+
+        self.assertIsNone(self.store.get_default_bot("alice"))
+
+
 if __name__ == "__main__":
     unittest.main()

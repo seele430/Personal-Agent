@@ -644,6 +644,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：主持人汇总（host_summary + host_summarize_turn，模型被 patch）
+    "test_room_summary.py": TestSchema(
+        layer="integration",
+        domain="room",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",

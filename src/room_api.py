@@ -9,7 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.auth_api import get_current_user
-from src.core.room_service import approve_and_expand, run_room_turn
+from src.core.room_service import (
+    approve_and_expand,
+    host_summarize_turn,
+    run_room_turn,
+)
 from src.core.room_store import RoomError, RoomStore
 
 
@@ -217,6 +221,24 @@ def reject_hand(
             hand_id=hand_id,
             owner_id=user["id"],
             unfair=payload.unfair,
+        )
+
+    except RoomError:
+        raise _not_found() from None
+
+
+@router.post("/rooms/{room_id}/turns/{turn_id}/summary")
+def summarize_turn(
+    room_id: int,
+    turn_id: str,
+    user: dict = Depends(get_current_user),
+):
+    try:
+        return host_summarize_turn(
+            room_store=_open_store(),
+            room_id=room_id,
+            owner_id=user["id"],
+            turn_id=turn_id,
         )
 
     except RoomError:

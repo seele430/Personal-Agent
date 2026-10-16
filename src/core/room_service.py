@@ -9,6 +9,7 @@
 - 每个 Bot 用 `utter` 生成一句核心观点（限字数），记入 messages。
 """
 
+import json
 import uuid
 
 from src.core.room_store import RoomStore
@@ -179,3 +180,68 @@ def approve_and_expand(
         "kind": hand["kind"],
         "content": content,
     }
+
+
+def host_summarize_turn(
+    *,
+    room_store: RoomStore,
+    room_id: int,
+    owner_id: str,
+    turn_id: str,
+    summarize=None,
+) -> dict:
+    """主持人汇总一轮讨论（S6）：共识/分歧/决策选项记入 messages。
+
+    主持人独立角色，不参与讨论，只把讨论消息流汇总成结构化决策。
+    """
+
+    from src.core.bot_store import BotStore
+
+    if summarize is None:
+        from src import agent
+
+        summarize = agent.host_summary
+
+    messages = room_store.list_messages(
+        room_id=room_id,
+        owner_id=owner_id,
+        turn_id=turn_id,
+    )
+
+    bot_store = BotStore(room_store.db_path)
+
+    turn_messages = []
+    topic = ""
+
+    for message in messages:
+        if message["speaker"] == "user":
+            topic = message["content"]
+            continue
+
+        name = "主持人" if message["speaker"] == "host" else "Bot"
+
+        if message["bot_id"] is not None:
+            bot = bot_store.get_bot(message["bot_id"])
+
+            if bot is not None:
+                name = bot["name"]
+
+        turn_messages.append(
+            {"name": name, "content": message["content"]}
+        )
+
+    summary = summarize(turn_messages, topic)
+
+    summary_text = json.dumps(summary, ensure_ascii=False)
+
+    room_store.add_message(
+        room_id=room_id,
+        turn_id=turn_id,
+        speaker="host",
+        bot_id=None,
+        role="summary",
+        content=summary_text,
+        owner_id=owner_id,
+    )
+
+    return summary

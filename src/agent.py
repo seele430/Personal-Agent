@@ -630,6 +630,55 @@ def utter(
     return content.strip()
 
 
+def host_summary(
+    turn_messages: list[dict],
+    topic: str,
+) -> dict:
+    """主持人汇总（S6）：讨论消息流 → 共识/分歧/决策选项。
+
+    主持人独立角色，不参与讨论，只客观汇总并引导决策。
+    """
+
+    if not isinstance(turn_messages, list) or not turn_messages:
+        raise ValueError("讨论记录不能为空")
+
+    transcript = "\n".join(
+        f"「{item.get('name', 'Bot')}」：{item['content']}"
+        for item in turn_messages
+    )
+
+    prompt = (
+        "你是主持人，不参与讨论，只负责客观汇总并引导决策。\n"
+        f"话题：{topic}\n"
+        f"讨论记录：\n{transcript}\n\n"
+        "请输出一个 JSON 对象，字段如下：\n"
+        "- consensus：多数人一致的共识（一句话）；\n"
+        "- disagreement：立场冲突与分歧（一句话）；\n"
+        "- options：2-3 个可执行选项，每个含 label（一句话）"
+        "和 risk（代价/风险，一句话）。\n"
+        "只输出 JSON，不要解释。"
+    )
+
+    kwargs = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 1024,
+    }
+
+    if _is_deepseek_flash():
+        kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+
+    response = client.chat.completions.create(**kwargs)
+
+    raw = response.choices[0].message.content or "{}"
+
+    try:
+        return json.loads(raw)
+
+    except json.JSONDecodeError:
+        return {"consensus": "", "disagreement": "", "options": []}
+
+
 # ==========================================
 # 执行一次提醒工具调用
 # ==========================================
