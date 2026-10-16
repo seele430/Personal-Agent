@@ -584,6 +584,16 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
+    # L2：聊天室存储层（房间 / 成员 / 消息 + 归属隔离）
+    "test_room_store.py": TestSchema(
+        layer="integration",
+        domain="room",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",
