@@ -34,6 +34,7 @@ class Paths:
     auth_users_db: Path
     ai_usage_db: Path
     knowledge_db: Path
+    bots_db: Path
 
     # 为兼容性保留的属性别名（逐步迁移后可删除）
     @property
@@ -70,6 +71,7 @@ def build_paths(data_dir: str | Path | None = None) -> Paths:
         auth_users_db=root / "auth_users.db",
         ai_usage_db=root / "ai_usage.db",
         knowledge_db=root / "knowledge.db",
+        bots_db=root / "bots.db",
     )
 
 

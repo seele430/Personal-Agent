@@ -544,6 +544,16 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
+    # L2：Bot 实体（身份卡 / 双来源 / 单用户上限 3 / 归属隔离）
+    "test_bot_store.py": TestSchema(
+        layer="integration",
+        domain="bot",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",
