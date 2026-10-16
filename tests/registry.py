@@ -634,6 +634,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：展开生成（approve_and_expand，speak 被注入）
+    "test_room_expand.py": TestSchema(
+        layer="integration",
+        domain="room",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",

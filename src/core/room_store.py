@@ -523,6 +523,33 @@ class RoomStore:
 
         return cursor.rowcount == 1
 
+    def get_hand(
+        self,
+        *,
+        hand_id: int,
+        owner_id: str,
+    ) -> dict | None:
+        """按 hand_id 查举手记录（含 room_id/bot_id/turn_id/kind）。"""
+
+        if type(hand_id) is not int or hand_id <= 0:
+            raise RoomError("无效的举手 ID")
+
+        owner_id = owner_id.strip()
+
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                """
+                SELECT h.id, h.room_id, h.turn_id,
+                       h.bot_id, h.kind, h.reason, h.status
+                FROM hands h
+                JOIN rooms r ON r.id = h.room_id
+                WHERE h.id = ? AND r.owner_id = ?
+                """,
+                (hand_id, owner_id),
+            ).fetchone()
+
+        return dict(row) if row else None
+
     def reject_hand(
         self,
         *,

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.auth_api import get_current_user
-from src.core.room_service import run_room_turn
+from src.core.room_service import approve_and_expand, run_room_turn
 from src.core.room_store import RoomError, RoomStore
 
 
@@ -136,3 +136,88 @@ def list_messages(
         raise _not_found() from None
 
     return {"messages": messages}
+
+
+class HandRaise(BaseModel):
+    bot_id: int
+    turn_id: str
+    kind: str = "expand"
+    reason: str = Field(min_length=1, max_length=200)
+
+
+class HandReject(BaseModel):
+    unfair: bool = False
+
+
+@router.post("/rooms/{room_id}/hands")
+def raise_hand(
+    room_id: int,
+    payload: HandRaise,
+    user: dict = Depends(get_current_user),
+):
+    try:
+        return _open_store().raise_hand(
+            room_id=room_id,
+            turn_id=payload.turn_id,
+            bot_id=payload.bot_id,
+            kind=payload.kind,
+            reason=payload.reason,
+            owner_id=user["id"],
+        )
+
+    except RoomError as error:
+        raise HTTPException(
+            status_code=422, detail=str(error)
+        ) from None
+
+
+@router.get("/rooms/{room_id}/hands")
+def list_hands(
+    room_id: int,
+    status: str | None = None,
+    user: dict = Depends(get_current_user),
+):
+    try:
+        hands = _open_store().list_hands(
+            room_id=room_id,
+            owner_id=user["id"],
+            status=status,
+        )
+
+    except RoomError:
+        raise _not_found() from None
+
+    return {"hands": hands}
+
+
+@router.post("/hands/{hand_id}/approve")
+def approve_hand(
+    hand_id: int,
+    user: dict = Depends(get_current_user),
+):
+    try:
+        return approve_and_expand(
+            room_store=_open_store(),
+            hand_id=hand_id,
+            owner_id=user["id"],
+        )
+
+    except RoomError:
+        raise _not_found() from None
+
+
+@router.post("/hands/{hand_id}/reject")
+def reject_hand(
+    hand_id: int,
+    payload: HandReject,
+    user: dict = Depends(get_current_user),
+):
+    try:
+        return _open_store().reject_hand(
+            hand_id=hand_id,
+            owner_id=user["id"],
+            unfair=payload.unfair,
+        )
+
+    except RoomError:
+        raise _not_found() from None
