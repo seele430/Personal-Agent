@@ -307,6 +307,7 @@ def build_retrieval_context(
     store: KnowledgeStore | None = None,
     request_id: str | None = None,
     max_tokens: int = MAX_CONTEXT_TOKENS,
+    bot_id: str | None = None,
 ) -> InjectedContext:
     """检索 → 组块 → 记审计，返回可直接注入的上下文。
 
@@ -321,6 +322,7 @@ def build_retrieval_context(
         k=k,
         store=store,
         record=False,
+        bot_id=bot_id,
     )
 
     block = build_block(

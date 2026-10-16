@@ -17,7 +17,7 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 688e507f110e2f64 -->
+<!-- membership-digest: 35c12b5efccbd450 -->
 
 ## unit — L1 单元测试 (7 files)
 
@@ -31,7 +31,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 | `unit/test_url_policy.py` | tests/unit/ | rss | none | mocked | high | registered-inferred |
 
-## integration — L2 数据集成测试 (34 files)
+## integration — L2 数据集成测试 (35 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -50,6 +50,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_auth_store.py` | tests/ 根 | auth | temporary_sqlite | none | high | registered-inferred |
 | `test_bootstrap_owner.py` | tests/ 根 | auth | temporary_sqlite | none | high | registered-inferred |
 | `test_bot_chat.py` | tests/ 根 | bot | temporary_sqlite | none | medium | registered-inferred |
+| `test_bot_memory.py` | tests/ 根 | knowledge | temporary_sqlite | none | high | registered-inferred |
 | `test_bot_store.py` | tests/ 根 | bot | temporary_sqlite | none | medium | registered-inferred |
 | `test_chat_admission.py` | tests/ 根 | chat | temporary_sqlite | none | medium | registered-inferred |
 | `test_chat_db_restart.py` | tests/ 根 | chat | temporary_sqlite | none | medium | registered-inferred |

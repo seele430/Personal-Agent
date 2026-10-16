@@ -84,6 +84,7 @@ def retrieve(
     record: bool = True,
     request_id: str | None = None,
     embedder=None,
+    bot_id: str | None = None,
 ) -> dict:
     """检索该用户的知识库，返回带排名的片段。
 
@@ -111,6 +112,7 @@ def retrieve(
             owner_id=owner_id,
             query=query,
             limit=k,
+            bot_id=bot_id,
         )
         channel_modes["bm25"] = bm25["mode"]
         hits = _ranked(bm25["hits"])
@@ -122,6 +124,7 @@ def retrieve(
             query=query,
             k=k,
             embedder=embedder,
+            bot_id=bot_id,
         )
 
     else:
@@ -129,6 +132,7 @@ def retrieve(
             owner_id=owner_id,
             query=query,
             limit=k,
+            bot_id=bot_id,
         )
         channel_modes["bm25"] = bm25["mode"]
 
@@ -138,6 +142,7 @@ def retrieve(
             query=query,
             k=k,
             embedder=embedder,
+            bot_id=bot_id,
         )
         channel_modes.update(vector_modes)
 
@@ -178,6 +183,7 @@ def _vector_hits(
     query: str,
     k: int,
     embedder,
+    bot_id: str | None = None,
 ) -> tuple:
     """向量通道。返回 `(hits, channel_modes)`。"""
 
@@ -193,6 +199,7 @@ def _vector_hits(
         query_vector=query_vector,
         model=embedder.name,
         limit=k,
+        bot_id=bot_id,
     )
 
     return (

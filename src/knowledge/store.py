@@ -526,12 +526,16 @@ class KnowledgeStore:
         owner_id: str,
         query: str,
         limit: int = 5,
+        bot_id: str | None = None,
     ) -> dict:
-        """按关键词检索该用户的片段。
+        """按关键词检索该用户的片段（可再按 bot 收窄）。
 
         返回 `{"mode": "fts"|"like", "hits": [...]}`：
         查询少于 3 个字符时 trigram 不可能命中，改用 LIKE 兜底，
         并**如实标注**用了哪个通道 —— 不假装它是 BM25 的结果。
+
+        bot_id=None 检索个人记忆（bot_id IS NULL）；
+        bot_id 非空检索该 Bot 的独立记忆。
         """
 
         if not isinstance(owner_id, str) or not owner_id.strip():
@@ -553,6 +557,7 @@ class KnowledgeStore:
                 owner_id=owner_id,
                 query=query,
                 limit=limit,
+                bot_id=bot_id,
             )
 
             if hits:
@@ -564,6 +569,7 @@ class KnowledgeStore:
                 owner_id=owner_id,
                 query=query,
                 limit=limit,
+                bot_id=bot_id,
             ),
         }
 
@@ -573,12 +579,23 @@ class KnowledgeStore:
         owner_id: str,
         query: str,
         limit: int,
+        bot_id: str | None = None,
     ) -> list[dict]:
         phrase = self._match_expression(query)
 
+        bot_clause = (
+            "d.bot_id IS NULL" if bot_id is None else "d.bot_id = ?"
+        )
+        params = [phrase, owner_id, utc_now()]
+
+        if bot_id is not None:
+            params.append(bot_id)
+
+        params.append(limit)
+
         with closing(self._connect()) as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT c.id AS chunk_id,
                        c.document_id AS document_id,
                        c.seq AS seq,
@@ -595,10 +612,11 @@ class KnowledgeStore:
                   AND d.owner_id = ?
                   AND d.archived = 0
                   AND (d.expires_at IS NULL OR d.expires_at > ?)
+                  AND {bot_clause}
                 ORDER BY score
                 LIMIT ?
                 """,
-                (phrase, owner_id, utc_now(), limit),
+                params,
             ).fetchall()
 
         return [dict(row) for row in rows]
@@ -637,6 +655,7 @@ class KnowledgeStore:
         owner_id: str,
         query: str,
         limit: int,
+        bot_id: str | None = None,
     ) -> list[dict]:
         """字面量兜底：**逐词 AND**，而不是把整串当一个子串。
 
@@ -661,6 +680,11 @@ class KnowledgeStore:
             for term in terms
         ]
 
+        bot_clause = (
+            "d.bot_id IS NULL" if bot_id is None else "d.bot_id = ?"
+        )
+        bot_params = [] if bot_id is None else [bot_id]
+
         with closing(self._connect()) as conn:
             rows = conn.execute(
                 f"""
@@ -677,11 +701,12 @@ class KnowledgeStore:
                 WHERE d.owner_id = ?
                   AND d.archived = 0
                   AND (d.expires_at IS NULL OR d.expires_at > ?)
+                  AND {bot_clause}
                   AND {where}
                 ORDER BY c.id
                 LIMIT ?
                 """,
-                (owner_id, utc_now(), *params, limit),
+                (owner_id, utc_now(), *bot_params, *params, limit),
             ).fetchall()
 
         return [dict(row) for row in rows]
@@ -1045,6 +1070,7 @@ class KnowledgeStore:
         query_vector,
         model: str,
         limit: int = 5,
+        bot_id: str | None = None,
     ) -> list[dict]:
         """暴力 cosine 检索：**先按 owner 收窄候选，再算相似度**。
 
@@ -1065,9 +1091,17 @@ class KnowledgeStore:
 
         self.init_db()
 
+        bot_clause = (
+            "d.bot_id IS NULL" if bot_id is None else "d.bot_id = ?"
+        )
+        params = [owner_id.strip(), model, utc_now()]
+
+        if bot_id is not None:
+            params.append(bot_id)
+
         with closing(self._connect()) as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT c.id AS chunk_id,
                        c.document_id AS document_id,
                        c.seq AS seq,
@@ -1085,8 +1119,9 @@ class KnowledgeStore:
                   AND e.model = ?
                   AND d.archived = 0
                   AND (d.expires_at IS NULL OR d.expires_at > ?)
+                  AND {bot_clause}
                 """,
-                (owner_id.strip(), model, utc_now()),
+                params,
             ).fetchall()
 
         from src.knowledge.embed import (

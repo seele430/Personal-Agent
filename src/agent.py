@@ -719,11 +719,17 @@ def _execute_reminder_tool(tool_call) -> dict:
     return _format_reminder_result(created)
 
 
-def _knowledge_context(query: str) -> InjectedContext | None:
+def _knowledge_context(
+    query: str,
+    *,
+    bot_id: str | None = None,
+) -> InjectedContext | None:
     """按当前登录身份检索知识库；没有身份就不检索。
 
     没有认证上下文时**绝不**回退到某个默认用户 —— 那等于把别人的
     记忆喂进这次对话。检索失败也不影响聊天：只是这一轮不注入。
+
+    bot_id=None 检索个人记忆；bot_id 非空检索该 Bot 的独立记忆（S3b）。
     """
 
     identity = current_identity()
@@ -736,6 +742,7 @@ def _knowledge_context(query: str) -> InjectedContext | None:
             owner_id=identity.user_id,
             query=query,
             request_id=identity.request_id,
+            bot_id=bot_id,
         )
 
     except Exception:
@@ -771,7 +778,10 @@ def chat(user_input: str, *, bot: dict | None = None) -> str:
     init_db()
 
     # 检索只在有登录身份时发生（见 _knowledge_context）。
-    knowledge = _knowledge_context(user_input)
+    # bot 私聊时按 bot_id 检索该 Bot 的独立记忆。
+    bot_id = str(bot["id"]) if bot is not None else None
+
+    knowledge = _knowledge_context(user_input, bot_id=bot_id)
 
     has_context = (
         knowledge is not None and not knowledge.empty
