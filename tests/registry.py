@@ -624,6 +624,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：举手状态机 + 活跃度（raise/approve/reject + 扣分）
+    "test_room_hands.py": TestSchema(
+        layer="integration",
+        domain="room",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",

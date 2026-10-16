@@ -94,6 +94,26 @@ class RoomStore:
                 """
             )
 
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS hands (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    room_id INTEGER NOT NULL
+                        REFERENCES rooms(id) ON DELETE CASCADE,
+                    turn_id TEXT NOT NULL,
+                    bot_id INTEGER NOT NULL
+                        REFERENCES bots(id) ON DELETE CASCADE,
+                    kind TEXT NOT NULL
+                        CHECK (kind IN ('expand', 'object')),
+                    reason TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN
+                               ('pending', 'approved', 'rejected')),
+                    created_at INTEGER NOT NULL
+                )
+                """
+            )
+
     # ----------------------------------------------------------------
     # 校验
     # ----------------------------------------------------------------
@@ -382,6 +402,233 @@ class RoomStore:
                     ORDER BY id
                     """,
                     (room_id, turn_id),
+                ).fetchall()
+
+        return [dict(row) for row in rows]
+
+    # ----------------------------------------------------------------
+    # 举手（S5）
+    # ----------------------------------------------------------------
+
+    HAND_KINDS = ("expand", "object")
+    ACTIVITY_PENALTY = 20
+
+    def raise_hand(
+        self,
+        *,
+        room_id: int,
+        turn_id: str,
+        bot_id: int,
+        kind: str,
+        reason: str,
+        owner_id: str,
+        now: int | None = None,
+    ) -> dict:
+        """Bot 举手（想展开 / 想追问），等用户批准。"""
+
+        if type(room_id) is not int or room_id <= 0:
+            raise RoomError("无效的房间 ID")
+
+        if type(bot_id) is not int or bot_id <= 0:
+            raise RoomError("无效的 Bot ID")
+
+        if kind not in self.HAND_KINDS:
+            raise RoomError("kind 无效")
+
+        if not isinstance(reason, str) or not reason.strip():
+            raise RoomError("举手理由不能为空")
+
+        if not isinstance(turn_id, str) or not turn_id.strip():
+            raise RoomError("turn_id 不能为空")
+
+        owner_id = owner_id.strip()
+        now = now or int(time.time())
+
+        with closing(self._connect()) as conn, conn:
+            room = conn.execute(
+                """
+                SELECT id FROM rooms
+                WHERE id = ? AND owner_id = ?
+                """,
+                (room_id, owner_id),
+            ).fetchone()
+
+            if room is None:
+                raise RoomError("房间不存在或无权访问")
+
+            member = conn.execute(
+                """
+                SELECT 1 FROM room_bots
+                WHERE room_id = ? AND bot_id = ?
+                """,
+                (room_id, bot_id),
+            ).fetchone()
+
+            if member is None:
+                raise RoomError("Bot 不在房间里")
+
+            cursor = conn.execute(
+                """
+                INSERT INTO hands (
+                    room_id, turn_id, bot_id,
+                    kind, reason, status, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, 'pending', ?)
+                """,
+                (
+                    room_id,
+                    turn_id.strip(),
+                    bot_id,
+                    kind,
+                    reason.strip(),
+                    now,
+                ),
+            )
+
+        return {
+            "id": cursor.lastrowid,
+            "room_id": room_id,
+            "turn_id": turn_id.strip(),
+            "bot_id": bot_id,
+            "kind": kind,
+            "status": "pending",
+        }
+
+    def approve_hand(
+        self,
+        *,
+        hand_id: int,
+        owner_id: str,
+    ) -> bool:
+        """批准举手（pending → approved）。"""
+
+        if type(hand_id) is not int or hand_id <= 0:
+            raise RoomError("无效的举手 ID")
+
+        owner_id = owner_id.strip()
+
+        with closing(self._connect()) as conn, conn:
+            cursor = conn.execute(
+                """
+                UPDATE hands
+                SET status = 'approved'
+                WHERE id = ?
+                  AND status = 'pending'
+                  AND room_id IN (
+                      SELECT id FROM rooms WHERE owner_id = ?
+                  )
+                """,
+                (hand_id, owner_id),
+            )
+
+        return cursor.rowcount == 1
+
+    def reject_hand(
+        self,
+        *,
+        hand_id: int,
+        owner_id: str,
+        unfair: bool = False,
+    ) -> dict:
+        """拒绝举手（pending → rejected）；unfair 时扣该 Bot 活跃度。"""
+
+        if type(hand_id) is not int or hand_id <= 0:
+            raise RoomError("无效的举手 ID")
+
+        owner_id = owner_id.strip()
+
+        with closing(self._connect()) as conn:
+
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+
+                hand = conn.execute(
+                    """
+                    SELECT h.id, h.room_id, h.bot_id
+                    FROM hands h
+                    JOIN rooms r ON r.id = h.room_id
+                    WHERE h.id = ? AND r.owner_id = ?
+                    """,
+                    (hand_id, owner_id),
+                ).fetchone()
+
+                if hand is None:
+                    conn.rollback()
+                    return {"changed": False, "unfair": unfair}
+
+                updated = conn.execute(
+                    """
+                    UPDATE hands
+                    SET status = 'rejected'
+                    WHERE id = ? AND status = 'pending'
+                    """,
+                    (hand_id,),
+                ).rowcount
+
+                if updated and unfair:
+                    conn.execute(
+                        """
+                        UPDATE room_bots
+                        SET activity = MAX(0, activity - ?)
+                        WHERE room_id = ? AND bot_id = ?
+                        """,
+                        (
+                            self.ACTIVITY_PENALTY,
+                            hand["room_id"],
+                            hand["bot_id"],
+                        ),
+                    )
+
+                conn.commit()
+
+            except Exception:
+                conn.rollback()
+                raise
+
+        return {"changed": True, "unfair": unfair}
+
+    def list_hands(
+        self,
+        *,
+        room_id: int,
+        owner_id: str,
+        status: str | None = None,
+    ) -> list[dict]:
+        owner_id = owner_id.strip()
+
+        with closing(self._connect()) as conn:
+            room = conn.execute(
+                """
+                SELECT id FROM rooms
+                WHERE id = ? AND owner_id = ?
+                """,
+                (room_id, owner_id),
+            ).fetchone()
+
+            if room is None:
+                raise RoomError("房间不存在或无权访问")
+
+            if status is None:
+                rows = conn.execute(
+                    """
+                    SELECT id, turn_id, bot_id, kind,
+                           reason, status, created_at
+                    FROM hands
+                    WHERE room_id = ?
+                    ORDER BY id
+                    """,
+                    (room_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT id, turn_id, bot_id, kind,
+                           reason, status, created_at
+                    FROM hands
+                    WHERE room_id = ? AND status = ?
+                    ORDER BY id
+                    """,
+                    (room_id, status),
                 ).fetchall()
 
         return [dict(row) for row in rows]
