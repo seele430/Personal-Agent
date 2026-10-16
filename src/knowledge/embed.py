@@ -274,10 +274,15 @@ class SentenceTransformerEmbedder(Embedder):
 
         self._model = SentenceTransformer(model_name)
 
-        try:
-            self.dim = int(
-                self._model.get_sentence_embedding_dimension()
+        getter = (
+            getattr(self._model, "get_embedding_dimension", None)
+            or getattr(
+                self._model, "get_sentence_embedding_dimension", None
             )
+        )
+
+        try:
+            self.dim = int(getter()) if getter else 0
         except Exception:  # pragma: no cover
             self.dim = 0
 
