@@ -145,12 +145,22 @@ BM25 走 `FTS5 join knowledge_documents WHERE owner_id = ?`；向量走"先取�
   引用命中率（生成的 `[n]` 是否指向 golden 期望的 doc）纳入评测。
 - **代价**：约 1 小时。
 
-### R5 观测与运维 —— 能删、能过期、能重索引
-- **做什么**：`knowledge_retrievals` 落地；删除/过期（计划里写的"记忆纠错/删除/过期"）；
-  后台重索引（内容换了 → sha256 变 → 新文档 + 旧文档可归档）。
-- **验收**：检索审计可查（谁、何时、k、命中哪些 chunk、延迟）；删除后检索不到（含缓存失效）；
-  重索引幂等。
-- **代价**：约 1 小时。
+### R5 观测与运维 —— 能删、能过期、能重索引 ✅ 已完成（2026-10-16）
+
+实现（`src/knowledge/store.py`）：
+
+- **软过期**：`knowledge_documents.expires_at`（NULL = 永不过期）+ `set_expiry()`；
+  三条检索路径（FTS / LIKE / 向量）统一加
+  `AND archived = 0 AND (expires_at IS NULL OR expires_at > now)`；
+  过期后检索不到但记录仍在，清空即恢复。
+- **归档（重索引）**：同 `(owner_id, source_ref)` 的新内容进来，旧版本 `archived = 1`
+  并从检索候选剔除；`list_documents(include_archived=True)` 仍可见（可复核 / 回滚）。
+- **检索审计 + 删除**：R4 / R1 已落地（`record_retrieval` / `list_retrievals` /
+  `delete_document` 级联）。
+
+验收（`tests/test_knowledge_r5.py`，11 条断言，全绿）：过期后检索不到（BM25 与向量
+双路径）、清空过期恢复、跨 owner 无副作用、同 source_ref 新版本归档旧版本、幂等摄取
+不误归档、归档跨 source_ref / owner 隔离。
 
 **合计约 6 小时**，建议分 2–3 次会话；R1+R2 先做完，就有可演示、可讲的东西了。
 
