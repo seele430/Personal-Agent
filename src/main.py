@@ -18,6 +18,7 @@ from src.inbox_api import router as inbox_router
 from src.monitors_api import router as monitor_router
 from src.notifications_api import router as notification_router
 from src.reminder_api import router as reminder_router
+from src.room_api import router as room_router
 from src.usage_api import router as usage_router
 
 from src.core.chat_ownership import migrate_chat_ownership
@@ -70,6 +71,9 @@ app.include_router(auth_router)
 
 # Bot 管理（创建/列表/身份卡/禁用）
 app.include_router(bot_router)
+
+# 聊天室（房间 / 成员 / 发言 / 消息流）
+app.include_router(room_router)
 
 # 已认证聊天、额度及费用保护
 app.include_router(chat_router)

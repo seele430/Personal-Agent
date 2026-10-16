@@ -604,6 +604,26 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：聊天室发言编排（@ 解析 + 定向发言 + 消息落库，speak 被注入）
+    "test_room_service.py": TestSchema(
+        layer="integration",
+        domain="room",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+
+    # L3：聊天室接口（房间 / 成员 / 发言 / 消息流，模型被 patch）
+    "test_room_api.py": TestSchema(
+        layer="api",
+        domain="room",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="mocked",
+        risk="medium",
+    ),
+
     # L3：经过认证的聊天提醒 HTTP 测试
     "test_reminder_chat_http.py": TestSchema(
         layer="api",
