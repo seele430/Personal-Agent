@@ -1447,16 +1447,6 @@ export default function App(
             <strong>Personal Agent</strong>
             <span>AI Workspace</span>
           </div>
-
-          <button
-            type="button"
-            className="sidebar-toggle"
-            onClick={() => setSidebarCollapsed(true)}
-            aria-label="收起侧栏"
-            title="收起侧栏"
-          >
-            «
-          </button>
         </div>
 
         <div className="sidebar-section">
@@ -1543,6 +1533,19 @@ export default function App(
           >
             <span className="nav-symbol">✦</span>
             <span>Bot 管理</span>
+          </button>
+        </div>
+
+        {/* 收起按钮放这儿：原来挤在标题旁边太抢眼 */}
+        <div className="sidebar-collapse-row">
+          <button
+            type="button"
+            className="sidebar-toggle"
+            onClick={() => setSidebarCollapsed(true)}
+            aria-label="收起侧栏"
+            title="收起侧栏"
+          >
+            «
           </button>
         </div>
 

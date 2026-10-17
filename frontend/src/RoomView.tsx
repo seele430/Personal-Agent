@@ -1,9 +1,13 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
+
+import { cleanForSpeech, prewarmSpeech, speakText, stopSpeech } from "./lib/tts";
 
 // ---- 类型（对应后端返回） ----
 
@@ -11,16 +15,40 @@ type Room = {
   id: number;
   name: string;
   stances: string[];
+  host_bot_id: number | null;
+  stage: string;
+  stage_started_at: number | null;
   archived: number;
   created_at: number;
   bot_count: number;
 };
+
+// 质询阶段限时（秒）
+const CROSSFIRE_SECONDS = 180;
+
+// 辩论流程：顺序即推进顺序
+const STAGES = [
+  { key: "opening", label: "开场" },
+  { key: "statement", label: "立论" },
+  { key: "rebuttal", label: "驳论" },
+  { key: "crossfire", label: "质询" },
+  { key: "free", label: "交锋" },
+  { key: "closing", label: "结辩" },
+  { key: "vote", label: "投票" },
+  { key: "review", label: "复盘" },
+] as const;
+
+function stageLabel(key: string | null | undefined): string {
+  return STAGES.find((item) => item.key === key)?.label ?? "讨论";
+}
 
 type RoomBot = {
   id: number;
   name: string;
   persona: string;
   avatar: string;
+  voice: string;
+  stance: string | null;
   activity: number;
 };
 
@@ -30,6 +58,7 @@ type RoomMessage = {
   speaker: "user" | "bot" | "host";
   bot_id: number | null;
   role: "core" | "expand" | "object" | "summary" | "decision";
+  stage: string | null;
   content: string;
   created_at: number;
 };
@@ -113,6 +142,10 @@ export default function RoomView({ authToken }: Props) {
   const [hands, setHands] = useState<Hand[]>([]);
   const [allBots, setAllBots] = useState<AllBot[]>([]);
 
+  // 房间主持人：默认用「对话」那边的默认助手
+  const [defaultBotId, setDefaultBotId] = useState<number | null>(null);
+  const [defaultBotName, setDefaultBotName] = useState("");
+
   const [addBotId, setAddBotId] = useState<string>("");
 
   // 拉 Bot 进房时给它选立场
@@ -126,6 +159,8 @@ export default function RoomView({ authToken }: Props) {
   const [reveal, setReveal] = useState<{ id: number; shown: number } | null>(
     null
   );
+  // 串行吐字队列：一条说完，停一下，再说下一条
+  const [revealQueue, setRevealQueue] = useState<number[]>([]);
 
   // 新建房间弹框（自绘，不用浏览器原生 prompt）
   const [createOpen, setCreateOpen] = useState(false);
@@ -146,6 +181,24 @@ export default function RoomView({ authToken }: Props) {
     options: { label: string; risk: string }[];
   } | null>(null);
   const [decisionReply, setDecisionReply] = useState("");
+  // 结算：站对边的不扣，其余扣这个数（默认 30）
+  const [penalty, setPenalty] = useState(30);
+
+  // 结辩后的评委打分（每个辩手 0-10，默认 5）
+  const [scoreDraft, setScoreDraft] = useState<Record<number, number>>({});
+  const [scoreDone, setScoreDone] = useState("");
+
+  // 投票汇总（按立场加权）
+  const [voteTally, setVoteTally] = useState<
+    { stance: string; weighted: number; votes: number }[]
+  >([]);
+
+  // 已经投过哪一边：投了就锁按钮，别让人反复点刷屏
+  const [votedStance, setVotedStance] = useState<string | null>(null);
+
+  // 语音：开关 + 已朗读过的消息（避免重复读）。默认开着。
+  const [audioOn, setAudioOn] = useState(true);
+  const spokenRef = useRef<Set<number>>(new Set());
 
   const authHeaders = useCallback(
     (): Record<string, string> =>
@@ -181,6 +234,31 @@ export default function RoomView({ authToken }: Props) {
       setAllBots(bots.filter((b) => b.id !== undefined));
     } catch {
       // 拉不到 bot 列表不致命
+    }
+  }, [authHeaders]);
+
+  // 默认助手 = 新房子的主持人（它只裁判、不表态）
+  const loadDefaultBot = useCallback(async () => {
+    try {
+      const res = await fetch("/api/bots/default", {
+        headers: authHeaders(),
+      });
+
+      if (!res.ok) return;
+
+      const value: unknown = await res.json();
+
+      const bot =
+        value && typeof value === "object"
+          ? (value as { bot?: { id?: number; name?: string } }).bot
+          : null;
+
+      if (bot?.id) {
+        setDefaultBotId(bot.id);
+        setDefaultBotName(bot.name ?? "");
+      }
+    } catch {
+      // 拿不到就没主持人，不致命
     }
   }, [authHeaders]);
 
@@ -252,7 +330,8 @@ export default function RoomView({ authToken }: Props) {
   useEffect(() => {
     void loadRooms();
     void loadAllBots();
-  }, [loadRooms, loadAllBots]);
+    void loadDefaultBot();
+  }, [loadRooms, loadAllBots, loadDefaultBot]);
 
   useEffect(() => {
     void loadMembers();
@@ -261,13 +340,6 @@ export default function RoomView({ authToken }: Props) {
     setSummary(null);
     setDecisionReply("");
   }, [selectedId, loadMembers, loadMessages, loadHands]);
-
-  function refresh() {
-    void loadMembers();
-    void loadMessages();
-    void loadHands();
-    void loadRooms();
-  }
 
   function createRoomClick() {
     setDraftName("");
@@ -284,18 +356,64 @@ export default function RoomView({ authToken }: Props) {
   async function submitRoom(name: string, stances: string[]) {
     setBusy(true);
     setError("");
+
     try {
       const res = await fetch("/api/rooms", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ name, stances }),
+        body: JSON.stringify({
+          name,
+          stances,
+          host_bot_id: defaultBotId,
+        }),
       });
+
       if (!res.ok) throw new Error(await readDetail(res, `建房间失败（${res.status}）`));
+
+      const room = (await res.json()) as { id?: number };
+
       await loadRooms();
+
+      // 新房间：主持人先开场，辩手再依次开篇立论
+      if (typeof room?.id === "number") {
+        setSelectedId(room.id);
+
+        await runOpening(room.id);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "建房间失败");
     } finally {
       setBusy(false);
+    }
+  }
+
+  // 开场：主持人先讲规矩，辩手逐个立论（比较慢，显示思考中）
+  async function runOpening(roomId: number) {
+    setThinking(true);
+    setError("");
+
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/opening`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+
+      if (!res.ok) {
+        throw new Error(
+          await readDetail(res, `开场失败（${res.status}）`)
+        );
+      }
+
+      const fresh = await fetchMessages(roomId);
+
+      // 开场词也要走逐字队列：否则它不逐字、reveal 恒为 null，
+      // 播放 effect 永远不触发 —— 表现就是「建房后没声音」。
+      queueNewBots(fresh, messages);
+      setMessages(fresh);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "开场失败");
+    } finally {
+      setThinking(false);
     }
   }
 
@@ -308,8 +426,21 @@ export default function RoomView({ authToken }: Props) {
     const stances =
       filled.length >= 2 ? filled : ["支持", "反对"];
 
-    await submitRoom(draftName.trim() || "新房间", stances);
+    // 辩题必填：留空会让主持人把「新房间」当议题，整场跑得莫名其妙
+    const name = draftName.trim();
+
+    if (!name) {
+      setError("先填一个辩题：辩论室要靠它当讨论主题");
+      return;
+    }
+
+    // 通用规则：建完房要等主持人开场（慢），所以先关框，
+    // 让消息区的「省略号」承担等待反馈。
     setCreateOpen(false);
+    setDraftName("");
+    setDraftStances(["", ""]);
+
+    await submitRoom(name, stances);
   }
 
   async function archiveRoom(room: Room) {
@@ -367,14 +498,22 @@ export default function RoomView({ authToken }: Props) {
     setAddStanceOpen(true);
   }
 
-  async function confirmAddBot(closeModal = true): Promise<boolean> {
+  async function confirmAddBot(): Promise<boolean> {
     if (selectedId === null || !pendingBotId) return false;
 
-    setBusy(true);
+    const roomId = selectedId;
+
+    // 通用规则：要等模型就**先关框**，别让弹框卡着；
+    // 用消息区的「省略号」告诉用户正在等。
+    setAddBotId("");
+    setAddStanceOpen(false);
+    setAskPreview("");
     setError("");
+    setBusy(true);
+    setThinking(true);
 
     try {
-      const res = await fetch(`/api/rooms/${selectedId}/bots`, {
+      const res = await fetch(`/api/rooms/${roomId}/bots`, {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -385,14 +524,14 @@ export default function RoomView({ authToken }: Props) {
 
       if (!res.ok) throw new Error(await readDetail(res, `拉进房失败（${res.status}）`));
 
-      setAddBotId("");
-
-      if (closeModal) {
-        setAddStanceOpen(false);
-      }
-
+      // 它进房就立论了（后端已经把立论写进消息流）
       await loadMembers();
       await loadRooms();
+
+      const fresh = await fetchMessages(roomId);
+
+      queueNewBots(fresh, messages);
+      setMessages(fresh);
 
       return true;
     } catch (cause) {
@@ -400,47 +539,42 @@ export default function RoomView({ authToken }: Props) {
 
       return false;
     } finally {
+      setThinking(false);
       setBusy(false);
     }
   }
 
-  // 弹框里的「问问 Bot 怎么想」：先拉人，再**只问它**，
-  // 不关弹框，把它的回答直接显示在框里。
+  // 弹框里的「问问 Bot 怎么想」：**只问它倾向哪一边**，
+  // 不拉进房、不生成长篇立论 —— 用户要的是结论，不是噪音。
   async function addAndAsk() {
-    const ok = await confirmAddBot(false);
-
-    if (!ok || selectedId === null) return;
+    if (selectedId === null || !addBotId) return;
 
     setBusy(true);
     setError("");
     setAskPreview("");
 
     try {
-      const res = await fetch(`/api/rooms/${selectedId}/ask`, {
+      const res = await fetch(`/api/rooms/${selectedId}/lean`, {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bot_id: Number(pendingBotId),
-          word_limit: 120,
-        }),
+        body: JSON.stringify({ bot_id: Number(addBotId) }),
       });
 
-      if (!res.ok) throw new Error(await readDetail(res, `失败（${res.status}）`));
+      if (!res.ok) {
+        throw new Error(
+          await readDetail(res, `问它失败（${res.status}）`)
+        );
+      }
 
-      const data: unknown = await res.json();
+      const value: unknown = await res.json();
 
-      const replies =
-        data &&
-        typeof data === "object" &&
-        Array.isArray((data as { replies?: unknown }).replies)
-          ? (data as { replies: { content: string }[] }).replies
-          : [];
-
-      setAskPreview(replies[0]?.content ?? "（它这次没说话）");
-
-      await loadMessages();
+      setAskPreview(
+        value && typeof value === "object"
+          ? String((value as { lean?: unknown }).lean ?? "")
+          : ""
+      );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "失败");
+      setError(cause instanceof Error ? cause.message : "问它失败");
     } finally {
       setBusy(false);
     }
@@ -465,6 +599,7 @@ export default function RoomView({ authToken }: Props) {
         speaker: "user",
         bot_id: null,
         role: "core",
+        stage: selectedRoom?.stage ?? "opening",
         content: text,
         created_at: Math.floor(Date.now() / 1000),
       },
@@ -486,16 +621,8 @@ export default function RoomView({ authToken }: Props) {
       // 换成真实数据（乐观消息拿到真 id，Bot 回复也在里面）
       const fresh = await fetchMessages(roomId);
 
+      queueNewBots(fresh, messages);
       setMessages(fresh);
-
-      // 最新一条 Bot 回复 → 逐字吐出来
-      const lastBot = [...fresh]
-        .reverse()
-        .find((m) => m.speaker === "bot");
-
-      if (lastBot) {
-        setReveal({ id: lastBot.id, shown: 0 });
-      }
 
       await loadHands();
     } catch (cause) {
@@ -508,8 +635,194 @@ export default function RoomView({ authToken }: Props) {
     }
   }
 
+  // 投票：选一边（房主 1.5 票），前端顺手把汇总拉回来
+  async function castVote(stance: string) {
+    if (selectedId === null) return;
+
+    // 已经投过就不再接受第二次点击（按钮也锁了，这里再兜一层）
+    if (votedStance !== null) return;
+
+    setBusy(true);
+    setError("");
+
+    try {
+      const res = await fetch(`/api/rooms/${selectedId}/vote`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ stance }),
+      });
+
+      if (!res.ok) {
+        throw new Error(
+          await readDetail(res, `投票失败（${res.status}）`)
+        );
+      }
+
+      setMessages(await fetchMessages(selectedId));
+      setVotedStance(stance);
+
+      const tallyRes = await fetch(`/api/rooms/${selectedId}/votes`, {
+        headers: authHeaders(),
+      });
+
+      if (tallyRes.ok) {
+        const data: unknown = await tallyRes.json();
+
+        setVoteTally(
+          data &&
+            typeof data === "object" &&
+            Array.isArray((data as { tally?: unknown }).tally)
+            ? (
+                data as {
+                  tally: {
+                    stance: string;
+                    weighted: number;
+                    votes: number;
+                  }[];
+                }
+              ).tally
+            : []
+        );
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "投票失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // 打分：结辩之后由用户给辩手评分（房主权重 1.5）
+  async function submitScores() {
+    if (selectedId === null) return;
+
+    const scores = members
+      .filter((m) => m.id !== selectedRoom?.host_bot_id)
+      .map((m) => ({
+        bot_id: m.id,
+        score: Math.max(
+          0,
+          Math.min(10, scoreDraft[m.id] ?? 5)
+        ),
+      }));
+
+    if (scores.length === 0) return;
+
+    setBusy(true);
+    setError("");
+    setScoreDone("");
+
+    try {
+      const res = await fetch(`/api/rooms/${selectedId}/scores`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ scores }),
+      });
+
+      if (!res.ok) {
+        throw new Error(
+          await readDetail(res, `打分失败（${res.status}）`)
+        );
+      }
+
+      setScoreDone("已提交");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "打分失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // 推进到下一个阶段，并生成该阶段内容（慢，所以先转省略号）
+  async function advanceStage() {
+    if (selectedId === null || nextStage === null) return;
+
+    // 换阶段立刻掐掉正在播的声音：不然上一段会念到下一阶段里
+    stopSpeech();
+
+    // 先把阶段切过去：分割线立刻出现，用户知道进入了新阶段
+    setOptimisticStage(nextStage.key);
+    setBusy(true);
+    setError("");
+    setThinking(true);
+
+    try {
+      const res = await fetch(`/api/rooms/${selectedId}/advance`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ stage: nextStage.key }),
+      });
+
+      if (!res.ok) {
+        throw new Error(
+          await readDetail(res, `推进失败（${res.status}）`)
+        );
+      }
+
+      await loadRooms();
+
+      const fresh = await fetchMessages(selectedId);
+
+      queueNewBots(fresh, messages);
+      setMessages(fresh);
+
+      // 消息已经带上新阶段的分割线了，乐观那条可以撤
+      setOptimisticStage(null);
+
+      await loadHands();
+    } catch (cause) {
+      // 推进失败：撤掉乐观阶段，别让进度条停在假的位置
+      setOptimisticStage(null);
+      setError(cause instanceof Error ? cause.message : "推进失败");
+    } finally {
+      setThinking(false);
+      setBusy(false);
+    }
+  }
+
+  // 交锋回合：点一次，轮到的那位说一条
+  async function continueFreeTurn() {
+    if (selectedId === null) return;
+
+    // 打断正在播的声音，直接出下一位
+    stopSpeech();
+
+    setBusy(true);
+    setError("");
+    setThinking(true);
+
+    try {
+      const res = await fetch(`/api/rooms/${selectedId}/turn`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+
+      if (!res.ok) {
+        throw new Error(
+          await readDetail(res, `交锋失败（${res.status}）`)
+        );
+      }
+
+      const fresh = await fetchMessages(selectedId);
+
+      queueNewBots(fresh, messages);
+      setMessages(fresh);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "交锋失败");
+    } finally {
+      setThinking(false);
+      setBusy(false);
+    }
+  }
+
   async function decideHand(hand: Hand, action: "approve" | "reject", unfair = false) {
     setBusy(true);
+    setError("");
+
+    // 批准展开要等模型，用省略号顶着（拒绝是本地操作，不用等）
+    if (action === "approve") {
+      setThinking(true);
+    }
+
     try {
       const res = await fetch(`/api/hands/${hand.id}/${action}`, {
         method: "POST",
@@ -522,32 +835,7 @@ export default function RoomView({ authToken }: Props) {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "操作失败");
     } finally {
-      setBusy(false);
-    }
-  }
-
-  async function summarize() {
-    if (selectedId === null) return;
-    // 取最后一个 turn_id（最近的用户消息）
-    const lastUser = [...messages].reverse().find((m) => m.speaker === "user");
-    if (!lastUser) {
-      setError("还没有用户消息，先发一句话");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/rooms/${selectedId}/turns/${lastUser.turn_id}/summary`, {
-        method: "POST",
-        headers: authHeaders(),
-      });
-      if (!res.ok) throw new Error(await readDetail(res, `汇总失败（${res.status}）`));
-      const value: unknown = await res.json();
-      setSummary(value as { consensus: string; disagreement: string; options: { label: string; risk: string }[] });
-      await loadMessages();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "汇总失败");
-    } finally {
+      setThinking(false);
       setBusy(false);
     }
   }
@@ -558,11 +846,15 @@ export default function RoomView({ authToken }: Props) {
     if (!lastUser) return;
     setBusy(true);
     setError("");
+    setThinking(true);
     try {
       const res = await fetch(`/api/rooms/${selectedId}/turns/${lastUser.turn_id}/decision`, {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ option: option.label }),
+        body: JSON.stringify({
+          option: option.label,
+          penalty,
+        }),
       });
       if (!res.ok) throw new Error(await readDetail(res, `执行失败（${res.status}）`));
       const value: unknown = await res.json();
@@ -573,6 +865,7 @@ export default function RoomView({ authToken }: Props) {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "执行失败");
     } finally {
+      setThinking(false);
       setBusy(false);
     }
   }
@@ -595,17 +888,114 @@ export default function RoomView({ authToken }: Props) {
     rooms.find((room) => room.id === selectedId) ?? null;
   const roomStances = selectedRoom?.stances ?? [];
 
+  // 推进时先本地切阶段：分割线立刻出现，不用等模型
+  const [optimisticStage, setOptimisticStage] = useState<string | null>(
+    null
+  );
+
+  const currentStage =
+    optimisticStage ?? selectedRoom?.stage ?? "opening";
+
+  // 换房间就别带着上一个房间的乐观阶段
+  useEffect(() => {
+    setOptimisticStage(null);
+  }, [selectedId]);
+
+  // 当前走到流程的第几步（进度条用）
+  const stageIndex = Math.max(
+    0,
+    STAGES.findIndex((item) => item.key === currentStage)
+  );
+
+  const nextStage =
+    stageIndex < STAGES.length - 1 ? STAGES[stageIndex + 1] : null;
+
+  // 能不能开始"对抗"：至少两个 Bot、且**立场要分歧**。
+  // 两个都站同一边的话，驳论/质询/交锋根本无从谈起。
+  const debateSides = new Set(
+    members
+      .filter(
+        (m) =>
+          m.id !== selectedRoom?.host_bot_id && Boolean(m.stance)
+      )
+      .map((m) => m.stance)
+  );
+
+  const canDebate = debateSides.size >= 2;
+
+  const needsDebateStage =
+    nextStage !== null &&
+    ["rebuttal", "crossfire", "free", "closing", "vote"].includes(
+      nextStage.key
+    );
+
+  // 质询限时：3 分钟倒计时（电子钟）——用户要求放"交锋"阶段
+  const [nowTick, setNowTick] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setNowTick(Date.now()),
+      1000
+    );
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const crossfireRemaining =
+    selectedRoom?.stage === "free"
+      ? Math.max(
+          0,
+          CROSSFIRE_SECONDS -
+            Math.floor(
+              nowTick / 1000 -
+                (selectedRoom.stage_started_at ?? 0)
+            )
+        )
+      : null;
+
+  const cdMinutes =
+    crossfireRemaining === null
+      ? 0
+      : Math.floor(crossfireRemaining / 60);
+
+  const cdSeconds =
+    crossfireRemaining === null ? 0 : crossfireRemaining % 60;
+
+  // 交锋倒计时归零：直接进结辩。用 ref 防重，别一秒触发好几次。
+  const autoAdvancedRef = useRef(false);
+
+  useEffect(() => {
+    if (currentStage !== "free") {
+      autoAdvancedRef.current = false;
+      return;
+    }
+
+    if (crossfireRemaining === null || crossfireRemaining > 0) return;
+    if (autoAdvancedRef.current || busy) return;
+
+    autoAdvancedRef.current = true;
+    void advanceStage();
+  }, [crossfireRemaining, currentStage, busy]);
+
   // 老房间可能没立场：这时也给两个默认选项，别让弹框空着。
   const stanceOptions =
     roomStances.length > 0 ? roomStances : ["支持", "反对"];
 
-  const pendingBotName =
-    allBots.find((b) => String(b.id) === pendingBotId)?.name ??
-    "这个 Bot";
-
-  // 逐字吐字：约 45 字/秒（比人阅读快一点，但不糊成一团）
+  // 逐字吐字：约 25 字/秒（慢一点，不眼花）；一条说完停 450ms 再说下一条
   useEffect(() => {
-    if (reveal === null) return;
+    if (reveal === null) {
+      if (revealQueue.length === 0) return;
+
+      const [nextId, ...rest] = revealQueue;
+
+      setRevealQueue(rest);
+
+      const timer = window.setTimeout(() => {
+        setReveal({ id: nextId, shown: 0 });
+      }, 450);
+
+      return () => window.clearTimeout(timer);
+    }
 
     const target = messages.find((m) => m.id === reveal.id);
 
@@ -618,18 +1008,183 @@ export default function RoomView({ authToken }: Props) {
       setReveal((prev) =>
         prev === null ? null : { ...prev, shown: prev.shown + 1 }
       );
-    }, 22);
+    }, 30);
 
     return () => window.clearTimeout(timer);
-  }, [reveal, messages]);
+  }, [reveal, revealQueue, messages]);
+
+  // 把「这一批新出现的 Bot / 主持人发言」排进逐条吐字队列
+  function queueNewBots(fresh: RoomMessage[], before: RoomMessage[]) {
+    const seen = new Set(before.map((m) => m.id));
+
+    const ids = fresh
+      .filter(
+        (m) =>
+          (m.speaker === "bot" || m.speaker === "host") &&
+          !seen.has(m.id)
+      )
+      .map((m) => m.id);
+
+    if (ids.length > 0) {
+      setRevealQueue((prev) => [...prev, ...ids]);
+    }
+  }
+
+  // 刚打开声音时，把现有消息全部记为「已读」：
+  // 否则会去补播最后一条（可能是上一个阶段的立论），听着像穿帮。
+  useEffect(() => {
+    if (!audioOn) return;
+
+    for (const item of messages) {
+      if (item.speaker === "bot" || item.speaker === "host") {
+        spokenRef.current.add(item.id);
+      }
+    }
+    // 只在 audioOn 变化时执行一次，不跟 messages 走
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioOn]);
+
+  // 预热：新消息一到就合成（不播），把 3 秒合成塞进逐字显示的时间里
+  useEffect(() => {
+    if (!audioOn) return;
+
+    const latest = [...messages]
+      .reverse()
+      .find((m) => m.speaker === "bot" || m.speaker === "host");
+
+    if (!latest) return;
+
+    const voiceKey =
+      members.find((m) => m.id === latest.bot_id)?.voice ?? "female-1";
+
+    prewarmSpeech(latest.content, voiceKey);
+  }, [messages, audioOn, members]);
+
+  // 刚刚逐字完的是哪一条（逐字结束时用它决定播什么）
+  const lastRevealedIdRef = useRef<number | null>(null);
+
+  // 播放：按「谁刚显示完」+「队列是否清空」双条件判断。
+  //
+  // 之前只靠 reveal 的 null 边沿，某些路径（开场词、投票主持词）
+  // 会因为时序差异错过那一刻，表现就是彻底没声音。现在多一条兜底：
+  // 队列清空且没有正在逐字的消息时，补播最后一条没读过的。
+  useEffect(() => {
+    if (!audioOn) return;
+
+    const play = (id: number) => {
+      if (spokenRef.current.has(id)) return;
+
+      const message = messages.find((item) => item.id === id);
+
+      if (!message) return;
+
+      spokenRef.current.add(id);
+
+      const voiceKey =
+        members.find((m) => m.id === message.bot_id)?.voice ?? "female-1";
+
+      // 语音失败要看得见：以前是静默回退到浏览器语音，
+      // 而 WebView2 里语音数量是 0 —— 表现就是"莫名没声音"。
+      void speakText(message.content, voiceKey, 0.9).then((result) => {
+        if (!result.ok) {
+          setError(`语音播报失败：${result.error ?? "未知原因"}`);
+        }
+      });
+    };
+
+    if (reveal !== null) {
+      // 正在逐字：记下它，等它结束
+      lastRevealedIdRef.current = reveal.id;
+      return;
+    }
+
+    // 队列里还有没显示的：再等等
+    if (revealQueue.length > 0) return;
+
+    const pending = lastRevealedIdRef.current;
+
+    if (pending !== null) {
+      lastRevealedIdRef.current = null;
+      play(pending);
+      return;
+    }
+
+    // 兜底：没有任何逐字过程也要能出声（开场词这类）
+    const latest = [...messages]
+      .reverse()
+      .find((m) => m.speaker === "bot" || m.speaker === "host");
+
+    if (latest) {
+      const timer = window.setTimeout(() => play(latest.id), 250);
+      return () => window.clearTimeout(timer);
+    }
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal, revealQueue, messages, audioOn]);
+
+  // 去掉 Markdown 装饰符：`**` 显示成星号很难看，朗读出来更蠢
+  function stripMarkdown(raw: string): string {
+    return cleanForSpeech(raw);
+  }
 
   // 正在逐字的那条消息，只显示前 N 个字
   function displayContent(message: RoomMessage): string {
-    if (reveal && reveal.id === message.id) {
-      return message.content.slice(0, reveal.shown);
-    }
+    const text =
+      reveal && reveal.id === message.id
+        ? message.content.slice(0, reveal.shown)
+        : message.content;
 
-    return message.content;
+    return stripMarkdown(text);
+  }
+
+  // 立场 → 配色档位（a 淡红 / b 淡蓝 / c 淡黄）
+  function stanceClass(botId: number | null): string {
+    const bot = members.find((item) => item.id === botId);
+
+    if (!bot?.stance) return "";
+
+    const index = roomStances.indexOf(bot.stance);
+
+    return index < 0 ? "" : `stance-c${index % 3}`;
+  }
+
+  // 主持人复盘存的是 JSON：渲染成可读的段落，别直接吐原始字符串
+  function renderSummaryBody(raw: string) {
+    try {
+      const parsed = JSON.parse(raw) as {
+        consensus?: string;
+        disagreement?: string;
+        options?: { label?: string; risk?: string }[];
+      };
+
+      const options = parsed.options ?? [];
+
+      return (
+        <div className="summary-inline">
+          <p>
+            <strong>共识：</strong>
+            {parsed.consensus || "（暂无）"}
+          </p>
+          <p>
+            <strong>分歧：</strong>
+            {parsed.disagreement || "（暂无）"}
+          </p>
+
+          {options.length > 0 && (
+            <ul>
+              {options.map((option, index) => (
+                <li key={index}>
+                  <strong>{option.label || `选项 ${index + 1}`}</strong>
+                  {option.risk ? `（代价：${option.risk}）` : ""}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      );
+    } catch {
+      return raw;
+    }
   }
 
   const pendingHands = hands.filter((h) => h.status === "pending");
@@ -730,27 +1285,114 @@ export default function RoomView({ authToken }: Props) {
             <>
               <div className="room-toolbar">
                 <div className="member-chips">
-                  {members.map((m) => (
-                    <span className="member-chip" key={m.id}>
-                      {avatarIcon(m.avatar)} {m.name}
-                      <small>活跃 {m.activity}</small>
-                    </span>
-                  ))}
+                  {members.map((m) => {
+                    const isHost = m.id === selectedRoom?.host_bot_id;
+
+                    return (
+                      <span
+                        className={`member-chip ${
+                          isHost ? "host" : ""
+                        }`}
+                        key={m.id}
+                      >
+                        {avatarIcon(m.avatar)} {m.name}
+
+                        {/* 主持人不算活跃值：它是裁判，不是辩手 */}
+                        <small>
+                          {isHost ? "主持人" : `活跃 ${m.activity}`}
+                        </small>
+                      </span>
+                    );
+                  })}
                 </div>
 
                 <div className="room-addbot">
-                  <select aria-label="选择要拉进房的 Bot" value={addBotId} onChange={(e) => setAddBotId(e.target.value)}>
-                    <option value="">拉 Bot 进房…</option>
+                  <select
+                    aria-label="选择要拉进房的 Bot"
+                    value={addBotId}
+                    // 只有「立论」阶段能拉人：立论之后阵容就定了
+                    disabled={busy || currentStage !== "statement"}
+                    onChange={(e) => setAddBotId(e.target.value)}
+                  >
+                    <option value="">
+                      {currentStage === "statement"
+                        ? "拉 bot 进房…"
+                        : "（立论阶段才能拉 bot）"}
+                    </option>
                     {allBots.filter((b) => !members.some((m) => m.id === b.id)).map((b) => (
                       <option key={b.id} value={b.id}>{b.name}</option>
                     ))}
                   </select>
 
-                  <button type="button" disabled={busy || !addBotId} onClick={addBotClick}>
+                  <button
+                    type="button"
+                    disabled={
+                      busy ||
+                      !addBotId ||
+                      currentStage !== "statement"
+                    }
+                    onClick={addBotClick}
+                  >
                     拉进房
                   </button>
                 </div>
+
+                {/* 语音开关：开了就按各自的音色朗读 Bot 发言 */}
+                <button
+                  type="button"
+                  className={`audio-toggle ${audioOn ? "on" : ""}`}
+                  aria-label={audioOn ? "关闭语音播报" : "开启语音播报"}
+                  title={audioOn ? "语音播报：开" : "语音播报：关"}
+                  onClick={() => {
+                    setAudioOn((prev) => {
+                      if (prev) {
+                        stopSpeech();
+                      }
+
+                      return !prev;
+                    });
+                  }}
+                >
+                  {audioOn ? "🔊" : "🔈"}
+                </button>
               </div>
+
+              {/* 流程进度：走过的亮绿，没走过的亮黄 */}
+              <div className="stage-bar" aria-label="辩论流程">
+                {STAGES.map((item, index) => (
+                  <div className="stage-seg" key={item.key}>
+                    <div
+                      className={`stage-fill ${
+                        index <= stageIndex ? "done" : "pending"
+                      }`}
+                    />
+                    <span
+                      className={`stage-label ${
+                        index === stageIndex ? "current" : ""
+                      }`}
+                    >
+                      {item.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* 质询限时：左分右秒的电子钟 */}
+              {crossfireRemaining !== null && (
+                <div
+                  className="countdown"
+                  aria-label="质询剩余时间"
+                  data-testid="crossfire-countdown"
+                >
+                  <span className="cd-num">
+                    {String(cdMinutes).padStart(2, "0")}
+                  </span>
+                  <span className="cd-sep">:</span>
+                  <span className="cd-num">
+                    {String(cdSeconds).padStart(2, "0")}
+                  </span>
+                </div>
+              )}
 
               {error && <div className="error-box" data-testid="room-error">{error}</div>}
 
@@ -759,16 +1401,37 @@ export default function RoomView({ authToken }: Props) {
                   <p className="reminder-empty">房间还是空的，发句话开始讨论</p>
                 ) : (
                   <>
-                    {messages.map((m) => {
+                    {messages.map((m, index) => {
                       const speakerBot = members.find(
                         (x) => x.id === m.bot_id
                       );
 
+                      // 阶段变了就插一条分割线
+                      const prev = messages[index - 1];
+                      const showDivider =
+                        !prev ||
+                        (prev.stage ?? "") !== (m.stage ?? "");
+
                       return (
-                        <article
-                          className={`room-msg ${m.speaker}`}
-                          key={m.id}
-                        >
+                        <Fragment key={m.id}>
+                          {showDivider && (
+                            <div className="stage-divider">
+                              <span>{stageLabel(m.stage)}</span>
+                            </div>
+                          )}
+
+                          {/* 用户 @ 提问：上方单独一条「追问」分割线 */}
+                          {m.speaker === "user" && m.content.includes("@") && (
+                            <div className="stage-divider">
+                              <span>追问</span>
+                            </div>
+                          )}
+
+                          <article
+                            className={`room-msg ${m.speaker} ${stanceClass(
+                              m.bot_id
+                            )}`}
+                          >
                           <div className="room-msg-avatar">
                             {m.speaker === "user"
                               ? "我"
@@ -795,12 +1458,22 @@ export default function RoomView({ authToken }: Props) {
                             </div>
 
                             <div className="room-msg-body">
-                              {displayContent(m)}
+                              {m.role === "summary"
+                                ? renderSummaryBody(m.content)
+                                : displayContent(m)}
                             </div>
                           </div>
-                        </article>
+                          </article>
+                        </Fragment>
                       );
                     })}
+
+                    {/* 刚点了「进入下一阶段」：先出分割线，再转省略号 */}
+                    {optimisticStage && (
+                      <div className="stage-divider">
+                        <span>{stageLabel(optimisticStage)}</span>
+                      </div>
+                    )}
 
                     {/* Bot 正在想：先跳动的省略号，答案到了再逐字吐 */}
                     {thinking && (
@@ -849,16 +1522,74 @@ export default function RoomView({ authToken }: Props) {
 
               {/* 汇总区 */}
               <div className="summary-bar">
-                <button type="button" disabled={busy} onClick={() => void summarize()}>
-                  主持人汇总
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={
+                    busy || nextStage === null || (needsDebateStage && !canDebate)
+                  }
+                  title={
+                    needsDebateStage && !canDebate
+                      ? "至少要有两个 Bot 站在对立面才能辩论"
+                      : undefined
+                  }
+                  onClick={() => void advanceStage()}
+                >
+                  {nextStage === null
+                    ? "流程已走完"
+                    : needsDebateStage && !canDebate
+                      ? "还不能辩论（同边）"
+                      : `进入「${nextStage.label}」`}
                 </button>
-                <button type="button" onClick={() => refresh()} aria-label="刷新">刷新</button>
+
+                {/* 交锋是回合制：一次只让一位说，说完再点 */}
+                {currentStage === "free" && (
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={busy}
+                    onClick={() => void continueFreeTurn()}
+                  >
+                    下一位发言
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAudioOn((prev) => {
+                      if (prev) {
+                        stopSpeech();
+                      }
+
+                      return !prev;
+                    });
+                  }}
+                >
+                  {audioOn ? "禁用声音" : "开启声音"}
+                </button>
               </div>
 
               {summary && (
                 <div className="summary-panel">
                   <p><strong>共识：</strong>{summary.consensus}</p>
                   <p><strong>分歧：</strong>{summary.disagreement}</p>
+                  {summary.options.length > 0 && (
+                    <label className="penalty-row">
+                      未站对边的 Bot 扣活跃值
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={penalty}
+                        aria-label="扣多少活跃值"
+                        onChange={(e) =>
+                          setPenalty(Number(e.target.value) || 0)
+                        }
+                      />
+                    </label>
+                  )}
+
                   {summary.options.length > 0 && (
                     <ul className="decision-list">
                       {summary.options.map((o) => (
@@ -872,6 +1603,93 @@ export default function RoomView({ authToken }: Props) {
                     </ul>
                   )}
                   {decisionReply && <p className="decision-reply">执行结果：{decisionReply}</p>}
+                </div>
+              )}
+
+              {/* 投票阶段：红蓝按钮，点一下投一边 */}
+              {currentStage === "vote" && roomStances.length > 0 && (
+                <div className="vote-panel">
+                  <h4>投票：哪一方的论证更站得住？</h4>
+
+                  <div className="vote-buttons">
+                    {roomStances.map((stance, index) => (
+                      <button
+                        key={stance}
+                        type="button"
+                        className={`vote-btn ${
+                          index === 0 ? "red" : "blue"
+                        }`}
+                        disabled={busy || votedStance !== null}
+                        onClick={() => void castVote(stance)}
+                      >
+                        {votedStance === stance ? `${stance} ✓` : stance}
+                      </button>
+                    ))}
+                  </div>
+
+                  <p className="vote-hint">
+                    房主的票按 1.5 票计，其他评委 1 票
+                  </p>
+
+                  {voteTally.length > 0 && (
+                    <ul className="vote-tally">
+                      {voteTally.map((item) => (
+                        <li key={item.stance}>
+                          <strong>{item.stance}</strong>：
+                          {item.weighted} 票（{item.votes} 人）
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {/* 结辩之后：给辩手打分（房主权重 1.5） */}
+              {selectedRoom?.stage === "review" && (
+                <div className="score-panel">
+                  <h4>给辩手打分（0–10，房主按 1.5 票计）</h4>
+
+                  {members
+                    .filter(
+                      (m) => m.id !== selectedRoom?.host_bot_id
+                    )
+                    .map((m) => (
+                      <label className="score-row" key={m.id}>
+                        <span>
+                          {avatarIcon(m.avatar)} {m.name}
+                        </span>
+
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          value={scoreDraft[m.id] ?? 5}
+                          aria-label={`给 ${m.name} 打分`}
+                          onChange={(e) =>
+                            setScoreDraft({
+                              ...scoreDraft,
+                              [m.id]:
+                                Number(e.target.value) || 0,
+                            })
+                          }
+                        />
+                      </label>
+                    ))}
+
+                  <div className="score-actions">
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={busy}
+                      onClick={() => void submitScores()}
+                    >
+                      提交评分
+                    </button>
+
+                    {scoreDone && (
+                      <span className="score-done">{scoreDone}</span>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -925,6 +1743,11 @@ export default function RoomView({ authToken }: Props) {
                 用示例填一下
               </button>
             </div>
+
+            <p className="modal-hint">
+              主持人：{defaultBotName || "（没找到默认助手）"}
+              （只汇总、给选项，不参与辩论）
+            </p>
 
             <label className="modal-label">
               题目（可留空）
@@ -997,7 +1820,12 @@ export default function RoomView({ authToken }: Props) {
               <button
                 type="button"
                 className="primary"
-                disabled={busy}
+                disabled={busy || !draftName.trim()}
+                title={
+                  draftName.trim()
+                    ? undefined
+                    : "先填辩题：它同时是房间名和讨论主题"
+                }
                 onClick={() => void submitCreate()}
               >
                 创建
@@ -1052,11 +1880,11 @@ export default function RoomView({ authToken }: Props) {
               </p>
             )}
 
-            {/* 问过之后，它的回答直接留在框里（不关框） */}
+            {/* 问过之后只留结论：它更倾向哪一边（大字） */}
             {askPreview && (
               <div className="ask-preview">
-                <strong>{pendingBotName} 的想法</strong>
-                <p>{askPreview}</p>
+                <span className="ask-label">它更倾向</span>
+                <strong className="ask-lean">{askPreview}</strong>
               </div>
             )}
 
@@ -1077,7 +1905,7 @@ export default function RoomView({ authToken }: Props) {
               <button
                 type="button"
                 className="primary"
-                disabled={busy || !chosenStance}
+                disabled={busy}
                 onClick={() => void addAndAsk()}
               >
                 问问 Bot 怎么想

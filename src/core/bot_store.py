@@ -69,6 +69,7 @@ class BotStore:
                     api_source TEXT NOT NULL
                         CHECK (api_source IN ('platform', 'byok')),
                     avatar TEXT NOT NULL DEFAULT 'default',
+                    voice TEXT NOT NULL DEFAULT 'female-1',
                     enabled INTEGER NOT NULL DEFAULT 1
                         CHECK (enabled IN (0, 1)),
                     created_at INTEGER NOT NULL
@@ -95,6 +96,12 @@ class BotStore:
                 conn.execute(
                     "ALTER TABLE bots "
                     "ADD COLUMN avatar TEXT NOT NULL DEFAULT 'default'"
+                )
+
+            if "voice" not in columns:
+                conn.execute(
+                    "ALTER TABLE bots ADD COLUMN voice TEXT "
+                    "NOT NULL DEFAULT 'female-1'"
                 )
 
             # 用户默认 Bot（S6）：未设置时回退到第一个站长 Bot。
@@ -153,6 +160,7 @@ class BotStore:
         system_prompt: str,
         api_source: str,
         avatar: str = "default",
+        voice: str = "female-1",
         expertise: str | None = None,
         style: str | None = None,
         now: int | None = None,
@@ -204,9 +212,10 @@ class BotStore:
                     """
                     INSERT INTO bots (
                         owner_id, name, persona, system_prompt,
-                        expertise, style, api_source, avatar, created_at
+                        expertise, style, api_source, avatar,
+                        voice, created_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         owner_id,
@@ -217,6 +226,7 @@ class BotStore:
                         style,
                         api_source,
                         avatar,
+                        voice,
                         now,
                     ),
                 )
@@ -323,7 +333,8 @@ class BotStore:
             rows = conn.execute(
                 """
                 SELECT id, owner_id, name, persona, system_prompt,
-                       expertise, style, api_source, enabled, created_at
+                       expertise, style, api_source, avatar, voice,
+                       enabled, created_at
                 FROM bots
                 WHERE owner_id IS NULL OR owner_id = ?
                 ORDER BY (owner_id IS NOT NULL), id
@@ -400,7 +411,7 @@ class BotStore:
 
         allowed = {
             "name", "persona", "system_prompt",
-            "expertise", "style", "api_source", "avatar",
+            "expertise", "style", "api_source", "avatar", "voice",
         }
         limits = {
             "name": 50,
@@ -408,6 +419,7 @@ class BotStore:
             "system_prompt": 4000,
             "expertise": 200,
             "style": 100,
+            "voice": 20,
         }
 
         updates = {}
@@ -536,7 +548,12 @@ class BotStore:
         return True
 
     def get_default_bot(self, user_id: str) -> dict | None:
-        """获取用户的默认 Bot；未设置时回退到第一个站长 Bot。"""
+        """获取用户的默认 Bot。
+
+        兜底顺序：用户指定的默认 → 第一个站长 Bot → 用户自己的第一个 Bot。
+        最后一层是必需的：库里可能一个站长 Bot 都没有（用户全用自建 Bot），
+        那时前两层都空，新建房间就找不到主持人。
+        """
 
         if not isinstance(user_id, str) or not user_id.strip():
             raise BotError("user_id 不能为空")
@@ -574,4 +591,16 @@ class BotStore:
                 """,
             ).fetchone()
 
-        return dict(platform) if platform else None
+            if platform is not None:
+                return dict(platform)
+
+            own = conn.execute(
+                """
+                SELECT * FROM bots
+                WHERE owner_id = ? AND enabled = 1
+                ORDER BY id LIMIT 1
+                """,
+                (user_id,),
+            ).fetchone()
+
+        return dict(own) if own else None

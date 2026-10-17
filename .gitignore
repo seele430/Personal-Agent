@@ -41,6 +41,9 @@ node_modules/
 dist/
 .vite/
 
+# PyInstaller 中间产物（dist/ 已在上面排除）
+build/
+
 # Playwright results
 test-results/
 playwright-report/

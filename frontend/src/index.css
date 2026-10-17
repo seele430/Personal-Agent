@@ -36,12 +36,13 @@ textarea {
 /* Sidebar */
 
 .sidebar {
-  width: 252px;
+  /* 比原来窄 1/4（252 → 189） */
+  width: 189px;
   flex-shrink: 0;
   /* 三层底色里最深的一层：侧栏 → 房间列表 → 聊天区，逐层变淡 */
   background: #f0f3f8;
   border-right: 1px solid #e6eaf0;
-  padding: 28px 17px;
+  padding: 24px 14px;
   display: flex;
   flex-direction: column;
   /* 收起时整体左移出视野（带动画），主区随之占满 */
@@ -49,7 +50,14 @@ textarea {
 }
 
 .sidebar.collapsed {
-  margin-left: -252px;
+  margin-left: -189px;
+}
+
+/* 收起按钮：放在侧栏中部，水平居中 */
+.sidebar-collapse-row {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0;
 }
 
 .brand {
@@ -1098,9 +1106,8 @@ textarea {
 
 /* 侧栏收起/展开按钮 */
 .sidebar-toggle {
-  margin-left: auto;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   border: 1px solid #e2e5ea;
@@ -1502,6 +1509,16 @@ textarea {
   color: #98a0aa;
 }
 
+/* 主持人：不给活跃值，单独标记 */
+.member-chip.host {
+  background: #eef3fb;
+  color: #2b4a77;
+}
+
+.member-chip.host small {
+  color: #5b7fa6;
+}
+
 .room-addbot {
   display: flex;
   gap: 8px;
@@ -1645,6 +1662,22 @@ textarea {
   background: #eef3fb;
 }
 
+/* Bot 的气泡按它站的立场着色（和拉 Bot 时的 a/b/c 配色一致） */
+.room-msg.stance-c0 .room-msg-body {
+  background: #fdeeee;
+  border: 1px solid #f3cccc;
+}
+
+.room-msg.stance-c1 .room-msg-body {
+  background: #eaf2fd;
+  border: 1px solid #c9dcf5;
+}
+
+.room-msg.stance-c2 .room-msg-body {
+  background: #fdf6e3;
+  border: 1px solid #f0e0b0;
+}
+
 .room-msg.host .room-msg-body {
   background: #fdf6e3;
 }
@@ -1730,6 +1763,24 @@ textarea {
   background: #eef3fb;
 }
 
+/* 结算：让用户填扣多少活跃值 */
+.penalty-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.penalty-row input {
+  width: 72px;
+  padding: 6px 9px;
+  border: 1px solid #e2e5ea;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
 .room-input {
   display: flex;
   gap: 8px;
@@ -1807,4 +1858,284 @@ textarea {
 .room-input button {
   padding: 12px 18px;
   font-size: 15px;
+}
+
+/* 辩论流程进度条：走过的绿、没走到的黄 */
+.stage-bar {
+  display: flex;
+  gap: 6px;
+  /* 整块高度约 1cm */
+  padding: 8px 2px 6px;
+}
+
+.stage-seg {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stage-fill {
+  height: 12px;
+  border-radius: 4px;
+  transition: background 0.25s ease;
+}
+
+.stage-fill.pending {
+  background: #f6e3a1;
+}
+
+.stage-fill.done {
+  background: #8ed69c;
+}
+
+.stage-label {
+  font-size: 10px;
+  color: #98a0aa;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.stage-label.current {
+  color: #3f6291;
+  font-weight: 600;
+}
+
+/* 阶段分割线：在聊天气泡之间断开 */
+.stage-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 4px;
+  color: #98a0aa;
+  font-size: 11px;
+}
+
+.stage-divider::before,
+.stage-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #e8ebf0;
+}
+
+.stage-divider span {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #f2f5f9;
+}
+
+/* 质询倒计时：电子钟（深底亮字、等宽） */
+.countdown {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  align-self: center;
+  margin: 2px auto 6px;
+  padding: 6px 20px;
+  border-radius: 12px;
+  background: #1f2733;
+  color: #7fe399;
+  font-family: "Consolas", "Courier New", monospace;
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.35),
+    0 2px 10px rgba(31, 39, 51, 0.18);
+}
+
+.cd-num {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-shadow: 0 0 8px rgba(127, 227, 153, 0.6);
+}
+
+.cd-sep {
+  font-size: 20px;
+  opacity: 0.7;
+  transform: translateY(-1px);
+}
+
+/* 主持人复盘（JSON）渲染成可读段落 */
+.summary-inline p {
+  margin: 2px 0;
+}
+
+.summary-inline ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.summary-inline li {
+  margin: 3px 0;
+  font-size: 12px;
+}
+
+/* 结辩后的评委打分 */
+.score-panel {
+  padding: 12px 14px;
+  border: 1px solid #e2e5ea;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+
+.score-panel h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.score-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 13px;
+}
+
+.score-row input {
+  width: 70px;
+  padding: 6px 9px;
+  border: 1px solid #e2e5ea;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.score-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.score-actions button {
+  padding: 8px 16px;
+  border: 1px solid #e2e5ea;
+  border-radius: 9px;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.score-actions button.primary {
+  border-color: #2b4a77;
+  background: #2b4a77;
+  color: #fff;
+}
+
+.score-done {
+  font-size: 12px;
+  color: #4a8f5f;
+}
+
+/* 投票面板：红蓝两边 */
+.vote-panel {
+  padding: 14px;
+  border: 1px solid #e2e5ea;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+
+.vote-panel h4 {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+
+.vote-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.vote-btn {
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.vote-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.vote-btn.red {
+  border: 1px solid #eab9b9;
+  background: #fdeeee;
+  color: #a34b4b;
+}
+
+.vote-btn.red:hover:not(:disabled) {
+  box-shadow: 0 4px 14px rgba(163, 75, 75, 0.18);
+}
+
+.vote-btn.blue {
+  border: 1px solid #b9cdea;
+  background: #eaf2fd;
+  color: #3f6291;
+}
+
+.vote-btn.blue:hover:not(:disabled) {
+  box-shadow: 0 4px 14px rgba(63, 98, 145, 0.18);
+}
+
+.vote-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #98a0aa;
+}
+
+.vote-tally {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+/* 语音开关：开了有点亮，关着低调 */
+.audio-toggle {
+  padding: 8px 12px;
+  border: 1px solid #e2e5ea;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.audio-toggle.on {
+  border-color: #9fc6a8;
+  background: #eef8f0;
+}
+
+/* 「问问 Bot 怎么想」的结论：大字，别让用户找 */
+.ask-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 0 4px;
+  padding: 16px;
+  border: 1px solid #e2e5ea;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+
+.ask-label {
+  font-size: 12px;
+  color: #98a0aa;
+}
+
+.ask-lean {
+  font-size: 28px;
+  font-weight: 700;
+  color: #2b4a77;
+  letter-spacing: 1px;
 }

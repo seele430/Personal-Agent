@@ -25,6 +25,29 @@ from src.core.bot_store import BotStore
 SPEAKERS = ("user", "bot", "host")
 ROLES = ("core", "expand", "object", "summary", "decision")
 
+# 辩论流程：顺序就是推进顺序
+STAGES = (
+    "opening",    # 主持人开场
+    "statement",  # 双方立论
+    "rebuttal",   # 双方驳论
+    "crossfire",  # 轮流质询
+    "free",       # 自由交锋
+    "closing",    # 双方结辩
+    "vote",       # 评委投票
+    "review",     # 复盘
+)
+
+STAGE_LABELS = {
+    "opening": "开场",
+    "statement": "立论",
+    "rebuttal": "驳论",
+    "crossfire": "质询",
+    "free": "自由交锋",
+    "closing": "结辩",
+    "vote": "投票",
+    "review": "复盘",
+}
+
 
 class RoomError(ValueError):
     """聊天室域的业务错误。"""
@@ -56,13 +79,15 @@ class RoomStore:
                     owner_id TEXT NOT NULL,
                     name TEXT NOT NULL,
                     stances TEXT,
+                    host_bot_id INTEGER,
+                    stage TEXT NOT NULL DEFAULT 'opening',
                     archived INTEGER NOT NULL DEFAULT 0,
                     created_at INTEGER NOT NULL
                 )
                 """
             )
 
-            # 迁移：老库没有 stances / archived 列。
+            # 迁移：老库缺的列补上。
             room_columns = {
                 row[1]
                 for row in conn.execute("PRAGMA table_info(rooms)")
@@ -71,6 +96,23 @@ class RoomStore:
             if "stances" not in room_columns:
                 conn.execute(
                     "ALTER TABLE rooms ADD COLUMN stances TEXT"
+                )
+
+            if "host_bot_id" not in room_columns:
+                conn.execute(
+                    "ALTER TABLE rooms ADD COLUMN host_bot_id INTEGER"
+                )
+
+            if "stage" not in room_columns:
+                conn.execute(
+                    "ALTER TABLE rooms ADD COLUMN stage TEXT "
+                    "NOT NULL DEFAULT 'opening'"
+                )
+
+            if "stage_started_at" not in room_columns:
+                conn.execute(
+                    "ALTER TABLE rooms "
+                    "ADD COLUMN stage_started_at INTEGER"
                 )
 
             if "archived" not in room_columns:
@@ -122,8 +164,53 @@ class RoomStore:
                         CHECK (role IN
                                ('core', 'expand', 'object',
                                 'summary', 'decision')),
+                    stage TEXT,
                     content TEXT NOT NULL,
                     created_at INTEGER NOT NULL
+                )
+                """
+            )
+
+            # 迁移：老消息没有 stage 列。
+            msg_columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(messages)")
+            }
+
+            if "stage" not in msg_columns:
+                conn.execute(
+                    "ALTER TABLE messages ADD COLUMN stage TEXT"
+                )
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS room_votes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    room_id INTEGER NOT NULL
+                        REFERENCES rooms(id) ON DELETE CASCADE,
+                    voter_id TEXT NOT NULL,
+                    stance TEXT NOT NULL,
+                    weight REAL NOT NULL DEFAULT 1,
+                    created_at INTEGER NOT NULL,
+                    UNIQUE (room_id, voter_id)
+                )
+                """
+            )
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS room_scores (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    room_id INTEGER NOT NULL
+                        REFERENCES rooms(id) ON DELETE CASCADE,
+                    bot_id INTEGER NOT NULL
+                        REFERENCES bots(id) ON DELETE CASCADE,
+                    voter_id TEXT NOT NULL,
+                    weight REAL NOT NULL DEFAULT 1,
+                    score INTEGER NOT NULL
+                        CHECK (score >= 0 AND score <= 10),
+                    created_at INTEGER NOT NULL,
+                    UNIQUE (room_id, bot_id, voter_id)
                 )
                 """
             )
@@ -174,6 +261,7 @@ class RoomStore:
         owner_id: str,
         name: str,
         stances: list[str] | None = None,
+        host_bot_id: int | None = None,
         now: int | None = None,
     ) -> dict:
         if not isinstance(owner_id, str) or not owner_id.strip():
@@ -182,6 +270,11 @@ class RoomStore:
         owner_id = owner_id.strip()
         name = self._name(name)
         now = now or int(time.time())
+
+        if host_bot_id is not None and (
+            type(host_bot_id) is not int or host_bot_id <= 0
+        ):
+            raise RoomError("无效的主持人 ID")
 
         # 立场（房间的议题阵营）：去空、去重、限长。
         cleaned = []
@@ -202,18 +295,35 @@ class RoomStore:
             cursor = conn.execute(
                 """
                 INSERT INTO rooms (
-                    owner_id, name, stances, created_at
+                    owner_id, name, stances,
+                    host_bot_id, created_at
                 )
-                VALUES (?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (owner_id, name, encoded, now),
+                (owner_id, name, encoded, host_bot_id, now),
             )
 
+            room_id = cursor.lastrowid
+
+            # 主持人默认进房（它不占立场：是裁判，不是辩手）
+            if host_bot_id is not None:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO room_bots (
+                        room_id, bot_id, activity, joined_at
+                    )
+                    VALUES (?, ?, 100, ?)
+                    """,
+                    (room_id, host_bot_id, now),
+                )
+
         return {
-            "id": cursor.lastrowid,
+            "id": room_id,
             "owner_id": owner_id,
             "name": name,
             "stances": cleaned,
+            "host_bot_id": host_bot_id,
+            "stage": STAGES[0],
         }
 
     def add_bot_to_room(
@@ -311,7 +421,8 @@ class RoomStore:
         with closing(self._connect()) as conn:
             rows = conn.execute(
                 f"""
-                SELECT r.id, r.name, r.stances, r.archived,
+                SELECT r.id, r.name, r.stances, r.host_bot_id,
+                       r.stage, r.stage_started_at, r.archived,
                        r.created_at,
                        COUNT(rb.bot_id) AS bot_count
                 FROM rooms r
@@ -336,6 +447,243 @@ class RoomStore:
 
         return result
 
+    def submit_score(
+        self,
+        *,
+        room_id: int,
+        bot_id: int,
+        voter_id: str,
+        score: int,
+        weight: float = 1.0,
+    ) -> dict:
+        """给某个辩手打分（同一个人重复提交就覆盖）。
+
+        权重留给多人场景：房主 1.5 票，其他人类 1 票。
+        """
+
+        if type(room_id) is not int or room_id <= 0:
+            raise RoomError("无效的房间 ID")
+
+        if type(bot_id) is not int or bot_id <= 0:
+            raise RoomError("无效的 Bot ID")
+
+        if type(score) is not int or not (0 <= score <= 10):
+            raise RoomError("分数必须是 0-10 的整数")
+
+        voter_id = voter_id.strip()
+        now = int(time.time())
+
+        with closing(self._connect()) as conn, conn:
+            room = conn.execute(
+                """
+                SELECT id FROM rooms
+                WHERE id = ? AND owner_id = ?
+                """,
+                (room_id, voter_id),
+            ).fetchone()
+
+            if room is None:
+                raise RoomError("房间不存在或无权访问")
+
+            conn.execute(
+                """
+                INSERT INTO room_scores (
+                    room_id, bot_id, voter_id,
+                    weight, score, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (room_id, bot_id, voter_id)
+                DO UPDATE SET
+                    score = excluded.score,
+                    weight = excluded.weight
+                """,
+                (room_id, bot_id, voter_id, weight, score, now),
+            )
+
+        return {"bot_id": bot_id, "score": score, "weight": weight}
+
+    def list_scores(self, *, room_id: int, owner_id: str) -> list[dict]:
+        """房间的加权评分（按 Bot 汇总）。"""
+
+        owner_id = owner_id.strip()
+
+        with closing(self._connect()) as conn:
+            room = conn.execute(
+                """
+                SELECT id FROM rooms
+                WHERE id = ? AND owner_id = ?
+                """,
+                (room_id, owner_id),
+            ).fetchone()
+
+            if room is None:
+                raise RoomError("房间不存在或无权访问")
+
+            rows = conn.execute(
+                """
+                SELECT bot_id,
+                       ROUND(
+                           SUM(score * weight) / SUM(weight), 2
+                       ) AS weighted,
+                       COUNT(*) AS votes
+                FROM room_scores
+                WHERE room_id = ?
+                GROUP BY bot_id
+                """,
+                (room_id,),
+            ).fetchall()
+
+        return [
+            {
+                "bot_id": row[0],
+                "weighted": row[1],
+                "votes": row[2],
+            }
+            for row in rows
+        ]
+
+    def submit_vote(
+        self,
+        *,
+        room_id: int,
+        voter_id: str,
+        stance: str,
+        weight: float = 1.0,
+    ) -> dict:
+        """评委投票（选一边立场，重复提交覆盖）。
+
+        权重：房主 1.5 票，其他人类 1 票（多人场景预留）。
+        """
+
+        if type(room_id) is not int or room_id <= 0:
+            raise RoomError("无效的房间 ID")
+
+        stance = str(stance).strip()
+
+        if not stance:
+            raise RoomError("立场不能为空")
+
+        voter_id = voter_id.strip()
+        now = int(time.time())
+
+        with closing(self._connect()) as conn, conn:
+            room = conn.execute(
+                """
+                SELECT id FROM rooms
+                WHERE id = ? AND owner_id = ?
+                """,
+                (room_id, voter_id),
+            ).fetchone()
+
+            if room is None:
+                raise RoomError("房间不存在或无权访问")
+
+            conn.execute(
+                """
+                INSERT INTO room_votes (
+                    room_id, voter_id, stance, weight, created_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (room_id, voter_id)
+                DO UPDATE SET
+                    stance = excluded.stance,
+                    weight = excluded.weight
+                """,
+                (room_id, voter_id, stance, weight, now),
+            )
+
+        return {
+            "room_id": room_id,
+            "voter_id": voter_id,
+            "stance": stance,
+            "weight": weight,
+        }
+
+    def list_votes(self, *, room_id: int, owner_id: str) -> dict:
+        """投票汇总：每个立场拿了多少票（加权）。"""
+
+        owner_id = owner_id.strip()
+
+        with closing(self._connect()) as conn:
+            room = conn.execute(
+                """
+                SELECT id FROM rooms
+                WHERE id = ? AND owner_id = ?
+                """,
+                (room_id, owner_id),
+            ).fetchone()
+
+            if room is None:
+                raise RoomError("房间不存在或无权访问")
+
+            rows = conn.execute(
+                """
+                SELECT stance, SUM(weight) AS weighted,
+                       COUNT(*) AS votes
+                FROM room_votes
+                WHERE room_id = ?
+                GROUP BY stance
+                """,
+                (room_id,),
+            ).fetchall()
+
+        return {
+            "tally": [
+                {
+                    "stance": row[0],
+                    "weighted": round(row[1], 2),
+                    "votes": row[2],
+                }
+                for row in rows
+            ]
+        }
+
+    def advance_stage(
+        self,
+        *,
+        room_id: int,
+        owner_id: str,
+        stage: str,
+    ) -> bool:
+        """把房间推进到指定阶段（不能倒退，防止流程乱跳）。"""
+
+        if stage not in STAGES:
+            raise RoomError("未知阶段")
+
+        if type(room_id) is not int or room_id <= 0:
+            raise RoomError("无效的房间 ID")
+
+        owner_id = owner_id.strip()
+
+        with closing(self._connect()) as conn, conn:
+            row = conn.execute(
+                """
+                SELECT stage FROM rooms
+                WHERE id = ? AND owner_id = ?
+                """,
+                (room_id, owner_id),
+            ).fetchone()
+
+            if row is None:
+                raise RoomError("房间不存在或无权访问")
+
+            current = row[0] or STAGES[0]
+
+            # 只许往前走
+            if STAGES.index(stage) <= STAGES.index(current):
+                return False
+
+            conn.execute(
+                """
+                UPDATE rooms
+                SET stage = ?, stage_started_at = ?
+                WHERE id = ? AND owner_id = ?
+                """,
+                (stage, int(time.time()), room_id, owner_id),
+            )
+
+        return True
+
     def get_room(
         self, *, room_id: int, owner_id: str
     ) -> dict | None:
@@ -347,7 +695,9 @@ class RoomStore:
         with closing(self._connect()) as conn:
             row = conn.execute(
                 """
-                SELECT id, name, stances, archived, created_at
+                SELECT id, name, stances, host_bot_id,
+                       stage, stage_started_at,
+                       archived, created_at
                 FROM rooms
                 WHERE id = ? AND owner_id = ?
                 """,
@@ -388,6 +738,68 @@ class RoomStore:
             )
 
         return cursor.rowcount == 1
+
+    def apply_stance_penalty(
+        self,
+        *,
+        room_id: int,
+        owner_id: str,
+        chosen_stance: str | None,
+        penalty: int = 30,
+    ) -> list[dict]:
+        """用户拍板后结算活跃值（S6 后手）。
+
+        规则：**站对边的不扣**（它判断对了），其余一律扣 penalty，
+        扣到 0 为止。返回被扣分的成员（含扣后活跃值）。
+
+        `chosen_stance` 为空表示没有立场可对，全场一起扣。
+        """
+
+        if type(room_id) is not int or room_id <= 0:
+            raise RoomError("无效的房间 ID")
+
+        if type(penalty) is not int or penalty < 0:
+            raise RoomError("扣分必须是自然数")
+
+        owner_id = owner_id.strip()
+
+        with closing(self._connect()) as conn, conn:
+            room = conn.execute(
+                """
+                SELECT id FROM rooms
+                WHERE id = ? AND owner_id = ?
+                """,
+                (room_id, owner_id),
+            ).fetchone()
+
+            if room is None:
+                raise RoomError("房间不存在或无权访问")
+
+            if chosen_stance:
+                rows = conn.execute(
+                    """
+                    UPDATE room_bots
+                    SET activity = MAX(0, activity - ?)
+                    WHERE room_id = ?
+                      AND (stance IS NULL OR stance != ?)
+                    RETURNING bot_id, activity
+                    """,
+                    (penalty, room_id, chosen_stance),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    UPDATE room_bots
+                    SET activity = MAX(0, activity - ?)
+                    WHERE room_id = ?
+                    RETURNING bot_id, activity
+                    """,
+                    (penalty, room_id),
+                ).fetchall()
+
+        return [
+            {"bot_id": row[0], "activity": row[1]} for row in rows
+        ]
 
     def delete_room(self, *, room_id: int, owner_id: str) -> bool:
         """删除房间（级联清掉成员 / 消息 / 举手）。"""
@@ -431,7 +843,7 @@ class RoomStore:
             rows = conn.execute(
                 """
                 SELECT b.id, b.name, b.persona,
-                       b.system_prompt, b.avatar,
+                       b.system_prompt, b.avatar, b.voice,
                        rb.stance, rb.activity
                 FROM room_bots rb
                 JOIN bots b ON b.id = rb.bot_id
@@ -457,6 +869,7 @@ class RoomStore:
         role: str,
         content: str,
         owner_id: str,
+        stage: str | None = None,
         now: int | None = None,
     ) -> dict:
         if type(room_id) is not int or room_id <= 0:
@@ -493,9 +906,9 @@ class RoomStore:
                 """
                 INSERT INTO messages (
                     room_id, turn_id, speaker,
-                    bot_id, role, content, created_at
+                    bot_id, role, stage, content, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     room_id,
@@ -503,6 +916,7 @@ class RoomStore:
                     speaker,
                     bot_id,
                     role,
+                    stage,
                     content.strip(),
                     now,
                 ),
@@ -514,6 +928,7 @@ class RoomStore:
             "turn_id": turn_id,
             "speaker": speaker,
             "role": role,
+            "stage": stage,
         }
 
     def list_messages(
@@ -541,7 +956,7 @@ class RoomStore:
                 rows = conn.execute(
                     """
                     SELECT id, turn_id, speaker, bot_id,
-                           role, content, created_at
+                           role, stage, content, created_at
                     FROM messages
                     WHERE room_id = ?
                     ORDER BY id
@@ -552,7 +967,7 @@ class RoomStore:
                 rows = conn.execute(
                     """
                     SELECT id, turn_id, speaker, bot_id,
-                           role, content, created_at
+                           role, stage, content, created_at
                     FROM messages
                     WHERE room_id = ? AND turn_id = ?
                     ORDER BY id

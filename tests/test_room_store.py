@@ -284,5 +284,214 @@ class TestMessage(RoomStoreTestCase):
         self.assertEqual(members[0]["stance"], "支持")
 
 
+    def test_create_room_with_host(self):
+        """建房间带主持人：它自动进房，且不占立场（是裁判不是辩手）。"""
+
+        bot = self.own_bot()
+
+        room = self.rooms.create_room(
+            owner_id="alice",
+            name="辩题",
+            stances=["支持", "反对"],
+            host_bot_id=bot["id"],
+        )
+
+        self.assertEqual(room["host_bot_id"], bot["id"])
+
+        members = self.rooms.list_room_bots(
+            room_id=room["id"], owner_id="alice"
+        )
+
+        self.assertEqual(len(members), 1)
+        self.assertIsNone(members[0]["stance"])
+
+    def test_apply_stance_penalty(self):
+        """结算：站对边的不扣，其余扣。"""
+
+        room = self.rooms.create_room(
+            owner_id="alice",
+            name="辩题",
+            stances=["支持", "反对"],
+        )
+        winner = self.own_bot(name="正方")
+        loser = self.own_bot(name="反方")
+
+        self.rooms.add_bot_to_room(
+            room_id=room["id"],
+            bot_id=winner["id"],
+            owner_id="alice",
+            stance="支持",
+        )
+        self.rooms.add_bot_to_room(
+            room_id=room["id"],
+            bot_id=loser["id"],
+            owner_id="alice",
+            stance="反对",
+        )
+
+        penalized = self.rooms.apply_stance_penalty(
+            room_id=room["id"],
+            owner_id="alice",
+            chosen_stance="支持",
+            penalty=30,
+        )
+
+        self.assertEqual(len(penalized), 1)
+
+        members = {
+            item["id"]: item
+            for item in self.rooms.list_room_bots(
+                room_id=room["id"], owner_id="alice"
+            )
+        }
+
+        self.assertEqual(members[winner["id"]]["activity"], 100)
+        self.assertEqual(members[loser["id"]]["activity"], 70)
+
+    def test_penalty_never_below_zero(self):
+        """活跃值扣到 0 就打住，不会变负数。"""
+
+        room = self.rooms.create_room(
+            owner_id="alice", name="辩题"
+        )
+        bot = self.own_bot()
+
+        self.rooms.add_bot_to_room(
+            room_id=room["id"],
+            bot_id=bot["id"],
+            owner_id="alice",
+        )
+
+        for _ in range(2):
+            self.rooms.apply_stance_penalty(
+                room_id=room["id"],
+                owner_id="alice",
+                chosen_stance=None,
+                penalty=100,
+            )
+
+        members = self.rooms.list_room_bots(
+            room_id=room["id"], owner_id="alice"
+        )
+
+        self.assertEqual(members[0]["activity"], 0)
+
+
+    def test_advance_stage(self):
+        """阶段只能往前走。"""
+
+        room = self.make_room()
+
+        self.assertTrue(
+            self.rooms.advance_stage(
+                room_id=room["id"],
+                owner_id="alice",
+                stage="rebuttal",
+            )
+        )
+        self.assertEqual(
+            self.rooms.get_room(
+                room_id=room["id"], owner_id="alice"
+            )["stage"],
+            "rebuttal",
+        )
+
+        # 不能倒退
+        self.assertFalse(
+            self.rooms.advance_stage(
+                room_id=room["id"],
+                owner_id="alice",
+                stage="statement",
+            )
+        )
+
+    def test_unknown_stage_rejected(self):
+        room = self.make_room()
+
+        with self.assertRaises(RoomError):
+            self.rooms.advance_stage(
+                room_id=room["id"],
+                owner_id="alice",
+                stage="乱写",
+            )
+
+
+    def test_submit_and_aggregate_scores(self):
+        """打分：房主权重重 1.5，加权平均要算得对。"""
+
+        room = self.make_room()
+        bot = self.own_bot()
+
+        self.rooms.submit_score(
+            room_id=room["id"],
+            bot_id=bot["id"],
+            voter_id="alice",
+            score=8,
+            weight=1.5,
+        )
+
+        scores = self.rooms.list_scores(
+            room_id=room["id"], owner_id="alice"
+        )
+
+        self.assertEqual(len(scores), 1)
+        self.assertEqual(scores[0]["weighted"], 8.0)
+        self.assertEqual(scores[0]["votes"], 1)
+
+    def test_score_out_of_range_rejected(self):
+        room = self.make_room()
+        bot = self.own_bot()
+
+        with self.assertRaises(RoomError):
+            self.rooms.submit_score(
+                room_id=room["id"],
+                bot_id=bot["id"],
+                voter_id="alice",
+                score=11,
+            )
+
+
+    def test_submit_and_tally_votes(self):
+        """投票：按立场加权汇总。"""
+
+        room = self.make_room()
+
+        self.rooms.submit_vote(
+            room_id=room["id"],
+            voter_id="alice",
+            stance="支持",
+            weight=1.5,
+        )
+
+        result = self.rooms.list_votes(
+            room_id=room["id"], owner_id="alice"
+        )
+
+        self.assertEqual(len(result["tally"]), 1)
+        self.assertEqual(result["tally"][0]["stance"], "支持")
+        self.assertEqual(result["tally"][0]["weighted"], 1.5)
+
+    def test_vote_overwrites_same_voter(self):
+        """同一个人改票要覆盖，不能算两票。"""
+
+        room = self.make_room()
+
+        self.rooms.submit_vote(
+            room_id=room["id"], voter_id="alice",
+            stance="支持", weight=1.5,
+        )
+        self.rooms.submit_vote(
+            room_id=room["id"], voter_id="alice",
+            stance="反对", weight=1.5,
+        )
+
+        result = self.rooms.list_votes(
+            room_id=room["id"], owner_id="alice"
+        )
+
+        self.assertEqual(len(result["tally"]), 1)
+        self.assertEqual(result["tally"][0]["stance"], "反对")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -5,6 +5,8 @@ import {
   type FormEvent,
 } from "react";
 
+import { VOICES, previewVoice, prewarmVoices } from "./lib/tts";
+
 type Bot = {
   id: number;
   owner_id: string | null;
@@ -58,6 +60,8 @@ const PROMPT_PRESETS = [
 // 用户懒得起手逐项填：留空也能创建，缺的字段用这些兜底。
 const DEFAULT_PROMPT = PROMPT_PRESETS[0];
 
+export const VOICE_OPTIONS = VOICES;
+
 // 名字留空时生成 Bot-1 / Bot-2 …；重名就往后顺延。
 function nextBotName(existing: string[]): string {
   let n = 1;
@@ -106,9 +110,10 @@ export default function BotsView({ authToken }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
 
   const [name, setName] = useState("");
-  const [systemPrompt, setSystemPrompt] = useState("");
+  const [systemPrompt, setSystemPrompt] = useState("无特殊指令");
   const [apiSource, setApiSource] = useState("platform");
   const [avatar, setAvatar] = useState("default");
+  const [voice, setVoice] = useState("female-1");
 
   // 预设弹层：点输入框在**上方**弹出，点一条即填入。
   const [promptOpen, setPromptOpen] = useState(false);
@@ -173,6 +178,11 @@ export default function BotsView({ authToken }: Props) {
     void load();
   }, [load]);
 
+  // 进页面就把四个音色的试听合成好，点的时候立刻响，不用干等
+  useEffect(() => {
+    prewarmVoices();
+  }, []);
+
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -197,6 +207,7 @@ export default function BotsView({ authToken }: Props) {
           system_prompt: finalPrompt,
           api_source: apiSource,
           avatar,
+          voice,
         }),
       });
 
@@ -407,6 +418,25 @@ export default function BotsView({ authToken }: Props) {
               {AVATAR_CHOICES.map((item) => (
                 <option key={item.key} value={item.key}>
                   {item.icon} {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            音色
+            <select
+              aria-label="Bot 音色"
+              value={voice}
+              onChange={(event) => {
+                setVoice(event.target.value);
+                // 选完当场读一句「你好，世界」，不用创建完再猜
+                previewVoice(event.target.value);
+              }}
+            >
+              {VOICES.map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.label}
                 </option>
               ))}
             </select>

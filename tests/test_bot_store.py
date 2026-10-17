@@ -262,8 +262,22 @@ class TestDefaultBot(BotStoreTestCase):
                 user_id="alice", bot_id=bob_bot["id"]
             )
 
-    def test_no_platform_bot_returns_none(self):
-        self.create()  # 只有自己的 bot，无站长 bot，也没设 default
+    def test_no_platform_bot_falls_back_to_own(self):
+        """没有站长 Bot 也没有默认时，退到用户自己的第一个 Bot。
+
+        这条兜底是必需的：用户可能全用自建 Bot，若不兜底，
+        新建房间就会找不到主持人。
+        """
+
+        own = self.create()  # 只有自己的 bot，无站长 bot，也没设 default
+
+        result = self.store.get_default_bot("alice")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["id"], own["id"])
+
+    def test_no_bot_at_all_returns_none(self):
+        """一个 Bot 都没有时返回 None。"""
 
         self.assertIsNone(self.store.get_default_bot("alice"))
 

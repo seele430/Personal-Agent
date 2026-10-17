@@ -88,7 +88,7 @@ class TestHostSummarizeTurn(unittest.TestCase):
             speak=lambda bot, topic, **kw: "核心观点",
         )
 
-        def fake_summarize(messages, topic):
+        def fake_summarize(messages, topic, **kw):
             return {
                 "consensus": "一致",
                 "disagreement": "分歧",

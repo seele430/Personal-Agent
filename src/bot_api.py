@@ -34,6 +34,7 @@ class BotCreate(BaseModel):
     system_prompt: str
     api_source: str = "platform"
     avatar: str = "default"
+    voice: str = "female-1"
     expertise: str | None = None
     style: str | None = None
 
@@ -44,6 +45,7 @@ class BotUpdate(BaseModel):
     system_prompt: str | None = None
     api_source: str | None = None
     avatar: str | None = None
+    voice: str | None = None
     expertise: str | None = None
     style: str | None = None
 
@@ -72,6 +74,7 @@ def create_bot(
             system_prompt=payload.system_prompt,
             api_source=payload.api_source,
             avatar=payload.avatar,
+            voice=payload.voice,
             expertise=payload.expertise,
             style=payload.style,
         )

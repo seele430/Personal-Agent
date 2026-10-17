@@ -92,3 +92,62 @@ app.include_router(notification_router)
 
 # 统一收件箱（聚合监控通知与到点提醒）
 app.include_router(inbox_router)
+
+
+# ==========================================
+# 桌面版：兼容 /api 前缀
+# ==========================================
+#
+# 开发时是 Vite 代理把 `/api/*` 转成 `/*` 再打给后端；
+# 打包成桌面应用后没有代理，前端照样请求 `/api/bots`，
+# 直接打后端就 404。这里把前缀剥掉，让两种模式共用同一套路由。
+@app.middleware("http")
+async def _strip_api_prefix(request, call_next):
+    path = request.url.path
+
+    if path.startswith("/api/"):
+        stripped = path[4:]
+        request.scope["path"] = stripped
+        request.scope["raw_path"] = stripped.encode("utf-8")
+
+    return await call_next(request)
+
+
+# ==========================================
+# 桌面版：由后端直接托管前端静态文件
+# ==========================================
+#
+# 开发模式前后端分离（Vite 5173 + api 8000），打包成桌面应用后
+# 只有一个进程，窗口直接打开 http://127.0.0.1:8000 —— 所以这里把
+# frontend/dist 挂上去。找不到 dist 就静默跳过，不影响开发模式。
+def _mount_frontend() -> None:
+    import os
+    import sys
+
+    from fastapi.staticfiles import StaticFiles
+
+    if getattr(sys, "frozen", False):
+        # PyInstaller 解包目录（spec 里把 dist 放这里）
+        base = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    else:
+        base = os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))
+        )
+
+    dist = os.path.join(base, "frontend_dist")
+
+    if not os.path.isdir(dist):
+        dist = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..",
+            "frontend",
+            "dist",
+        )
+
+    if os.path.isdir(dist):
+        app.mount(
+            "/", StaticFiles(directory=dist, html=True), name="frontend"
+        )
+
+
+_mount_frontend()
