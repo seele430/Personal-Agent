@@ -5,6 +5,7 @@ APScheduler==3.11.3
 certifi==2026.7.22
 charset-normalizer==3.5.2
 click==8.5.0
+edge-tts==7.3.1
 fastapi==0.143.0
 feedparser==6.0.14
 feedparser-sgmllib==2.1.0
