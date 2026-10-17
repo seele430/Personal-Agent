@@ -7,7 +7,11 @@ from tempfile import TemporaryDirectory
 from tests.helper import isolate_paths
 from src.core.bot_store import BotStore
 from src.core.room_store import RoomStore
-from src.core.room_service import parse_mentions, run_room_turn
+from src.core.room_service import (
+    ask_bots,
+    parse_mentions,
+    run_room_turn,
+)
 
 
 class TestParseMentions(unittest.TestCase):
@@ -127,6 +131,62 @@ class TestRunRoomTurn(unittest.TestCase):
 
         self.assertEqual(messages[0]["speaker"], "user")
         self.assertEqual(messages[0]["content"], "看看这个")
+
+
+    def test_speak_receives_identity_card(self):
+        """发言必须拿到完整身份卡：漏了 system_prompt 会让 utter 抛 KeyError。"""
+
+        self.add_bot("保守派")
+
+        received = {}
+
+        def speak(bot, topic, **kw):
+            received.update(bot)
+            return "先算代价"
+
+        run_room_turn(
+            room_store=self.rooms,
+            room_id=self.room["id"],
+            owner_id="alice",
+            message="要不要上？",
+            speak=speak,
+        )
+
+        self.assertIn("system_prompt", received)
+        self.assertIn("persona", received)
+
+
+    def test_ask_bots_uses_room_name_as_topic(self):
+        """「问问 Bot 怎么想」：话题取房间议题，且不记用户消息。"""
+
+        self.add_bot("保守派")
+
+        seen = {}
+
+        def speak(bot, topic, **kw):
+            seen["topic"] = topic
+            seen["subject"] = kw.get("subject")
+            return "我的看法"
+
+        result = ask_bots(
+            room_store=self.rooms,
+            room_id=self.room["id"],
+            owner_id="alice",
+            speak=speak,
+        )
+
+        self.assertEqual(seen["topic"], self.room["name"])
+        self.assertEqual(seen["subject"], self.room["name"])
+        self.assertTrue(result["replies"])
+
+        messages = self.rooms.list_messages(
+            room_id=self.room["id"], owner_id="alice"
+        )
+
+        # 只有 Bot 发言，没有用户消息
+        self.assertEqual(
+            [m["speaker"] for m in messages], ["bot"]
+        )
 
 
 if __name__ == "__main__":

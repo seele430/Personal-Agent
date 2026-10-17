@@ -42,6 +42,37 @@ const API_SOURCE_TEXT: Record<string, string> = {
   byok: "自带密钥（BYOK）",
 };
 
+// 预设行为指令：控制发言方式，点一下即填入。
+const PROMPT_PRESETS = [
+  "发言简短：先给结论，再给一句理由。",
+  "多用具体数据或例子支撑观点，不要空谈。",
+  "优先指出风险与代价，再谈收益。",
+  "反对别人时必须给出替代方案。",
+  "只用一句话表达最核心的判断。",
+  "先复述对方观点，再说明你同意或反对哪一部分。",
+  "不确定时明确说「我不确定」，不要编造。",
+  "从成本和收益两方面各说一句。",
+  "主动提出别人可能忽略的角度。",
+];
+
+// 用户懒得起手逐项填：留空也能创建，缺的字段用这些兜底。
+const DEFAULT_PROMPT = PROMPT_PRESETS[0];
+
+// 名字留空时生成 Bot-1 / Bot-2 …；重名就往后顺延。
+function nextBotName(existing: string[]): string {
+  let n = 1;
+
+  while (existing.includes(`Bot-${n}`)) {
+    n += 1;
+  }
+
+  return `Bot-${n}`;
+}
+
+// 「天然立场」已从表单移除（立场改由房间里的阵营决定）。
+// 后端该字段是 NOT NULL，这里给个中性值兜底。
+const NEUTRAL_PERSONA = "未设定";
+
 async function readDetail(
   response: Response,
   fallback: string
@@ -75,10 +106,12 @@ export default function BotsView({ authToken }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
 
   const [name, setName] = useState("");
-  const [persona, setPersona] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [apiSource, setApiSource] = useState("platform");
   const [avatar, setAvatar] = useState("default");
+
+  // 预设弹层：点输入框在**上方**弹出，点一条即填入。
+  const [promptOpen, setPromptOpen] = useState(false);
 
   const authHeaders = useCallback(
     (): Record<string, string> =>
@@ -143,10 +176,10 @@ export default function BotsView({ authToken }: Props) {
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!name.trim() || !persona.trim() || !systemPrompt.trim()) {
-      setError("名字、天然立场、行为指令都不能为空");
-      return;
-    }
+    // 留空也能创建：缺失字段用默认值兜底，不把用户拦在门外。
+    const finalName =
+      name.trim() || nextBotName(bots.map((bot) => bot.name));
+    const finalPrompt = systemPrompt.trim() || DEFAULT_PROMPT;
 
     setBusy("create");
     setNotice("");
@@ -159,9 +192,9 @@ export default function BotsView({ authToken }: Props) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: name.trim(),
-          persona: persona.trim(),
-          system_prompt: systemPrompt.trim(),
+          name: finalName,
+          persona: NEUTRAL_PERSONA,
+          system_prompt: finalPrompt,
           api_source: apiSource,
           avatar,
         }),
@@ -177,7 +210,6 @@ export default function BotsView({ authToken }: Props) {
       }
 
       setName("");
-      setPersona("");
       setSystemPrompt("");
       setNotice("Bot 已创建。");
       await load();
@@ -190,30 +222,41 @@ export default function BotsView({ authToken }: Props) {
     }
   }
 
-  async function toggle(bot: Bot) {
-    setBusy(`toggle-${bot.id}`);
+  async function removeBot(bot: Bot) {
+    if (
+      !window.confirm(
+        `删除 Bot「${bot.name}」？\n\n` +
+          "它会从所有房间里移除（历史消息保留）。"
+      )
+    ) {
+      return;
+    }
+
+    setBusy(`delete-${bot.id}`);
+    setNotice("");
+    setError("");
 
     try {
-      const action = bot.enabled ? "disable" : "enable";
-
-      const response = await fetch(
-        `/api/bots/${bot.id}/${action}`,
-        { method: "POST", headers: authHeaders() }
-      );
+      const response = await fetch(`/api/bots/${bot.id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
 
       if (!response.ok) {
         throw new Error(
           await readDetail(
             response,
-            `操作失败（${response.status}）`
+            `删除失败（${response.status}）`
           )
         );
       }
 
+      setNotice(`「${bot.name}」已删除。`);
+
       await load();
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "操作失败"
+        cause instanceof Error ? cause.message : "删除失败"
       );
     } finally {
       setBusy(null);
@@ -294,35 +337,50 @@ export default function BotsView({ authToken }: Props) {
             aria-label="Bot 名字"
             value={name}
             maxLength={50}
-            placeholder="例如：保守派"
+            placeholder={`例如：${nextBotName(
+              bots.map((bot) => bot.name)
+            )}`}
             onChange={(event) => setName(event.target.value)}
           />
         </label>
 
-        <label>
-          天然立场（persona）
-          <input
-            aria-label="Bot 立场"
-            value={persona}
-            maxLength={200}
-            placeholder="例如：风险厌恶者，凡事先算代价"
-            onChange={(event) => setPersona(event.target.value)}
-          />
-        </label>
+        <div className="preset-wrap">
+          <label>
+            行为指令（system prompt）
 
-        <label>
-          行为指令（system prompt）
-          <textarea
-            aria-label="Bot 行为指令"
-            value={systemPrompt}
-            maxLength={4000}
-            rows={3}
-            placeholder="例如：发言简短，先给结论，再给一句理由。"
-            onChange={(event) =>
-              setSystemPrompt(event.target.value)
-            }
-          />
-        </label>
+            {promptOpen && (
+              <ul className="preset-list">
+                {PROMPT_PRESETS.map((item) => (
+                  <li key={item}>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        setSystemPrompt(item);
+                        setPromptOpen(false);
+                      }}
+                    >
+                      {item}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <textarea
+              aria-label="Bot 行为指令"
+              value={systemPrompt}
+              maxLength={4000}
+              rows={3}
+              placeholder="点此选择指令，或直接输入"
+              onFocus={() => setPromptOpen(true)}
+              onBlur={() => setPromptOpen(false)}
+              onChange={(event) =>
+                setSystemPrompt(event.target.value)
+              }
+            />
+          </label>
+        </div>
 
         <div className="bot-form-row">
           <label>
@@ -396,7 +454,12 @@ export default function BotsView({ authToken }: Props) {
                   )}
                 </strong>
 
-                <span className="bot-persona">{bot.persona}</span>
+                {/* 立场已改由房间里的阵营决定；老 Bot 的历史值仍显示 */}
+                {bot.persona && bot.persona !== NEUTRAL_PERSONA && (
+                  <span className="bot-persona">
+                    {bot.persona}
+                  </span>
+                )}
 
                 <span className="reminder-time">
                   {API_SOURCE_TEXT[bot.api_source] ??
@@ -408,13 +471,12 @@ export default function BotsView({ authToken }: Props) {
                 {bot.owner_id !== null && (
                   <button
                     type="button"
-                    disabled={busy === `toggle-${bot.id}`}
-                    aria-label={`${
-                      bot.enabled ? "禁用" : "启用"
-                    } ${bot.id}`}
-                    onClick={() => void toggle(bot)}
+                    className="danger"
+                    disabled={busy === `delete-${bot.id}`}
+                    aria-label={`删除 ${bot.id}`}
+                    onClick={() => void removeBot(bot)}
                   >
-                    {bot.enabled ? "禁用" : "启用"}
+                    删除
                   </button>
                 )}
 

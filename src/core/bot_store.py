@@ -471,6 +471,32 @@ class BotStore:
 
         return cursor.rowcount == 1
 
+    def delete_bot(
+        self, *, owner_id: str, bot_id: int
+    ) -> bool:
+        """删除自己的 Bot。
+
+        平台预置 Bot（owner_id IS NULL）删不掉。
+        外键已开：房间成员 / 举手记录随 CASCADE 清掉，
+        历史消息保留但 bot_id 置 NULL（不丢上下文）。
+        """
+
+        if type(bot_id) is not int or bot_id <= 0:
+            raise BotError("无效的 Bot ID")
+
+        owner_id = owner_id.strip()
+
+        with closing(self._connect()) as conn, conn:
+            cursor = conn.execute(
+                """
+                DELETE FROM bots
+                WHERE id = ? AND owner_id = ?
+                """,
+                (bot_id, owner_id),
+            )
+
+        return cursor.rowcount == 1
+
     # ----------------------------------------------------------------
     # 默认 Bot（S6）
     # ----------------------------------------------------------------

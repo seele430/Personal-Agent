@@ -44,6 +44,28 @@ class TestUtter(unittest.TestCase):
         self.assertIn("要不要上这个功能", user)
         self.assertIn("80 字", user)
 
+    def test_utter_includes_subject_and_stance(self):
+        """给了议题和阵营，prompt 里必须出现 —— 这是「不跑题」的关键。"""
+
+        bot = self._bot()
+        bot["stance"] = "反对"
+
+        with patch.object(
+            agent.client.chat.completions,
+            "create",
+            return_value=self._fake_response(),
+        ) as create:
+            agent.utter(
+                bot,
+                "我觉得可以上",
+                subject="要不要引入微服务",
+            )
+
+        user = create.call_args.kwargs["messages"][1]["content"]
+
+        self.assertIn("要不要引入微服务", user)
+        self.assertIn("反对", user)
+
     def test_utter_does_not_call_tools(self):
         with patch.object(
             agent.client.chat.completions,

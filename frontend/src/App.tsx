@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import BotsView from "./BotsView";
+import RoomView from "./RoomView";
 
 type MessageStatus =
   | "pending"
@@ -423,8 +424,16 @@ export default function App(
     useState<string | null>(null);
 
   const [view, setView] = useState<
-    "chat" | "reminders" | "quota" | "monitors" | "bots"
+    | "chat"
+    | "reminders"
+    | "quota"
+    | "monitors"
+    | "bots"
+    | "rooms"
   >("chat");
+
+  // 侧栏可收起：收起后主区占满，左上角留「☰」展开。
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const [quota, setQuota] = useState<QuotaReport | null>(
     null
@@ -1426,7 +1435,11 @@ export default function App(
 
   return (
     <div className="app">
-      <aside className="sidebar">
+      <aside
+        className={`sidebar ${
+          sidebarCollapsed ? "collapsed" : ""
+        }`}
+      >
         <div className="brand">
           <div className="brand-icon">✳</div>
 
@@ -1434,6 +1447,16 @@ export default function App(
             <strong>Personal Agent</strong>
             <span>AI Workspace</span>
           </div>
+
+          <button
+            type="button"
+            className="sidebar-toggle"
+            onClick={() => setSidebarCollapsed(true)}
+            aria-label="收起侧栏"
+            title="收起侧栏"
+          >
+            «
+          </button>
         </div>
 
         <div className="sidebar-section">
@@ -1450,6 +1473,19 @@ export default function App(
             aria-pressed={view === "chat"}
           >
             <span className="nav-symbol">◻</span>
+            <span>对话</span>
+          </button>
+
+          <button
+            type="button"
+            className={`nav-item ${
+              view === "rooms" ? "selected" : ""
+            }`}
+            onClick={() => setView("rooms")}
+            aria-pressed={view === "rooms"}
+            aria-label="聊天室"
+          >
+            <span className="nav-symbol">👥</span>
             <span>聊天室</span>
           </button>
 
@@ -1535,16 +1571,18 @@ export default function App(
       </aside>
 
       <main className="main">
-        <header className="topbar">
-          <div className="assistant-info">
-            <strong>默认助手</strong>
-            <span>你的个人 AI 助理</span>
-          </div>
-
-          <div className="dev-badge">
-            开发版本
-          </div>
-        </header>
+        {/* 顶部那一栏已去掉；侧栏收起时用浮动按钮唤回 */}
+        {sidebarCollapsed && (
+          <button
+            type="button"
+            className="sidebar-float-toggle"
+            onClick={() => setSidebarCollapsed(false)}
+            aria-label="展开侧栏"
+            title="展开侧栏"
+          >
+            ☰
+          </button>
+        )}
 
         {dueReminders.length > 0 && (
           <section
@@ -2020,6 +2058,8 @@ export default function App(
               </div>
             )}
           </section>
+        ) : view === "rooms" ? (
+          <RoomView authToken={authToken} />
         ) : view === "bots" ? (
           <BotsView authToken={authToken} />
         ) : view === "reminders" ? (

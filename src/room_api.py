@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from src.auth_api import get_current_user
 from src.core.room_service import (
+    ask_bots as ask_bots_service,
     approve_and_expand,
     host_summarize_turn,
     run_room_turn,
@@ -37,10 +38,12 @@ def _not_found() -> HTTPException:
 
 class RoomCreate(BaseModel):
     name: str
+    stances: list[str] | None = None
 
 
 class BotAdd(BaseModel):
     bot_id: int
+    stance: str | None = None
 
 
 class MessageSend(BaseModel):
@@ -55,7 +58,9 @@ def create_room(
 ):
     try:
         return _open_store().create_room(
-            owner_id=user["id"], name=payload.name
+            owner_id=user["id"],
+            name=payload.name,
+            stances=payload.stances,
         )
 
     except RoomError as error:
@@ -69,6 +74,59 @@ def list_rooms(user: dict = Depends(get_current_user)):
     return {"rooms": _open_store().list_rooms(user["id"])}
 
 
+class RoomArchive(BaseModel):
+    archived: bool = True
+
+
+@router.post("/rooms/{room_id}/archive")
+def archive_room(
+    room_id: int,
+    payload: RoomArchive,
+    user: dict = Depends(get_current_user),
+):
+    """归档 / 取消归档房间（软隐藏，不删数据）。"""
+
+    try:
+        ok = _open_store().archive_room(
+            room_id=room_id,
+            owner_id=user["id"],
+            archived=payload.archived,
+        )
+
+    except RoomError as error:
+        raise HTTPException(
+            status_code=422, detail=str(error)
+        ) from None
+
+    if not ok:
+        raise _not_found() from None
+
+    return {"archived": payload.archived}
+
+
+@router.delete("/rooms/{room_id}")
+def delete_room(
+    room_id: int,
+    user: dict = Depends(get_current_user),
+):
+    """删除房间（级联清成员 / 消息 / 举手）。"""
+
+    try:
+        ok = _open_store().delete_room(
+            room_id=room_id, owner_id=user["id"]
+        )
+
+    except RoomError as error:
+        raise HTTPException(
+            status_code=422, detail=str(error)
+        ) from None
+
+    if not ok:
+        raise _not_found() from None
+
+    return {"deleted": True}
+
+
 @router.post("/rooms/{room_id}/bots")
 def add_bot_to_room(
     room_id: int,
@@ -80,6 +138,7 @@ def add_bot_to_room(
             room_id=room_id,
             bot_id=payload.bot_id,
             owner_id=user["id"],
+            stance=payload.stance,
         )
 
     except RoomError as error:
@@ -120,6 +179,39 @@ def send_message(
             room_id=room_id,
             owner_id=user["id"],
             message=payload.message,
+            word_limit=payload.word_limit,
+        )
+
+    except RoomError:
+        raise _not_found() from None
+
+    return result
+
+
+class AskRequest(BaseModel):
+    bot_id: int | None = None
+    word_limit: int = Field(default=80, ge=10, le=200)
+
+
+@router.post("/rooms/{room_id}/ask")
+def ask_room_bots(
+    room_id: int,
+    payload: AskRequest,
+    user: dict = Depends(get_current_user),
+):
+    """「问问 Bot 怎么想」：把**房间议题**抛给 Bot，不记用户消息。
+
+    传 bot_id 只问那一个，不传问房里全部。
+    """
+
+    store = _open_store()
+
+    try:
+        result = ask_bots_service(
+            room_store=store,
+            room_id=room_id,
+            owner_id=user["id"],
+            bot_id=payload.bot_id,
             word_limit=payload.word_limit,
         )
 

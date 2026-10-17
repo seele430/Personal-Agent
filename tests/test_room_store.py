@@ -68,6 +68,8 @@ class TestRoom(RoomStoreTestCase):
         self.assertEqual(len(members), 1)
         self.assertEqual(members[0]["name"], "助手")
         self.assertEqual(members[0]["activity"], 100)
+        # 发言要读身份卡：漏了 system_prompt 会让 utter 抛 KeyError（曾踩过）
+        self.assertEqual(members[0]["system_prompt"], "就事论事")
 
     def test_add_platform_bot(self):
         room = self.make_room()
@@ -194,6 +196,92 @@ class TestMessage(RoomStoreTestCase):
                 content="越权",
                 owner_id="bob",
             )
+
+
+    def test_create_room_with_stances(self):
+        """立场：去空、去重；列表接口要能读回来。"""
+
+        room = self.rooms.create_room(
+            owner_id="alice",
+            name="辩题",
+            stances=["支持", "反对", "   ", "支持"],
+        )
+
+        self.assertEqual(room["stances"], ["支持", "反对"])
+
+        listed = self.rooms.list_rooms("alice")
+
+        self.assertEqual(listed[0]["stances"], ["支持", "反对"])
+
+    def test_archive_and_delete_room(self):
+        """归档=软隐藏（数据还在）；删除=真删。"""
+
+        room = self.rooms.create_room(
+            owner_id="alice", name="旧的"
+        )
+
+        self.assertTrue(
+            self.rooms.archive_room(
+                room_id=room["id"], owner_id="alice"
+            )
+        )
+        self.assertEqual(self.rooms.list_rooms("alice"), [])
+        self.assertEqual(
+            len(
+                self.rooms.list_rooms(
+                    "alice", include_archived=True
+                )
+            ),
+            1,
+        )
+
+        self.assertTrue(
+            self.rooms.delete_room(
+                room_id=room["id"], owner_id="alice"
+            )
+        )
+        self.assertEqual(
+            self.rooms.list_rooms("alice", include_archived=True),
+            [],
+        )
+
+    def test_archive_room_is_owner_scoped(self):
+        """别人的房间归档不动。"""
+
+        room = self.rooms.create_room(
+            owner_id="alice", name="alice 的"
+        )
+
+        self.assertFalse(
+            self.rooms.archive_room(
+                room_id=room["id"], owner_id="bob"
+            )
+        )
+        self.assertEqual(len(self.rooms.list_rooms("alice")), 1)
+
+
+    def test_add_bot_with_stance(self):
+        """拉 Bot 进房时记下它的立场（阵营）。"""
+
+        room = self.rooms.create_room(
+            owner_id="alice",
+            name="辩题",
+            stances=["支持", "反对"],
+        )
+        bot = self.own_bot()
+
+        self.rooms.add_bot_to_room(
+            room_id=room["id"],
+            bot_id=bot["id"],
+            owner_id="alice",
+            stance="支持",
+        )
+
+        members = self.rooms.list_room_bots(
+            room_id=room["id"], owner_id="alice"
+        )
+
+        self.assertEqual(members[0]["stance"], "支持")
 
 
 if __name__ == "__main__":

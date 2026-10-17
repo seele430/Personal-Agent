@@ -202,6 +202,36 @@ class TestUpdate(BotStoreTestCase):
 
         self.assertTrue(self.store.get_bot(bot["id"])["enabled"])
 
+    def test_delete_own_bot(self):
+        bot = self.create()
+
+        self.assertTrue(
+            self.store.delete_bot(
+                owner_id="alice", bot_id=bot["id"]
+            )
+        )
+        self.assertIsNone(self.store.get_bot(bot["id"]))
+
+    def test_cannot_delete_others_bot(self):
+        bot = self.create(owner="alice")
+
+        self.assertFalse(
+            self.store.delete_bot(
+                owner_id="bob", bot_id=bot["id"]
+            )
+        )
+        self.assertIsNotNone(self.store.get_bot(bot["id"]))
+
+    def test_cannot_delete_platform_bot(self):
+        bot = self.seed()
+
+        self.assertFalse(
+            self.store.delete_bot(
+                owner_id="alice", bot_id=bot["id"]
+            )
+        )
+        self.assertIsNotNone(self.store.get_bot(bot["id"]))
+
 
 class TestDefaultBot(BotStoreTestCase):
 

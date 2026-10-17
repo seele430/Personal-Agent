@@ -38,11 +38,18 @@ textarea {
 .sidebar {
   width: 252px;
   flex-shrink: 0;
-  background: #f8f9fb;
-  border-right: 1px solid #ebedf0;
+  /* 三层底色里最深的一层：侧栏 → 房间列表 → 聊天区，逐层变淡 */
+  background: #f0f3f8;
+  border-right: 1px solid #e6eaf0;
   padding: 28px 17px;
   display: flex;
   flex-direction: column;
+  /* 收起时整体左移出视野（带动画），主区随之占满 */
+  transition: margin-left 0.25s ease;
+}
+
+.sidebar.collapsed {
+  margin-left: -252px;
 }
 
 .brand {
@@ -177,6 +184,33 @@ textarea {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* 浮动按钮定位基准 */
+  position: relative;
+}
+
+/* 侧栏收起后的唤回按钮：浮在主区左上角 */
+.sidebar-float-toggle {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 40;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #e2e5ea;
+  border-radius: 9px;
+  background: #fff;
+  color: #4b5563;
+  font-size: 14px;
+  line-height: 1;
+  box-shadow: 0 2px 10px rgba(20, 26, 36, 0.1);
+  cursor: pointer;
+}
+
+.sidebar-float-toggle:hover {
+  background: #f2f5f9;
+  color: #252b35;
 }
 
 .topbar {
@@ -923,6 +957,37 @@ textarea {
   opacity: 0.55;
 }
 
+/* Bot 列表的操作按钮：统一圆角（之前是浏览器默认方框） */
+.bot-row .reminder-actions button {
+  padding: 6px 13px;
+  border: 1px solid #e2e5ea;
+  border-radius: 9px;
+  background: #fff;
+  color: #3f4652;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.bot-row .reminder-actions button:hover:not(:disabled) {
+  background: #f2f5f9;
+}
+
+.bot-row .reminder-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 删除：危险动作用红字 */
+.bot-row .reminder-actions button.danger {
+  border-color: #f0cccc;
+  color: #b45454;
+}
+
+.bot-row .reminder-actions button.danger:hover:not(:disabled) {
+  background: #fdeeee;
+}
+
 .bot-main {
   flex: 1;
   min-width: 0;
@@ -962,4 +1027,784 @@ textarea {
 .bot-tag.off {
   background: #fdeaea;
   color: #b45454;
+}
+
+/* 预设列表：聚焦输入框时在**上方**弹出 */
+
+.preset-wrap {
+  position: relative;
+}
+
+.preset-list {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 0 0 4px;
+  padding: 6px;
+  list-style: none;
+  max-height: 210px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #e2e5ea;
+  border-radius: 9px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
+}
+
+.preset-list button {
+  display: block;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 12px;
+  color: #252b35;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.preset-list button:hover {
+  background: #f2f5f9;
+}
+
+/* 聊天室（多 Bot） */
+
+.room-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* 底部留白：输入框别贴着窗口边 */
+  padding: 4px 6px 18px;
+  overflow: hidden;
+}
+
+/* 收起房间列表后，左上角的「展开」入口 */
+.room-expand {
+  align-self: flex-start;
+  padding: 7px 12px;
+  border: 1px solid #e2e5ea;
+  border-radius: 9px;
+  background: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.room-expand:hover {
+  background: #f6f8fb;
+}
+
+/* 侧栏收起/展开按钮 */
+.sidebar-toggle {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #e2e5ea;
+  border-radius: 8px;
+  background: #fff;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sidebar-toggle:hover {
+  background: #eef2f7;
+  color: #252b35;
+}
+
+/* margin-left:auto 只给「侧栏内的收起按钮」用；
+   topbar 里的展开按钮要靠左，否则会被推到右边藏进用户信息里 */
+.topbar .sidebar-toggle {
+  margin-left: 0;
+  margin-right: 14px;
+}
+
+.room-layout {
+  display: flex;
+  /* 竖线已经承担分隔，这里只要一点呼吸空间 */
+  gap: 10px;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+}
+
+.room-side {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* 房间多了可以往下拉 */
+  overflow-y: auto;
+  padding: 0 12px 0 2px;
+  /* 与聊天区之间的竖线 */
+  border-right: 1px solid #e8ebf0;
+  /* 从左到右由淡变浓，自然过渡到聊天区 */
+  background: linear-gradient(
+    to right,
+    #fbfcfe 0%,
+    #f1f4f9 100%
+  );
+}
+
+.room-create {
+  display: flex;
+  gap: 8px;
+}
+
+.room-create button {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #d6e2f2;
+  border-radius: 10px;
+  background: #eef3fb;
+  color: #2b4a77;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.room-create button:hover {
+  background: #e4ecf8;
+}
+
+.room-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.room-list li {
+  position: relative;
+}
+
+.room-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ebedf0;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.room-item.selected {
+  border-color: #9db4d6;
+  background: #eef3fb;
+}
+
+.room-item-name {
+  font-weight: 500;
+}
+
+.room-item small {
+  color: #98a0aa;
+  font-size: 11px;
+}
+
+/* 悬停才出现的「归档 / 删除」 */
+.room-item-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.room-list li:hover .room-item-actions {
+  opacity: 1;
+}
+
+.room-item-actions button {
+  padding: 2px 7px;
+  border: 1px solid #e2e5ea;
+  border-radius: 6px;
+  background: #fff;
+  color: #6b7280;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.room-item-actions button:hover {
+  background: #eef2f7;
+  color: #252b35;
+}
+
+/* 新建房间弹框 */
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 26, 36, 0.35);
+}
+
+.modal {
+  width: min(430px, 92vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.modal-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+/* 「用示例填一下」：小号次要按钮 */
+.sample-fill {
+  padding: 5px 11px;
+  border: 1px dashed #c8d3e0;
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: #4b5563;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sample-fill:hover {
+  background: #eef3fb;
+  color: #2b4a77;
+}
+
+.modal-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.modal input {
+  padding: 9px 11px;
+  border: 1px solid #e2e5ea;
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+.modal-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.stance-row {
+  display: flex;
+  gap: 6px;
+}
+
+.stance-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.stance-row button {
+  width: 30px;
+  border: 1px solid #e2e5ea;
+  border-radius: 9px;
+  background: #fff;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.stance-add {
+  align-self: flex-start;
+  padding: 6px 11px;
+  border: 1px dashed #c8d3e0;
+  border-radius: 9px;
+  background: #fbfcfe;
+  color: #4b5563;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.modal-actions button {
+  padding: 8px 16px;
+  border: 1px solid #e2e5ea;
+  border-radius: 9px;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.modal-actions button.primary {
+  border-color: #2b4a77;
+  background: #2b4a77;
+  color: #fff;
+}
+
+/* 立场选择：a 淡红 / b 淡蓝 / c 淡黄（超过三个循环） */
+
+.stance-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stance-choice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.35s ease,
+    opacity 0.35s ease,
+    box-shadow 0.35s ease;
+}
+
+/* 问过之后：选中的放大聚焦、其余缩小退后（过渡很短，平滑） */
+.stance-choices.locked .stance-choice {
+  transform: scale(0.94);
+  opacity: 0.5;
+}
+
+.stance-choices.locked .stance-choice.chosen {
+  transform: scale(1.05);
+  opacity: 1;
+  box-shadow: 0 6px 18px rgba(43, 74, 119, 0.18);
+}
+
+/* a / b / c 前缀徽标 */
+.stance-key {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.stance-choice.c0 {
+  background: #fdeeee;
+  border-color: #f3cccc;
+  color: #a34b4b;
+}
+
+.stance-choice.c1 {
+  background: #eaf2fd;
+  border-color: #c9dcf5;
+  color: #3f6291;
+}
+
+.stance-choice.c2 {
+  background: #fdf6e3;
+  border-color: #f0e0b0;
+  color: #8a6d2f;
+}
+
+.stance-choice.chosen {
+  border-color: #2b4a77;
+  box-shadow: 0 0 0 2px rgba(43, 74, 119, 0.16);
+}
+
+/* 弹框里内联显示的「它的想法」 */
+.ask-preview {
+  padding: 10px 12px;
+  border: 1px solid #d6e2f2;
+  border-radius: 10px;
+  background: #f5f8fd;
+}
+
+.ask-preview strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #3f6291;
+}
+
+.ask-preview p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.room-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.room-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.member-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.member-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #f2f5f9;
+  font-size: 12px;
+}
+
+.member-chip small {
+  color: #98a0aa;
+}
+
+.room-addbot {
+  display: flex;
+  gap: 8px;
+}
+
+.room-addbot select {
+  padding: 7px 9px;
+  border: 1px solid #e2e5ea;
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.room-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px;
+}
+
+/* 「房间还是空的」别贴着顶边 */
+.room-messages .reminder-empty {
+  padding: 26px 4px;
+}
+
+.room-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  /* 气泡收窄：不占满整行（参考聊天软件的做法） */
+  max-width: 78%;
+}
+
+.room-msg-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: #e6edf8;
+  color: #4f688d;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.room-msg.user .room-msg-avatar {
+  background: #e9edf3;
+  color: #5b6673;
+}
+
+.room-msg.host .room-msg-avatar {
+  background: #f6ead0;
+  color: #8a6d2f;
+}
+
+.room-msg-main {
+  min-width: 0;
+}
+
+.room-msg.user {
+  margin-left: auto;
+  flex-direction: row-reverse;
+}
+
+.room-msg-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.room-msg.user .room-msg-head {
+  justify-content: flex-end;
+}
+
+.room-msg-head strong {
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.room-msg-head small {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: #eef1f5;
+  color: #6b7280;
+  font-size: 10px;
+}
+
+.room-msg-body {
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: #f5f7fa;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 思考中：三个跳动的点 */
+.room-msg-body.typing {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 56px;
+  min-height: 34px;
+}
+
+.room-msg-body.typing span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a9b4c4;
+  animation: typing-bounce 1.1s infinite ease-in-out;
+}
+
+.room-msg-body.typing span:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.room-msg-body.typing span:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.room-msg.user .room-msg-body {
+  background: #eef3fb;
+}
+
+.room-msg.host .room-msg-body {
+  background: #fdf6e3;
+}
+
+.hand-panel {
+  padding: 12px;
+  border: 1px solid #f0e2b8;
+  border-radius: 12px;
+  background: #fffdf5;
+}
+
+.hand-panel h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.hand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid #f0e8d0;
+}
+
+.hand-row p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.summary-bar {
+  display: flex;
+  gap: 8px;
+}
+
+.summary-panel {
+  padding: 12px;
+  border: 1px solid #e2e5ea;
+  border-radius: 12px;
+  background: #fbfcfd;
+}
+
+.summary-panel p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+.decision-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.decision-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.decision-list button {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border: 1px solid #9db4d6;
+  border-radius: 8px;
+  background: #eef3fb;
+  color: #2b4a77;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.decision-list span {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.decision-reply {
+  margin-top: 10px !important;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #eef3fb;
+}
+
+.room-input {
+  display: flex;
+  gap: 8px;
+}
+
+.room-input input {
+  flex: 1;
+  min-width: 0;
+  /* 比默认大一圈（长宽各 +1/5） */
+  padding: 12px 15px;
+  border: 1px solid #e2e5ea;
+  border-radius: 10px;
+  font-size: 15px;
+}
+
+/* 房间里的操作按钮：统一圆角。
+   （之前漏了样式，这几个渲染成浏览器默认的方框，很难看） */
+.summary-bar button,
+.room-addbot button,
+.room-input button,
+.hand-row button {
+  padding: 8px 14px;
+  border: 1px solid #e2e5ea;
+  border-radius: 10px;
+  background: #fff;
+  color: #3f4652;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.summary-bar button:hover:not(:disabled),
+.room-addbot button:hover:not(:disabled),
+.room-input button:hover:not(:disabled),
+.hand-row button:hover:not(:disabled) {
+  background: #f2f5f9;
+}
+
+.summary-bar button:disabled,
+.room-addbot button:disabled,
+.room-input button:disabled,
+.hand-row button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 发送按钮用主色，别跟其他按钮一样灰 */
+.room-input button[type="submit"]:not(:disabled) {
+  border-color: #2b4a77;
+  background: #2b4a77;
+  color: #fff;
+}
+
+.room-input button[type="submit"]:hover:not(:disabled) {
+  background: #35598c;
+}
+
+.ask-bots {
+  flex-shrink: 0;
+  padding: 0 14px;
+  border: 1px solid #e2e5ea;
+  border-radius: 10px;
+  background: #fff;
+  color: #4b5563;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ask-bots:hover {
+  background: #f2f5f9;
+}
+
+/* 输入框旁的按钮同步放大（必须放在通用按钮规则之后才生效） */
+.room-input button {
+  padding: 12px 18px;
+  font-size: 15px;
 }

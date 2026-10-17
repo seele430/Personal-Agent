@@ -165,6 +165,29 @@ def enable_bot(
     return {"enabled": True}
 
 
+@router.delete("/bots/{bot_id}")
+def delete_bot(
+    bot_id: int,
+    user: dict = Depends(get_current_user),
+):
+    """删除自己的 Bot（平台预置 Bot 删不了）。"""
+
+    try:
+        ok = _open_store().delete_bot(
+            owner_id=user["id"], bot_id=bot_id
+        )
+
+    except BotError as error:
+        raise HTTPException(
+            status_code=422, detail=str(error)
+        ) from None
+
+    if not ok:
+        raise _not_found() from None
+
+    return {"deleted": True}
+
+
 @router.get("/bots/default")
 def get_default_bot(
     user: dict = Depends(get_current_user),

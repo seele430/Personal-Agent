@@ -10,9 +10,13 @@
 """
 
 import json
+import logging
 import uuid
 
 from src.core.room_store import RoomStore
+
+
+logger = logging.getLogger("personal_agent.room")
 
 
 def parse_mentions(message: str, bots: list[dict]) -> list[dict]:
@@ -46,6 +50,10 @@ def run_room_turn(
 
     turn_id = uuid.uuid4().hex
 
+    # 房间名 = 议题：喂给 Bot 当上下文，避免它泛泛讲人设。
+    room = room_store.get_room(room_id=room_id, owner_id=owner_id)
+    subject = room["name"] if room else None
+
     bots = room_store.list_room_bots(
         room_id=room_id,
         owner_id=owner_id,
@@ -69,9 +77,103 @@ def run_room_turn(
     for bot in speakers:
 
         try:
-            content = speak(bot, message, word_limit=word_limit)
+            content = speak(
+                bot,
+                message,
+                word_limit=word_limit,
+                subject=subject,
+            )
 
         except Exception:
+            # 不静默：发言失败要留痕，否则用户只会看到"没反应"。
+            logger.exception(
+                "Bot 发言失败 room=%s bot=%s",
+                room_id,
+                bot.get("id"),
+            )
+            content = ""
+
+        if not content:
+            continue
+
+        room_store.add_message(
+            room_id=room_id,
+            turn_id=turn_id,
+            speaker="bot",
+            bot_id=bot["id"],
+            role="core",
+            content=content,
+            owner_id=owner_id,
+        )
+
+        replies.append(
+            {
+                "bot_id": bot["id"],
+                "name": bot["name"],
+                "content": content,
+            }
+        )
+
+    return {"turn_id": turn_id, "replies": replies}
+
+
+def ask_bots(
+    *,
+    room_store: RoomStore,
+    room_id: int,
+    owner_id: str,
+    bot_id: int | None = None,
+    word_limit: int = 80,
+    speak=None,
+) -> dict:
+    """「问问 Bot 怎么想」：把**房间议题**抛给 Bot，让它们主动表态。
+
+    传 `bot_id` 则只问这一个（弹框里要单独看它的想法）；
+    不传则问房里所有 Bot。
+
+    与 run_room_turn 的区别：用户没说话，所以**不记用户消息**，
+    话题直接取房间名（议题）。
+    """
+
+    if speak is None:
+        from src import agent
+
+        speak = agent.utter
+
+    room = room_store.get_room(room_id=room_id, owner_id=owner_id)
+
+    if room is None:
+        raise ValueError("房间不存在或无权访问")
+
+    subject = room["name"]
+    turn_id = uuid.uuid4().hex
+
+    bots = room_store.list_room_bots(
+        room_id=room_id,
+        owner_id=owner_id,
+    )
+
+    if bot_id is not None:
+        bots = [item for item in bots if item["id"] == bot_id]
+
+    replies = []
+
+    for bot in bots:
+
+        try:
+            content = speak(
+                bot,
+                subject,
+                word_limit=word_limit,
+                subject=subject,
+            )
+
+        except Exception:
+            logger.exception(
+                "Bot 发言失败 room=%s bot=%s",
+                room_id,
+                bot.get("id"),
+            )
             content = ""
 
         if not content:

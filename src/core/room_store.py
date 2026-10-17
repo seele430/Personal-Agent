@@ -11,6 +11,7 @@
 外键引用 `bots.id`。
 """
 
+import json
 import sqlite3
 import time
 
@@ -54,10 +55,29 @@ class RoomStore:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     owner_id TEXT NOT NULL,
                     name TEXT NOT NULL,
+                    stances TEXT,
+                    archived INTEGER NOT NULL DEFAULT 0,
                     created_at INTEGER NOT NULL
                 )
                 """
             )
+
+            # 迁移：老库没有 stances / archived 列。
+            room_columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(rooms)")
+            }
+
+            if "stances" not in room_columns:
+                conn.execute(
+                    "ALTER TABLE rooms ADD COLUMN stances TEXT"
+                )
+
+            if "archived" not in room_columns:
+                conn.execute(
+                    "ALTER TABLE rooms "
+                    "ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"
+                )
 
             conn.execute(
                 """
@@ -66,12 +86,26 @@ class RoomStore:
                         REFERENCES rooms(id) ON DELETE CASCADE,
                     bot_id INTEGER NOT NULL
                         REFERENCES bots(id) ON DELETE CASCADE,
+                    stance TEXT,
                     activity INTEGER NOT NULL DEFAULT 100,
                     joined_at INTEGER NOT NULL,
                     PRIMARY KEY (room_id, bot_id)
                 )
                 """
             )
+
+            # 迁移：老库的 room_bots 没有 stance 列。
+            rb_columns = {
+                row[1]
+                for row in conn.execute(
+                    "PRAGMA table_info(room_bots)"
+                )
+            }
+
+            if "stance" not in rb_columns:
+                conn.execute(
+                    "ALTER TABLE room_bots ADD COLUMN stance TEXT"
+                )
 
             conn.execute(
                 """
@@ -139,6 +173,7 @@ class RoomStore:
         *,
         owner_id: str,
         name: str,
+        stances: list[str] | None = None,
         now: int | None = None,
     ) -> dict:
         if not isinstance(owner_id, str) or not owner_id.strip():
@@ -148,19 +183,37 @@ class RoomStore:
         name = self._name(name)
         now = now or int(time.time())
 
+        # 立场（房间的议题阵营）：去空、去重、限长。
+        cleaned = []
+
+        for stance in stances or []:
+            text = str(stance).strip()
+
+            if text and text not in cleaned:
+                cleaned.append(text[:100])
+
+        encoded = (
+            json.dumps(cleaned, ensure_ascii=False)
+            if cleaned
+            else None
+        )
+
         with closing(self._connect()) as conn, conn:
             cursor = conn.execute(
                 """
-                INSERT INTO rooms (owner_id, name, created_at)
-                VALUES (?, ?, ?)
+                INSERT INTO rooms (
+                    owner_id, name, stances, created_at
+                )
+                VALUES (?, ?, ?, ?)
                 """,
-                (owner_id, name, now),
+                (owner_id, name, encoded, now),
             )
 
         return {
             "id": cursor.lastrowid,
             "owner_id": owner_id,
             "name": name,
+            "stances": cleaned,
         }
 
     def add_bot_to_room(
@@ -169,6 +222,7 @@ class RoomStore:
         room_id: int,
         bot_id: int,
         owner_id: str,
+        stance: str | None = None,
         now: int | None = None,
     ) -> bool:
         """把 Bot 拉进房（幂等）。校验房间归属 + Bot 可见性。"""
@@ -211,14 +265,26 @@ class RoomStore:
                 if bot is None:
                     raise RoomError("Bot 不存在或无权访问")
 
+                cleaned = (
+                    str(stance).strip()[:100]
+                    if stance is not None
+                    else ""
+                )
+
                 conn.execute(
                     """
                     INSERT OR IGNORE INTO room_bots (
-                        room_id, bot_id, activity, joined_at
+                        room_id, bot_id, stance,
+                        activity, joined_at
                     )
-                    VALUES (?, ?, 100, ?)
+                    VALUES (?, ?, ?, 100, ?)
                     """,
-                    (room_id, bot_id, now),
+                    (
+                        room_id,
+                        bot_id,
+                        cleaned or None,
+                        now,
+                    ),
                 )
 
                 conn.commit()
@@ -233,25 +299,114 @@ class RoomStore:
     # 读取
     # ----------------------------------------------------------------
 
-    def list_rooms(self, owner_id: str) -> list[dict]:
+    def list_rooms(
+        self,
+        owner_id: str,
+        *,
+        include_archived: bool = False,
+    ) -> list[dict]:
         owner_id = owner_id.strip()
+        clause = "" if include_archived else "AND r.archived = 0"
 
         with closing(self._connect()) as conn:
             rows = conn.execute(
-                """
-                SELECT r.id, r.name, r.created_at,
+                f"""
+                SELECT r.id, r.name, r.stances, r.archived,
+                       r.created_at,
                        COUNT(rb.bot_id) AS bot_count
                 FROM rooms r
                 LEFT JOIN room_bots rb
                        ON rb.room_id = r.id
                 WHERE r.owner_id = ?
+                  {clause}
                 GROUP BY r.id
-                ORDER BY r.id DESC
+                ORDER BY r.created_at DESC, r.id DESC
                 """,
                 (owner_id,),
             ).fetchall()
 
-        return [dict(row) for row in rows]
+        result = []
+
+        for row in rows:
+            item = dict(row)
+            item["stances"] = (
+                json.loads(item["stances"]) if item["stances"] else []
+            )
+            result.append(item)
+
+        return result
+
+    def get_room(
+        self, *, room_id: int, owner_id: str
+    ) -> dict | None:
+        """取单个房间（含议题立场）。"""
+
+        if type(room_id) is not int or room_id <= 0:
+            raise RoomError("无效的房间 ID")
+
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                """
+                SELECT id, name, stances, archived, created_at
+                FROM rooms
+                WHERE id = ? AND owner_id = ?
+                """,
+                (room_id, owner_id.strip()),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        item = dict(row)
+        item["stances"] = (
+            json.loads(item["stances"]) if item["stances"] else []
+        )
+
+        return item
+
+    def archive_room(
+        self,
+        *,
+        room_id: int,
+        owner_id: str,
+        archived: bool = True,
+    ) -> bool:
+        """归档 / 取消归档房间（软隐藏，不删数据）。"""
+
+        if type(room_id) is not int or room_id <= 0:
+            raise RoomError("无效的房间 ID")
+
+        owner_id = owner_id.strip()
+
+        with closing(self._connect()) as conn, conn:
+            cursor = conn.execute(
+                """
+                UPDATE rooms SET archived = ?
+                WHERE id = ? AND owner_id = ?
+                """,
+                (1 if archived else 0, room_id, owner_id),
+            )
+
+        return cursor.rowcount == 1
+
+    def delete_room(self, *, room_id: int, owner_id: str) -> bool:
+        """删除房间（级联清掉成员 / 消息 / 举手）。"""
+
+        if type(room_id) is not int or room_id <= 0:
+            raise RoomError("无效的房间 ID")
+
+        owner_id = owner_id.strip()
+
+        with closing(self._connect()) as conn, conn:
+            cursor = conn.execute(
+                """
+                DELETE FROM rooms
+                WHERE id = ? AND owner_id = ?
+                """,
+                (room_id, owner_id),
+            )
+
+        return cursor.rowcount == 1
 
     def list_room_bots(
         self,
@@ -276,7 +431,8 @@ class RoomStore:
             rows = conn.execute(
                 """
                 SELECT b.id, b.name, b.persona,
-                       b.avatar, rb.activity
+                       b.system_prompt, b.avatar,
+                       rb.stance, rb.activity
                 FROM room_bots rb
                 JOIN bots b ON b.id = rb.bot_id
                 WHERE rb.room_id = ?

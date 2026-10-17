@@ -573,8 +573,12 @@ def utter(
     topic: str,
     *,
     word_limit: int = 80,
+    subject: str | None = None,
 ) -> str:
     """让 Bot 就 topic 说一句核心观点（S4 发言）。
+
+    subject = 房间议题；bot["stance"] = 这个 Bot 在本议题站的立场。
+    两者都给了，Bot 才会「围绕议题、从阵营角度」说，而不是泛泛讲人设。
 
     与 chat 不同：纯生成一句话，不调工具、不注入知识库。
     限字数（word_limit），逼 Bot 只说最核心的判断。
@@ -591,6 +595,17 @@ def utter(
 
     topic = topic.strip()
 
+    stance = str(bot.get("stance") or "").strip()
+    subject = (subject or "").strip()
+
+    context_lines = ""
+
+    if subject:
+        context_lines += f"你们正在讨论的议题：「{subject}」。\n"
+
+    if stance:
+        context_lines += f"你在本议题中站的立场：{stance}。\n"
+
     messages = [
         {
             "role": "system",
@@ -603,10 +618,14 @@ def utter(
         {
             "role": "user",
             "content": (
-                f"话题：{topic}。"
-                f"请只用一句不超过 {word_limit} 字的话，"
-                f"给出你最核心的判断或观点。"
-                f"不要附和，不要展开，不要提问，直接说结论。"
+                f"{context_lines}"
+                f"用户说：「{topic}」\n"
+                f"请用不超过 {word_limit} 字回应，并主动给出你自己的判断。"
+                f"要求：紧扣议题和用户这句话（不跑题、不只讲人设），"
+                f"但必须亮明观点 —— "
+                f"不要反问用户，不要把问题抛回去，"
+                f"不要说「你想听哪方面」这类话，"
+                f"也不要只复述立场而不给判断。"
             ),
         },
     ]
