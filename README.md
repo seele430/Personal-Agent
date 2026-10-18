@@ -19,6 +19,16 @@
 
 ---
 
+## 演示
+
+**[▶ 观看演示视频（2 分 47 秒）](docs/Personal-Agent-Demo.mp4)**
+
+覆盖完整流程：登录 → 对话 → 定时提醒推到手机 → RSS 监控推到手机 → AI 辩论（8 阶段全流程）→ 测试工程化
+
+> BGM: "Digital Lemonade" by Kevin MacLeod (incompetech.com), CC BY 4.0
+
+---
+
 ## 功能一览
 
 | 模块 | 说明 |
