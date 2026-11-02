@@ -1,0 +1,63 @@
+{
+  "date": "2026-11-02T12:55:08.812975+08:00",
+  "status": "PASS",
+  "scope": "existing src.main:app; no sandbox platform implemented",
+  "definition": "Wall time from immediately before subprocess.Popen(uvicorn) to the first GET /health response with HTTP 200; five sequential runs, each with a fresh temporary data directory and a free port.",
+  "command": [
+    ".venv/Scripts/python.exe",
+    "-m",
+    "uvicorn",
+    "src.main:app",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "<free-port>",
+    "--log-level",
+    "warning"
+  ],
+  "ready_timeout_seconds": 45,
+  "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "runs": [
+    {
+      "run": 1,
+      "ready_ms": 3279.485,
+      "http_status": 200,
+      "data_dir_reused": false,
+      "child_output": "2026-11-02 12:54:59,929 | INFO | personal_agent.chat | Chat request storage ready\n"
+    },
+    {
+      "run": 2,
+      "ready_ms": 2149.76,
+      "http_status": 200,
+      "data_dir_reused": false,
+      "child_output": "2026-11-02 12:55:02,048 | INFO | personal_agent.chat | Chat request storage ready\n"
+    },
+    {
+      "run": 3,
+      "ready_ms": 2170.738,
+      "http_status": 200,
+      "data_dir_reused": false,
+      "child_output": "2026-11-02 12:55:04,250 | INFO | personal_agent.chat | Chat request storage ready\n"
+    },
+    {
+      "run": 4,
+      "ready_ms": 2146.208,
+      "http_status": 200,
+      "data_dir_reused": false,
+      "child_output": "2026-11-02 12:55:06,370 | INFO | personal_agent.chat | Chat request storage ready\n"
+    },
+    {
+      "run": 5,
+      "ready_ms": 2162.824,
+      "http_status": 200,
+      "data_dir_reused": false,
+      "child_output": "2026-11-02 12:55:08,526 | INFO | personal_agent.chat | Chat request storage ready\n"
+    }
+  ],
+  "sample_count": 5,
+  "p50_ms": 2162.824,
+  "min_ms": 2146.208,
+  "max_ms": 3279.485,
+  "temporary_data_removed": true,
+  "services_stopped": true
+}
