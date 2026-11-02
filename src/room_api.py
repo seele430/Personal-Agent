@@ -31,7 +31,7 @@ from src.core.room_service import (
     run_stage,
 )
 from src.core.room_store import RoomError, RoomStore
-
+from src.core.trace_context import span          
 
 router = APIRouter(tags=["聊天室"])
 logger = logging.getLogger("personal_agent.room")
@@ -239,7 +239,8 @@ def text_to_speech(payload: TTSRequest):
     voice = EDGE_VOICES.get(payload.voice, EDGE_VOICES["female-1"])
 
     try:
-        audio = _synthesize(payload.text, voice, payload.rate)
+        with span("tts.synth", voice=voice):
+            audio = _synthesize(payload.text, voice, payload.rate)
 
     except Exception as error:  # noqa: BLE001 - 合成失败要原样回给前端
         logger.exception("Edge TTS 合成失败 voice=%s", voice)

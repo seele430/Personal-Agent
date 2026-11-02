@@ -14,7 +14,7 @@ import logging
 import uuid
 
 from src.core.room_store import RoomStore
-
+from src.core.trace_context import span          
 
 logger = logging.getLogger("personal_agent.room")
 
@@ -442,17 +442,19 @@ def run_stage(
             "vote": agent.host_vote,
         }
 
-    room = room_store.get_room(
-        room_id=room_id, owner_id=owner_id
-    )
+    with span("room.load", room_id=room_id):
+        room = room_store.get_room(
+            room_id=room_id, owner_id=owner_id
+        )
 
     if room is None:
         raise ValueError("房间不存在或无权访问")
 
     # 先推进阶段：这样下面写入的消息才带得上 stage
-    room_store.advance_stage(
-        room_id=room_id, owner_id=owner_id, stage=stage
-    )
+    with span("room.advance_stage", room_id=room_id, stage=stage):
+        room_store.advance_stage(
+            room_id=room_id, owner_id=owner_id, stage=stage
+        )
 
     subject = room["name"]
     stances = room.get("stances") or []

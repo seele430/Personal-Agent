@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from src.core.ai_usage import AIUsageStore
+from src.core.trace_context import span as trace_span
 from src.core.reminder_identity import (
     ReminderDeliveryUnavailable,
     cancel_reminder_for_current_user as cancel_reminder,
@@ -325,9 +326,10 @@ def _completion(
     # 单调时钟：不受系统时间调整影响
     started = time.monotonic()
 
-    response = client.chat.completions.create(
-        **kwargs
-    )
+    with trace_span("llm.generate", model=MODEL):
+        response = client.chat.completions.create(
+            **kwargs
+        )
 
     latency_ms = int(
         (time.monotonic() - started) * 1000

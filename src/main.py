@@ -19,10 +19,12 @@ from src.monitors_api import router as monitor_router
 from src.notifications_api import router as notification_router
 from src.reminder_api import router as reminder_router
 from src.room_api import router as room_router
+from src.teams_api import router as teams_router
 from src.usage_api import router as usage_router
 
 from src.core.chat_ownership import migrate_chat_ownership
 from src.core.ai_budget import init_budget_schema
+from src.core.trace_context import bind_trace, new_trace_id, start_span
 
 
 # ==========================================
@@ -53,6 +55,65 @@ app = FastAPI(
     title="Personal Agent API",
     lifespan=lifespan,
 )
+
+
+# ==========================================
+# 请求级 trace：每个请求一条链路
+# ==========================================
+#
+# trace_id 会回写到响应头，前端/脚本可以直接拿。
+# 静态资源不记，否则噪音太大。
+
+_TRACE_SKIP_PREFIXES = ("/assets/", "/favicon")
+
+
+def _valid_trace_id(value: str) -> bool:
+    if len(value) != 32:
+        return False
+
+    return all(
+        char in "0123456789abcdef"
+        for char in value.lower()
+    )
+
+
+@app.middleware("http")
+async def _trace_request(request, call_next):
+    path = request.url.path
+
+    if (
+        path.startswith(_TRACE_SKIP_PREFIXES)
+        or request.method == "OPTIONS"
+    ):
+        return await call_next(request)
+
+    incoming = request.headers.get("x-trace-id", "").strip()
+
+    trace_id = (
+        incoming.lower()
+        if _valid_trace_id(incoming)
+        else new_trace_id()
+    )
+
+    with bind_trace(trace_id):
+        handle = start_span(
+            f"{request.method} {path}",
+            path=path,
+        )
+
+        try:
+            response = await call_next(request)
+        except Exception:
+            handle.end("error")
+            raise
+
+        handle.end(
+            "ok" if response.status_code < 500 else "error"
+        )
+
+        response.headers["X-Trace-Id"] = trace_id
+
+        return response
 
 
 @app.get("/health")
@@ -92,6 +153,9 @@ app.include_router(notification_router)
 
 # 统一收件箱（聚合监控通知与到点提醒）
 app.include_router(inbox_router)
+
+# 团队任务分配（与聊天室并行）
+app.include_router(teams_router)
 
 
 # ==========================================
