@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: c85d4b70baede7c0 -->
+<!-- membership-digest: 1b62f6594d1f4f10 -->
 
-## unit — L1 单元测试 (7 files)
+## unit — L1 单元测试 (8 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -27,11 +27,12 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_agent_call_count.py` | tests/ 根 | agent | none | none | low | registered-inferred |
 | `test_agent_usage.py` | tests/ 根 | agent | none | none | low | registered-inferred |
 | `test_rss_errors.py` | tests/ 根 | rss | none | mocked | medium | registered-inferred |
+| `test_tool_registry.py` | tests/ 根 | tool_policy | none | none | low | registered-inferred |
 | `unit/test_agent_tool_limits.py` | tests/unit/ | reminder | none | mocked | medium | registered |
 | `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 | `unit/test_url_policy.py` | tests/unit/ | rss | none | mocked | high | registered-inferred |
 
-## integration — L2 数据集成测试 (37 files)
+## integration — L2 数据集成测试 (38 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -41,6 +42,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `integration/test_test_safety.py` | tests/integration/ | test_infra | temporary_sqlite | none | medium | registered-inferred |
 | `test_access_policy_dispatcher.py` | tests/ 根 | access_policy | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_admin_alerts.py` | tests/ 根 | alerting | temporary_sqlite | none | medium | registered-inferred |
+| `test_agent_stream.py` | tests/ 根 | agent_stream | temporary_sqlite | mocked | high | registered-inferred |
 | `test_agent_usage_trace.py` | tests/ 根 | agent | temporary_sqlite | mocked | high | registered-inferred |
 | `test_ai_budget.py` | tests/ 根 | billing | temporary_sqlite | none | high | registered |
 | `test_ai_budget_reconcile.py` | tests/ 根 | billing | temporary_sqlite | none | high | registered |

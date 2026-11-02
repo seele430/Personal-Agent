@@ -17,7 +17,16 @@ from urllib.parse import urlsplit
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from types import SimpleNamespace
+
 from src.core.ai_usage import AIUsageStore
+from src.core.run_control import CancellationToken, ChatCancelled
+from src.core.run_store import RunStore
+from src.core.tool_registry import (
+    ToolApprovalRequired,
+    ToolDenied,
+    ToolRegistry,
+)
 from src.core.trace_context import span as trace_span
 from src.core.reminder_identity import (
     ReminderDeliveryUnavailable,
@@ -302,10 +311,76 @@ def _is_deepseek_flash() -> bool:
 # 执行一次模型调用
 # ==========================================
 
+def _consume_completion_stream(raw_stream, on_delta, cancel_token):
+    """Accumulate SDK deltas while forwarding text and honoring cancellation."""
+
+    content = []
+    tool_calls = {}
+    finish_reason = None
+    usage = None
+
+    def close_stream():
+        try:
+            raw_stream.close()
+        except Exception:
+            pass
+
+    unregister = (
+        cancel_token.register_canceller(close_stream)
+        if cancel_token is not None else lambda: None
+    )
+    try:
+        for chunk in raw_stream:
+            if cancel_token is not None:
+                cancel_token.check()
+            if getattr(chunk, "usage", None) is not None:
+                usage = chunk.usage
+            choices = getattr(chunk, "choices", None) or []
+            if not choices:
+                continue
+            choice = choices[0]
+            finish_reason = choice.finish_reason or finish_reason
+            delta = getattr(choice, "delta", None)
+            text = getattr(delta, "content", None)
+            if text:
+                content.append(text)
+                on_delta(text)
+            for item in getattr(delta, "tool_calls", None) or []:
+                index = getattr(item, "index", 0) or 0
+                call = tool_calls.setdefault(
+                    index, {"id": "", "name": "", "arguments": ""}
+                )
+                call["id"] += getattr(item, "id", None) or ""
+                function = getattr(item, "function", None)
+                call["name"] += getattr(function, "name", None) or ""
+                call["arguments"] += getattr(function, "arguments", None) or ""
+    finally:
+        unregister()
+        close_stream()
+
+    calls = [
+        SimpleNamespace(
+            id=call["id"] or f"stream-call-{index}",
+            type="function",
+            function=SimpleNamespace(
+                name=call["name"], arguments=call["arguments"]
+            ),
+        )
+        for index, call in sorted(tool_calls.items())
+    ]
+    message = SimpleNamespace(content="".join(content), tool_calls=calls)
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=message, finish_reason=finish_reason)],
+        usage=usage,
+    )
+
+
 def _completion(
     messages: list,
     tool_choice: str,
     tools: list | None = None,
+    on_delta=None,
+    cancel_token: CancellationToken | None = None,
 ):
 
     kwargs = {
@@ -327,9 +402,19 @@ def _completion(
     started = time.monotonic()
 
     with trace_span("llm.generate", model=MODEL):
-        response = client.chat.completions.create(
-            **kwargs
-        )
+        if cancel_token is not None:
+            cancel_token.check()
+        if on_delta is None:
+            response = client.chat.completions.create(**kwargs)
+        else:
+            raw_stream = client.chat.completions.create(
+                **kwargs,
+                stream=True,
+                stream_options={"include_usage": True},
+            )
+            response = _consume_completion_stream(
+                raw_stream, on_delta, cancel_token
+            )
 
     latency_ms = int(
         (time.monotonic() - started) * 1000
@@ -625,7 +710,10 @@ def _clean_reminder_minutes(minutes) -> int:
     return minutes
 
 
-def _execute_reminder_tool(tool_call) -> dict:
+def _execute_reminder_tool(
+    tool_call,
+    cancel_token: CancellationToken | None = None,
+) -> dict:
     """执行一次提醒工具调用。
 
     每个分支都通过经过认证的入口读写数据：
@@ -718,6 +806,19 @@ def _execute_reminder_tool(tool_call) -> dict:
     )
 
     return _format_reminder_result(created)
+
+
+TOOL_REGISTRY = ToolRegistry()
+for _schema, _policy in (
+    (LIST_REMINDERS_TOOL, "allow"),
+    (REMINDER_TOOL, "allow"),
+    (UPDATE_REMINDER_TOOL, "ask"),
+    (CANCEL_REMINDER_TOOL, "ask"),
+):
+    TOOL_REGISTRY.register(
+        _schema, policy=_policy, handler=_execute_reminder_tool
+    )
+del _schema, _policy
 
 
 def _knowledge_context(
@@ -845,9 +946,8 @@ def chat(user_input: str, *, bot: dict | None = None) -> str:
     for tool_call in tool_calls:
 
         try:
-            result = _execute_reminder_tool(
-                tool_call
-            )
+            # 旧 JSON 聊天保持既有提醒行为；D13 再统一接入审批门。
+            result = _execute_reminder_tool(tool_call)
 
         except (
             ValueError,

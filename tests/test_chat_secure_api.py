@@ -556,6 +556,54 @@ class TestSecureChatHttp(unittest.TestCase):
 
         model.assert_called_once()
 
+    def test_streaming_chat_emits_sse_and_saves_completed_reply(self):
+        request_id = self.request_id()
+
+        def stream_model(message, *, emit, cancel_token, bot=None):
+            emit({"type": "run_started", "run_id": "run-test"})
+            emit({"type": "text_delta", "run_id": "run-test", "text": "流式"})
+            emit({"type": "done", "run_id": "run-test", "reply": "流式回复"})
+            return "流式回复"
+
+        with patch("src.chat_secure_api.run_chat_stream", side_effect=stream_model):
+            response = self.client.post(
+                "/chat",
+                headers=self.auth(self.owner_token),
+                json={"request_id": request_id, "message": "测试", "stream": True},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.headers["content-type"].startswith("text/event-stream"))
+        self.assertIn("event: text_delta", response.text)
+        self.assertIn('"text": "流式"', response.text)
+        self.assertEqual(self.get_status(self.owner_token, request_id).json()["status"], "completed")
+
+    def test_cancel_endpoint_reaches_owner_active_run(self):
+        from src.core.run_control import active_runs
+
+        request_id = self.request_id()
+        with patch.object(api, "chat", return_value="原回复"):
+            self.assertEqual(
+                self.post_chat(self.owner_token, request_id).status_code, 200
+            )
+        me = self.client.get("/auth/me", headers=self.auth(self.owner_token))
+        user_id = me.json()["user"]["id"]
+        token = active_runs.start(user_id, request_id)
+        self.addCleanup(active_runs.finish, user_id, request_id)
+
+        cancelled = self.client.post(
+            f"/chat/requests/{request_id}/cancel",
+            headers=self.auth(self.owner_token),
+        )
+        denied = self.client.post(
+            f"/chat/requests/{request_id}/cancel",
+            headers=self.auth(self.member_token),
+        )
+        self.assertEqual(cancelled.status_code, 202)
+        self.assertEqual(cancelled.json()["status"], "cancelling")
+        self.assertTrue(token.cancelled)
+        self.assertEqual(denied.status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

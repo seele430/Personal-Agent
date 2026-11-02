@@ -35,3 +35,15 @@
 - 今天做了什么：新增 `agent_runs / agent_turns / agent_steps / agent_execs` 与 `RunStore`；迁移保留旧 `turn_id`、按 `created_at / id` 排列 step，不把旧模型发言伪造成 exec。新增显式 `--confirm-copy` 的迁移 / 回滚 CLI；建表与数据共用事务，失败自动从 SQLite 在线备份恢复。所有操作仅针对测试临时库。
 - 验收与卡点：10 个新增用例覆盖归属隔离、真实工具 exec 关联、无 `stage`、事务原子性、重复迁移、旧表逐行不变和回滚；全量 **60 个文件 / 582 个用例 PASS，43.77 秒**，证据见 `docs/evidence/d6-backend-tests.txt`。同时修复前端静态目录存在时未知 `/api/hands` 被 StaticFiles 转成 405 的问题，恢复为契约要求的 404。
 - 明天第一件事：阅读精简后的模型调用、提醒工具分发与聊天 HTTP 流程，再实现 SSE 和助手侧取消；不得假定 SDK 原生支持流式或线程取消。
+
+## D7 — 2026-11-02
+
+- 今天做了什么：`/chat` 增加可选 SSE，旧 JSON 默认行为不变；SDK 流式 delta 实时转发，取消时关闭模型流；新增活动 run 索引、取消令牌、取消 API、前端 Esc / 停止按钮、增量文本与工具状态。run / step / exec 记录 cancelled，旧聊天请求保守记为 unknown，避免误自动重试。
+- 验收与卡点：真实本地 HTTP 验证普通流式、显式取消和直接断流均 PASS，取消接口返回 202，断流后后台 worker 停止且服务进程已清理；证据见 `docs/evidence/d7-live-http.txt`。测试客户端的并发流取消模拟不稳定，未作为验收依据；真实 HTTP 结果为准。前端生产构建 PASS。
+- 明天第一件事：落实工具注册表和 allow / ask / deny 策略矩阵，确认 ask / deny 不产生 exec，完整审批交互留到 D13。
+
+## D8 — 2026-11-02
+
+- 今天做了什么：新增工具注册表与策略矩阵；流式链路中查询 / 新建提醒为 allow，修改 / 取消提醒为 ask，未知工具为 deny。策略在 exec 前判定，审批不是沙箱隔离替代品。旧 JSON 提醒行为保持原样，完整审批门留到 D13。
+- 验收与卡点：策略单测、工具内取消、SSE 和归属隔离均通过；全量 **62 个文件 / 591 个用例 PASS，43.06 秒**，证据见 `docs/evidence/d7-d8-backend-tests.txt`；前端构建证据见 `docs/evidence/d7-frontend-build.txt`。
+- 明天第一件事：完成一次可复跑的“发问 → 工具 → 回答”G1 证据；真实模型外部调用与录屏若需要凭据或用户操作，再明确请求确认。

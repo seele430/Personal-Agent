@@ -13,7 +13,8 @@ type MessageStatus =
   | "pending"
   | "sent"
   | "unknown"
-  | "rejected";
+  | "rejected"
+  | "cancelled";
 
 type Message = {
   id: string;
@@ -368,6 +369,7 @@ function loadMessages(userId?: string): Message[] {
             "sent",
             "unknown",
             "rejected",
+            "cancelled",
           ].includes(item.status)
       )
       .slice(-100)
@@ -417,6 +419,7 @@ export default function App(
     useState(() => loadDraft(userId));
 
   const [sending, setSending] = useState(false);
+  const [activeTool, setActiveTool] = useState("");
   const [error, setError] = useState("");
 
   const [checkingId, setCheckingId] =
@@ -491,6 +494,9 @@ export default function App(
   >({});
 
   const sendingLock = useRef(false);
+  const activeController = useRef<AbortController | null>(null);
+  const activeRequestId = useRef<string | null>(null);
+  const cancelledRequests = useRef(new Set<string>());
   const checkingIds = useRef(new Set<string>());
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -744,129 +750,185 @@ export default function App(
   }, []);
 
   // ========================================
-  // 发送聊天请求
+  // 发送、流式显示与取消聊天请求
   // ========================================
+
+  function appendAssistantDelta(requestId: string, text: string) {
+    setMessages((previous) => {
+      const index = previous.findIndex(
+        (item) => item.role === "assistant" && item.replyTo === requestId
+      );
+      if (index >= 0) {
+        return previous.map((item, itemIndex) =>
+          itemIndex === index
+            ? { ...item, content: item.content + text }
+            : item
+        );
+      }
+      return [...previous, {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: text,
+        status: "sent",
+        replyTo: requestId,
+      }];
+    });
+  }
+
+  function markCancelled(requestId: string) {
+    cancelledRequests.current.add(requestId);
+    setMessages((previous) => previous.map((item) =>
+      item.requestId === requestId && item.role === "user"
+        ? { ...item, status: "cancelled" }
+        : item
+    ));
+    setActiveTool("");
+    setError("本次回复已取消，工具执行也已收到取消信号。");
+  }
+
+  function cancelActiveRun() {
+    const requestId = activeRequestId.current;
+    if (!requestId) return;
+    cancelledRequests.current.add(requestId);
+    activeController.current?.abort();
+    markCancelled(requestId);
+    void fetch(`/api/chat/requests/${encodeURIComponent(requestId)}/cancel`, {
+      method: "POST",
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      keepalive: true,
+    }).catch(() => undefined);
+  }
+
+  useEffect(() => {
+    function onEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape" && sendingLock.current) {
+        event.preventDefault();
+        cancelActiveRun();
+      }
+    }
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [authToken]);
 
   async function sendMessage(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
-
     const text = input.trim();
-
-    if (!text || sendingLock.current) {
-      return;
-    }
+    if (!text || sendingLock.current) return;
 
     sendingLock.current = true;
     setSending(true);
+    setActiveTool("");
     setError("");
-
     const requestId = crypto.randomUUID();
-
+    cancelledRequests.current.delete(requestId);
     const userMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: text,
-      status: "pending",
-      requestId,
+      id: crypto.randomUUID(), role: "user", content: text,
+      status: "pending", requestId,
     };
-
-    // 先持久保存原请求 ID，再发送请求。
     const updated = [...messages, userMessage];
-
     saveMessages(updated, userId);
     setMessages(updated);
     setInput("");
 
     const controller = new AbortController();
-
-    const timeout = window.setTimeout(
-      () => controller.abort(),
-      60000
-    );
+    activeController.current = controller;
+    activeRequestId.current = requestId;
+    const timeout = window.setTimeout(() => controller.abort(), 60000);
 
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
-
         headers: {
           "Content-Type": "application/json",
-          ...(authToken
-            ? {
-                Authorization:
-                  `Bearer ${authToken}`,
-              }
-            : {}),
+          Accept: "text/event-stream, application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
-
-        body: JSON.stringify({
-          message: text,
-          request_id: requestId,
-        }),
-
+        body: JSON.stringify({ message: text, request_id: requestId, stream: true }),
         signal: controller.signal,
       });
 
+      if (response.ok && response.headers.get("content-type")?.includes("text/event-stream")) {
+        if (!response.body) throw new Error("浏览器不支持流式响应");
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let terminal = false;
+
+        const processBlock = (block: string) => {
+          if (!block.trim()) return;
+          const data = block.split(/\r?\n/)
+            .filter((line) => line.startsWith("data:"))
+            .map((line) => line.slice(5).trimStart())
+            .join("\n");
+          if (!data) return;
+          const payload = JSON.parse(data) as {
+            type?: string;
+            text?: string;
+            reply?: string;
+            tool?: string;
+          };
+          if (payload.type === "text_delta" && payload.text) {
+            appendAssistantDelta(requestId, payload.text);
+          } else if (payload.type === "tool_started") {
+            setActiveTool(payload.tool ?? "工具");
+          } else if (payload.type === "tool_finished") {
+            setActiveTool("");
+          } else if (payload.type === "approval_required") {
+            setActiveTool("");
+            setError(`工具 ${payload.tool ?? ""} 需要确认，本次未执行。`);
+          } else if (payload.type === "done" && typeof payload.reply === "string") {
+            terminal = true;
+            finishRequest(requestId, payload.reply);
+          } else if (payload.type === "cancelled") {
+            terminal = true;
+            markCancelled(requestId);
+          } else if (payload.type === "run_failed" || payload.type === "request_unknown") {
+            terminal = true;
+            markUnknown(requestId, "服务没有确认最终结果，请先查询状态。");
+          }
+        };
+
+        while (!terminal) {
+          const { done, value } = await reader.read();
+          buffer += decoder.decode(value, { stream: !done });
+          const blocks = buffer.split(/\r?\n\r?\n/);
+          buffer = blocks.pop() ?? "";
+          blocks.forEach(processBlock);
+          if (done) {
+            if (buffer.trim()) processBlock(buffer);
+            break;
+          }
+        }
+        if (!terminal && !cancelledRequests.current.has(requestId)) {
+          markUnknown(requestId, "流式响应提前结束，请先查询状态。");
+        }
+        return;
+      }
+
       const result = await readJson(response);
-
-      // ====================================
-      // HTTP 429：明确拒绝，没有调用模型
-      // ====================================
-
-      if (
-        response.status === 429 &&
-        result.status === "rejected"
-      ) {
-        markRejected(
-          requestId,
-          text,
-          result.code
-        );
-      }
-
-      // ====================================
-      // 原请求仍在处理中
-      // ====================================
-
-      else if (
-        response.status === 202 &&
-        result.status === "processing"
-      ) {
+      if (response.status === 429 && result.status === "rejected") {
+        markRejected(requestId, text, result.code);
+      } else if (response.status === 202 && result.status === "processing") {
         await queryStatus(requestId, true);
-      }
-
-      // ====================================
-      // 成功收到回复
-      // ====================================
-
-      else if (
-        response.ok &&
-        typeof result.reply === "string"
-      ) {
+      } else if (response.ok && typeof result.reply === "string") {
         finishRequest(requestId, result.reply);
+      } else {
+        markUnknown(requestId, "服务没有返回确认的结果，请先查询状态。");
       }
-
-      // ====================================
-      // 其他无法确认的状态
-      // ====================================
-
-      else {
-        markUnknown(
-          requestId,
-          "服务没有返回确认的结果，请先查询状态。"
-        );
-      }
-
     } catch {
-      markUnknown(
-        requestId,
-        "网络异常或等待超时，模型可能已执行，请先查询状态。"
-      );
-
+      if (cancelledRequests.current.has(requestId)) {
+        markCancelled(requestId);
+      } else {
+        markUnknown(requestId, "网络异常或等待超时，模型可能已执行，请先查询状态。");
+      }
     } finally {
       window.clearTimeout(timeout);
       sendingLock.current = false;
+      activeController.current = null;
+      activeRequestId.current = null;
+      setActiveTool("");
       setSending(false);
     }
   }
@@ -2240,6 +2302,12 @@ export default function App(
                     </div>
                   )}
 
+                  {message.status === "cancelled" && (
+                    <div className="message-status">
+                      已取消本次回复
+                    </div>
+                  )}
+
                   {message.role === "user" &&
                     message.requestId &&
                     (
@@ -2273,7 +2341,9 @@ export default function App(
                 <div className="spinner" />
 
                 <span>
-                  助手正在处理，请稍候…
+                  {activeTool
+                    ? `正在执行工具：${activeTool}（Esc 停止）`
+                    : "助手正在生成，按 Esc 停止…"}
                 </span>
               </div>
             )}
@@ -2311,15 +2381,23 @@ export default function App(
                 Enter 发送 · Shift + Enter 换行
               </span>
 
-              <button
-                type="submit"
-                disabled={sending || !input.trim()}
-                aria-label={
-                  sending ? "发送中…" : "发送 ↑"
-                }
-              >
-                {sending ? "发送中…" : "发送 ↑"}
-              </button>
+              {sending ? (
+                <button
+                  type="button"
+                  onClick={cancelActiveRun}
+                  aria-label="停止生成"
+                >
+                  停止 Esc
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim()}
+                  aria-label="发送 ↑"
+                >
+                  发送 ↑
+                </button>
+              )}
             </div>
           </form>
 

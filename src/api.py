@@ -135,6 +135,9 @@ class ChatRequest(BaseModel):
     # 可选：单人聊天时选中的 Bot（S3）。
     bot_id: int | None = None
 
+    # 默认保持旧 JSON 响应；显式开启才返回 SSE。
+    stream: bool = False
+
 
 # ==========================================
 # 请求工具

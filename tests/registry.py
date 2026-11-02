@@ -554,6 +554,26 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：流式模型、工具执行与取消留痕（SDK 全部模拟）
+    "test_agent_stream.py": TestSchema(
+        layer="integration",
+        domain="agent_stream",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="mocked",
+        risk="high",
+    ),
+
+    # L1：工具注册表与 allow / ask / deny 策略矩阵
+    "test_tool_registry.py": TestSchema(
+        layer="unit",
+        domain="tool_policy",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
     # L2：run / turn / step / exec 关联与归属隔离
     "test_run_store.py": TestSchema(
         layer="integration",
