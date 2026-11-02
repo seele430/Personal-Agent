@@ -584,6 +584,16 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
+    # L3：独立 TTS 与正式应用路由（合成和网络均 mock）
+    "test_tts_api.py": TestSchema(
+        layer="api",
+        domain="bot",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+
     # L2：聊天室存储层（房间 / 成员 / 消息 + 归属隔离）
     "test_room_store.py": TestSchema(
         layer="integration",

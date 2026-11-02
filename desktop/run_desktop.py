@@ -93,7 +93,7 @@ def _prepare_env() -> None:
 def _run_edge_tts_cli() -> bool:
     """打包后拦截 `exe -m edge_tts ...`：转成真正的 CLI 调用。
 
-    src/room_api.py 里用 `[sys.executable, "-m", "edge_tts", ...]` 起子进程，
+    src/tts_api.py 里用 `[sys.executable, "-m", "edge_tts", ...]` 起子进程，
     打包后 sys.executable 指向 PersonalAgent.exe 自己，不加这个拦截就会
     无限递归/直接失败。
     """
