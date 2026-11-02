@@ -169,12 +169,22 @@ app.include_router(teams_router)
 async def _strip_api_prefix(request, call_next):
     path = request.url.path
 
-    if path.startswith("/api/"):
+    is_api = path.startswith("/api/")
+    if is_api:
         stripped = path[4:]
         request.scope["path"] = stripped
         request.scope["raw_path"] = stripped.encode("utf-8")
 
-    return await call_next(request)
+    response = await call_next(request)
+    # A POST to an unknown /api route must not fall through to StaticFiles,
+    # which otherwise turns the expected API 404 into a static-file 405.
+    if is_api and response.status_code == 405:
+        from fastapi.responses import JSONResponse
+        from starlette.staticfiles import StaticFiles
+
+        if isinstance(request.scope.get("endpoint"), StaticFiles):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+    return response
 
 
 # ==========================================

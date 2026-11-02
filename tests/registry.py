@@ -554,6 +554,26 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：run / turn / step / exec 关联与归属隔离
+    "test_run_store.py": TestSchema(
+        layer="integration",
+        domain="run_model",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
+
+    # L2：旧库副本的备份、原子迁移、幂等与回滚
+    "test_run_migration.py": TestSchema(
+        layer="integration",
+        domain="run_model",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
+
     # L3：Bot 管理接口（创建 / 列表 / 身份卡 / 禁用，模拟身份）
     "test_bot_api.py": TestSchema(
         layer="api",
