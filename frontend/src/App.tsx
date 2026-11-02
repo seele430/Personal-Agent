@@ -420,6 +420,7 @@ export default function App(
 
   const [sending, setSending] = useState(false);
   const [activeTool, setActiveTool] = useState("");
+  const [finishedTool, setFinishedTool] = useState("");
   const [error, setError] = useState("");
 
   const [checkingId, setCheckingId] =
@@ -820,6 +821,7 @@ export default function App(
     sendingLock.current = true;
     setSending(true);
     setActiveTool("");
+    setFinishedTool("");
     setError("");
     const requestId = crypto.randomUUID();
     cancelledRequests.current.delete(requestId);
@@ -872,9 +874,11 @@ export default function App(
           if (payload.type === "text_delta" && payload.text) {
             appendAssistantDelta(requestId, payload.text);
           } else if (payload.type === "tool_started") {
+            setFinishedTool("");
             setActiveTool(payload.tool ?? "工具");
           } else if (payload.type === "tool_finished") {
             setActiveTool("");
+            setFinishedTool(payload.tool ?? "工具");
           } else if (payload.type === "approval_required") {
             setActiveTool("");
             setError(`工具 ${payload.tool ?? ""} 需要确认，本次未执行。`);
@@ -2343,7 +2347,9 @@ export default function App(
                 <span>
                   {activeTool
                     ? `正在执行工具：${activeTool}（Esc 停止）`
-                    : "助手正在生成，按 Esc 停止…"}
+                    : finishedTool
+                      ? `工具 ${finishedTool} 已完成，正在生成回答…`
+                      : "助手正在生成，按 Esc 停止…"}
                 </span>
               </div>
             )}

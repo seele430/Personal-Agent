@@ -1,0 +1,20 @@
+{
+  "real_browser_flow": true,
+  "login_success": true,
+  "question": "请使用工具创建一个 30 分钟后的提醒，内容是“喝水”。创建后简短确认。",
+  "answer": "提醒已创建：30 分钟后（本地时间 15:31）提醒你“喝水”。提醒已保存，但不代表通知已经送达。",
+  "tool_statuses": [
+    "正在执行工具：create_reminder（Esc 停止）",
+    "工具 create_reminder 已完成，正在生成回答…"
+  ],
+  "reminder_visible": true,
+  "recorded_elapsed_ms": 60509,
+  "status": "PASS",
+  "real_external_model_called": true,
+  "video_file": "d9-g1-demo.webm",
+  "run_status": "succeeded",
+  "exec_status": "succeeded",
+  "temporary_reminders_created": 1,
+  "external_notification_sent": false,
+  "temporary_services_stopped": true
+}

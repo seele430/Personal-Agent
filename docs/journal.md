@@ -47,3 +47,9 @@
 - 今天做了什么：新增工具注册表与策略矩阵；流式链路中查询 / 新建提醒为 allow，修改 / 取消提醒为 ask，未知工具为 deny。策略在 exec 前判定，审批不是沙箱隔离替代品。旧 JSON 提醒行为保持原样，完整审批门留到 D13。
 - 验收与卡点：策略单测、工具内取消、SSE 和归属隔离均通过；全量 **62 个文件 / 591 个用例 PASS，43.06 秒**，证据见 `docs/evidence/d7-d8-backend-tests.txt`；前端构建证据见 `docs/evidence/d7-frontend-build.txt`。
 - 明天第一件事：完成一次可复跑的“发问 → 工具 → 回答”G1 证据；真实模型外部调用与录屏若需要凭据或用户操作，再明确请求确认。
+
+## D9 — 2026-11-02（G1 验收）
+
+- 今天做了什么：新增可复跑的本地确定性链路与真实模型 HTTP 验收脚本；使用 DeepSeek Flash（API 模型名 `deepseek-flash`）完成真实“发问 → 工具 → 回答”，并修复工具完成状态在前端停留过短的问题。新增真实浏览器录屏脚本，自动登录临时 member 账号、创建提醒并检查提醒页面。
+- 验收与卡点：本地链路 PASS，明确未调用外部模型，证据见 `docs/evidence/d9-local-tool-chain.txt`；真实外部模型调用 PASS，事件顺序为 `run_started → tool_started → tool_finished → text_delta … → done`，run / exec 均为 succeeded，证据见 `docs/evidence/d9-live-model.txt`。最终录屏的浏览器操作窗口为 60.509 秒，视频为 `docs/evidence/d9-g1-demo.webm`，工具完成、回答和提醒关键帧分别为 `d9-frame-tool.png`、`d9-frame-answer.png`、`d9-frame-reminder.png`；仅在临时数据库新增 1 条 `in_app` 提醒，未发送外部通知，临时服务已关闭。全量 **62 个文件 / 591 个用例 PASS，42.66 秒**，证据见 `docs/evidence/d9-backend-tests.txt`；前端生产构建 PASS，证据见 `docs/evidence/d9-frontend-build.txt`。
+- 明天第一件事：开始 D10，封装 Python SDK，并建立 v1 兼容性 fixture；保持真实模型验收与确定性测试证据分离。

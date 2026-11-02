@@ -1,0 +1,36 @@
+{
+  "status": "PASS",
+  "real_external_model_called": true,
+  "question": "请使用工具创建一个 5 分钟后的提醒，内容是“喝水”。创建后简短确认。",
+  "event_sequence": [
+    "run_started",
+    "tool_started",
+    "tool_finished",
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "text_delta",
+    "done"
+  ],
+  "answer": "已设置提醒：5 分钟后提醒你「喝水」。",
+  "tool_name": "create_reminder",
+  "tool_result": {
+    "success": true,
+    "reminder_id": 1,
+    "remind_at": "2026-11-02T06:44:38.884340+00:00",
+    "created": true,
+    "delivery": "in_app"
+  },
+  "run_status": "succeeded",
+  "exec_status": "succeeded",
+  "reminders_created_in_temporary_db": 1,
+  "external_notification_sent": false
+}
