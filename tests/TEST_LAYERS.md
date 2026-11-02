@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 635c90035e7da328 -->
+<!-- membership-digest: 8e3884134ee8219e -->
 
-## unit — L1 单元测试 (8 files)
+## unit — L1 单元测试 (7 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -27,12 +27,11 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_agent_call_count.py` | tests/ 根 | agent | none | none | low | registered-inferred |
 | `test_agent_usage.py` | tests/ 根 | agent | none | none | low | registered-inferred |
 | `test_rss_errors.py` | tests/ 根 | rss | none | mocked | medium | registered-inferred |
-| `test_utter.py` | tests/ 根 | bot | none | mocked | medium | registered-inferred |
 | `unit/test_agent_tool_limits.py` | tests/unit/ | reminder | none | mocked | medium | registered |
 | `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 | `unit/test_url_policy.py` | tests/unit/ | rss | none | mocked | high | registered-inferred |
 
-## integration — L2 数据集成测试 (40 files)
+## integration — L2 数据集成测试 (35 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -69,11 +68,6 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_outbox_http.py` | tests/ 根 | outbox | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_reminder_identity.py` | tests/ 根 | reminder | temporary_sqlite | none | medium | registered-inferred |
 | `test_reminder_scheduler.py` | tests/ 根 | reminder | temporary_sqlite | mocked | high | registered-inferred |
-| `test_room_expand.py` | tests/ 根 | room | temporary_sqlite | mocked | medium | registered-inferred |
-| `test_room_hands.py` | tests/ 根 | room | temporary_sqlite | none | medium | registered-inferred |
-| `test_room_service.py` | tests/ 根 | room | temporary_sqlite | mocked | medium | registered-inferred |
-| `test_room_store.py` | tests/ 根 | room | temporary_sqlite | none | medium | registered-inferred |
-| `test_room_summary.py` | tests/ 根 | room | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_task_health.py` | tests/ 根 | task | temporary_sqlite | none | medium | registered-inferred |
 | `test_task_run_history.py` | tests/ 根 | task | temporary_sqlite | none | medium | registered-inferred |
 
@@ -95,7 +89,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_notifications_api.py` | tests/ 根 | monitor | temporary_sqlite | none | high | registered-inferred |
 | `test_reminder_api.py` | tests/ 根 | reminder | temporary_sqlite | none | high | registered |
 | `test_reminder_chat_http.py` | tests/ 根 | reminder | temporary_sqlite | mocked | high | registered |
-| `test_room_api.py` | tests/ 根 | room | temporary_sqlite | mocked | medium | registered-inferred |
+| `test_tts_api.py` | tests/ 根 | bot | temporary_sqlite | mocked | medium | registered-inferred |
 
 ## legacy — 未分类测试 (0 files)
 

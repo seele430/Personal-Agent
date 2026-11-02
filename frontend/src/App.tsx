@@ -8,7 +8,6 @@ import {
 } from "react";
 
 import BotsView from "./BotsView";
-import RoomView from "./RoomView";
 
 type MessageStatus =
   | "pending"
@@ -429,7 +428,6 @@ export default function App(
     | "quota"
     | "monitors"
     | "bots"
-    | "rooms"
   >("chat");
 
   // 侧栏可收起：收起后主区占满，左上角留「☰」展开。
@@ -1469,19 +1467,6 @@ export default function App(
           <button
             type="button"
             className={`nav-item ${
-              view === "rooms" ? "selected" : ""
-            }`}
-            onClick={() => setView("rooms")}
-            aria-pressed={view === "rooms"}
-            aria-label="聊天室"
-          >
-            <span className="nav-symbol">👥</span>
-            <span>聊天室</span>
-          </button>
-
-          <button
-            type="button"
-            className={`nav-item ${
               view === "reminders" ? "selected" : ""
             }`}
             onClick={() => setView("reminders")}
@@ -2061,8 +2046,6 @@ export default function App(
               </div>
             )}
           </section>
-        ) : view === "rooms" ? (
-          <RoomView authToken={authToken} />
         ) : view === "bots" ? (
           <BotsView authToken={authToken} />
         ) : view === "reminders" ? (

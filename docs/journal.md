@@ -23,3 +23,9 @@
 - 今天做了什么：完整多 Bot 生成块迁入 `legacy/multi_bot.py`，`src/agent.py` 只保留共享模型、提醒工具、知识库和单人 chat；7 个直接相关测试逐一实测并落盘红名单。
 - 验收与卡点：直接相关 59 个用例中 13 个预期 ERROR，涉及 4 个文件；其余 3 个文件因存储或依赖注入暂时 PASS，全部列入 D5 删除面。共享 agent / Bot **71 个用例 PASS**，两个迁移模块语法检查通过。证据见 `docs/d4-red-tests.md` 与对应 evidence 文件。
 - 明天第一件事：删除 room API / service / store、RoomView 与 7 个旧测试，清理 App、CSS、registry 和文档索引，跑全量测试直至红名单为 0。
+
+## D5 — 2026-11-02（W1 检查点）
+
+- 今天做了什么：删除 room API / service / store、RoomView 和 7 个旧测试；清理 App 导航与房间专属 CSS，保留侧栏和 TTS 共享样式；按项目命令重建 `tests/TEST_LAYERS.md`。
+- 验收与卡点：全量 **58 个文件 / 572 个用例 PASS，41.17 秒**，较 D3 减少的 59 个用例与删除文件完全对应，红名单为 0；测试索引 audit PASS；`npm ci && npm run build` 前端生产构建 PASS。后端证据见 `docs/evidence/d5-backend-tests.txt`。
+- 明天第一件事：只在临时旧库副本上实现并验证 run / turn / step / exec 数据模型、备份和回滚，确保 bots 表与 Bot 数据不变，不触碰真实数据目录。
