@@ -1,0 +1,575 @@
+===== tests.test_room_api =====
+E..EEE
+======================================================================
+ERROR: test_add_bot_and_list (tests.test_room_api.TestRoomAPI.test_add_bot_and_list)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\tests\test_room_api.py", line 99, in test_add_bot_and_list
+    added = self.client.post(
+            ^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1204, in post
+    return self.request(
+           ^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\testclient.py", line 463, in request
+    return super().request(
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 797, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 980, in send
+    response = self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1008, in _send_handling_auth
+    response = self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1043, in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1076, in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\testclient.py", line 360, in handle_request
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\testclient.py", line 357, in handle_request
+    portal.call(self.app, scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\from_thread.py", line 340, in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\_base.py", line 401, in __get_result
+    raise self._exception
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\from_thread.py", line 265, in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\applications.py", line 1216, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\applications.py", line 96, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\telemetry\_asgi.py", line 151, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\routing.py", line 676, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 2786, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 1817, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 2869, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 1843, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 1308, in handle
+    await effective_context.app(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 165, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 151, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 727, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 362, in run_endpoint_function
+    return await run_in_threadpool(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\telemetry\_api.py", line 244, in _run_sync_endpoint
+    return function(**arguments)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\src\room_api.py", line 394, in add_bot_to_room
+    opening = bot_join_opening(
+              ^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\src\core\room_service.py", line 352, in bot_join_opening
+    debate = agent.debater_opening
+             ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.agent' has no attribute 'debater_opening'
+
+======================================================================
+ERROR: test_decision_requires_summary (tests.test_room_api.TestRoomAPI.test_decision_requires_summary)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\tests\test_room_api.py", line 150, in test_decision_requires_summary
+    self.client.post(
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1204, in post
+    return self.request(
+           ^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\testclient.py", line 463, in request
+    return super().request(
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 797, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 980, in send
+    response = self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1008, in _send_handling_auth
+    response = self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1043, in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1076, in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\testclient.py", line 360, in handle_request
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\testclient.py", line 357, in handle_request
+    portal.call(self.app, scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\from_thread.py", line 340, in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\_base.py", line 401, in __get_result
+    raise self._exception
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\from_thread.py", line 265, in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\applications.py", line 1216, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\applications.py", line 96, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\telemetry\_asgi.py", line 151, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\routing.py", line 676, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 2786, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 1817, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 2869, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 1843, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 1308, in handle
+    await effective_context.app(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 165, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 151, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 727, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 362, in run_endpoint_function
+    return await run_in_threadpool(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\telemetry\_api.py", line 244, in _run_sync_endpoint
+    return function(**arguments)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\src\room_api.py", line 394, in add_bot_to_room
+    opening = bot_join_opening(
+              ^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\src\core\room_service.py", line 352, in bot_join_opening
+    debate = agent.debater_opening
+             ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.agent' has no attribute 'debater_opening'
+
+======================================================================
+ERROR: test_decision_success (tests.test_room_api.TestRoomAPI.test_decision_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\tests\test_room_api.py", line 176, in test_decision_success
+    self.client.post(
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1204, in post
+    return self.request(
+           ^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\testclient.py", line 463, in request
+    return super().request(
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 797, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 980, in send
+    response = self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1008, in _send_handling_auth
+    response = self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1043, in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1076, in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\testclient.py", line 360, in handle_request
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\testclient.py", line 357, in handle_request
+    portal.call(self.app, scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\from_thread.py", line 340, in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\_base.py", line 401, in __get_result
+    raise self._exception
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\from_thread.py", line 265, in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\applications.py", line 1216, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\applications.py", line 96, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\telemetry\_asgi.py", line 151, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\routing.py", line 676, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 2786, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 1817, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 2869, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 1843, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 1308, in handle
+    await effective_context.app(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 165, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 151, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 727, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 362, in run_endpoint_function
+    return await run_in_threadpool(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\telemetry\_api.py", line 244, in _run_sync_endpoint
+    return function(**arguments)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\src\room_api.py", line 394, in add_bot_to_room
+    opening = bot_join_opening(
+              ^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\src\core\room_service.py", line 352, in bot_join_opening
+    debate = agent.debater_opening
+             ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.agent' has no attribute 'debater_opening'
+
+======================================================================
+ERROR: test_send_message_triggers_speech (tests.test_room_api.TestRoomAPI.test_send_message_triggers_speech)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\tests\test_room_api.py", line 116, in test_send_message_triggers_speech
+    self.client.post(
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1204, in post
+    return self.request(
+           ^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\testclient.py", line 463, in request
+    return super().request(
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 797, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 980, in send
+    response = self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1008, in _send_handling_auth
+    response = self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1043, in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\httpx2\_client.py", line 1076, in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\testclient.py", line 360, in handle_request
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\testclient.py", line 357, in handle_request
+    portal.call(self.app, scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\from_thread.py", line 340, in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\_base.py", line 401, in __get_result
+    raise self._exception
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\from_thread.py", line 265, in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\applications.py", line 1216, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\applications.py", line 96, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\telemetry\_asgi.py", line 151, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\routing.py", line 676, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 2786, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 1817, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 2869, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 1843, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 1308, in handle
+    await effective_context.app(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 165, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 151, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 727, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\routing.py", line 362, in run_endpoint_function
+    return await run_in_threadpool(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\starlette\concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\.venv\Lib\site-packages\fastapi\telemetry\_api.py", line 244, in _run_sync_endpoint
+    return function(**arguments)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\src\room_api.py", line 394, in add_bot_to_room
+    opening = bot_join_opening(
+              ^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\src\core\room_service.py", line 352, in bot_join_opening
+    debate = agent.debater_opening
+             ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.agent' has no attribute 'debater_opening'
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.542s
+
+FAILED (errors=4)
+RESULT tests.test_room_api exit=1
+===== tests.test_room_expand =====
+.E.
+======================================================================
+ERROR: test_approve_invalid_hand_returns_false (tests.test_room_expand.TestApproveAndExpand.test_approve_invalid_hand_returns_false)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\tests\test_room_expand.py", line 82, in test_approve_invalid_hand_returns_false
+    result = approve_and_expand(
+             ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\src\core\room_service.py", line 773, in approve_and_expand
+    speak = agent.utter
+            ^^^^^^^^^^^
+AttributeError: module 'src.agent' has no attribute 'utter'
+
+----------------------------------------------------------------------
+Ran 3 tests in 1.120s
+
+FAILED (errors=1)
+RESULT tests.test_room_expand exit=1
+===== tests.test_room_hands =====
+......
+----------------------------------------------------------------------
+Ran 6 tests in 0.403s
+
+OK
+RESULT tests.test_room_hands exit=0
+===== tests.test_room_service =====
+.............
+----------------------------------------------------------------------
+Ran 13 tests in 0.853s
+
+OK
+RESULT tests.test_room_service exit=0
+===== tests.test_room_store =====
+......................
+----------------------------------------------------------------------
+Ran 22 tests in 1.164s
+
+OK
+RESULT tests.test_room_store exit=0
+===== tests.test_room_summary =====
+.EE
+======================================================================
+ERROR: test_host_summary_handles_bad_json (tests.test_room_summary.TestHostSummary.test_host_summary_handles_bad_json)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\tests\test_room_summary.py", line 47, in test_host_summary_handles_bad_json
+    result = agent.host_summary(
+             ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.agent' has no attribute 'host_summary'
+
+======================================================================
+ERROR: test_host_summary_parses_json (tests.test_room_summary.TestHostSummary.test_host_summary_parses_json)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\tests\test_room_summary.py", line 30, in test_host_summary_parses_json
+    result = agent.host_summary(
+             ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'src.agent' has no attribute 'host_summary'
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.101s
+
+FAILED (errors=2)
+RESULT tests.test_room_summary exit=1
+===== tests.test_utter =====
+EEEEEE
+======================================================================
+ERROR: test_empty_topic_rejected (tests.test_utter.TestUtter.test_empty_topic_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\tests\test_utter.py", line 100, in test_empty_topic_rejected
+    agent.utter(self._bot(), "   ")
+    ^^^^^^^^^^^
+AttributeError: module 'src.agent' has no attribute 'utter'
+
+======================================================================
+ERROR: test_invalid_bot_rejected (tests.test_utter.TestUtter.test_invalid_bot_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\tests\test_utter.py", line 96, in test_invalid_bot_rejected
+    agent.utter({}, "话题")
+    ^^^^^^^^^^^
+AttributeError: module 'src.agent' has no attribute 'utter'
+
+======================================================================
+ERROR: test_utter_calls_model_with_identity_card (tests.test_utter.TestUtter.test_utter_calls_model_with_identity_card)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\tests\test_utter.py", line 31, in test_utter_calls_model_with_identity_card
+    reply = agent.utter(
+            ^^^^^^^^^^^
+AttributeError: module 'src.agent' has no attribute 'utter'
+
+======================================================================
+ERROR: test_utter_caps_output_tokens (tests.test_utter.TestUtter.test_utter_caps_output_tokens)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\tests\test_utter.py", line 89, in test_utter_caps_output_tokens
+    agent.utter(self._bot(), "话题", word_limit=50)
+    ^^^^^^^^^^^
+AttributeError: module 'src.agent' has no attribute 'utter'
+
+======================================================================
+ERROR: test_utter_does_not_call_tools (tests.test_utter.TestUtter.test_utter_does_not_call_tools)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\tests\test_utter.py", line 75, in test_utter_does_not_call_tools
+    agent.utter(self._bot(), "话题")
+    ^^^^^^^^^^^
+AttributeError: module 'src.agent' has no attribute 'utter'
+
+======================================================================
+ERROR: test_utter_includes_subject_and_stance (tests.test_utter.TestUtter.test_utter_includes_subject_and_stance)
+给了议题和阵营，prompt 里必须出现 —— 这是「不跑题」的关键。
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\kimi\tasks\2026-11-02\10-57-59-1d503415\Personal-Agent\tests\test_utter.py", line 58, in test_utter_includes_subject_and_stance
+    agent.utter(
+    ^^^^^^^^^^^
+AttributeError: module 'src.agent' has no attribute 'utter'
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.029s
+
+FAILED (errors=6)
+RESULT tests.test_utter exit=1
