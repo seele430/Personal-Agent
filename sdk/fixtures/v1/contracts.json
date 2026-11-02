@@ -1,0 +1,709 @@
+{
+  "schema_version": 1,
+  "description": "Language-neutral HTTP and SDK compatibility cases for platform v1. These are contract fixtures, not live-platform evidence.",
+  "cases": [
+    {
+      "name": "create_success",
+      "kind": "success",
+      "operation": "create",
+      "input": {
+        "tier": "tier1",
+        "workspace_id": "ws_demo",
+        "ttl_seconds": 600,
+        "idempotency_key": "create-fixture-001"
+      },
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sandboxes",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+              "Idempotency-Key": "create-fixture-001"
+            },
+            "json": {
+              "tier": "tier1",
+              "workspace_id": "ws_demo",
+              "ttl_seconds": 600
+            }
+          },
+          "response": {
+            "status": 201,
+            "json": {
+              "sandbox_id": "sb_001",
+              "state": "created",
+              "node_id": "node_001",
+              "workspace_id": "ws_demo",
+              "created_at": "2026-11-02T07:00:00Z",
+              "expires_at": "2026-11-02T07:10:00Z",
+              "ttl_seconds": 600
+            }
+          }
+        }
+      ],
+      "expected": {
+        "model": "sandbox",
+        "sandbox_id": "sb_001",
+        "state": "created",
+        "ttl_seconds": 600
+      }
+    },
+    {
+      "name": "exec_success",
+      "kind": "success",
+      "operation": "exec",
+      "input": {
+        "sandbox_id": "sb_001",
+        "command": ["python", "-c", "print('ok')"],
+        "run_id": "run_001",
+        "step_id": "step_001",
+        "timeout_ms": 1000,
+        "max_output_bytes": 4096
+      },
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sandboxes/sb_001/exec",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "json": {
+              "run_id": "run_001",
+              "step_id": "step_001",
+              "timeout_ms": 1000,
+              "max_output_bytes": 4096,
+              "command": ["python", "-c", "print('ok')"]
+            }
+          },
+          "response": {
+            "status": 202,
+            "json": {
+              "exec_id": "exec_001",
+              "sandbox_id": "sb_001",
+              "state": "queued",
+              "timeout_ms": 1000,
+              "max_output_bytes": 4096
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "path": "/v1/exec/exec_001",
+            "headers": {
+              "Accept": "application/json"
+            },
+            "json": null
+          },
+          "response": {
+            "status": 200,
+            "json": {
+              "exec_id": "exec_001",
+              "sandbox_id": "sb_001",
+              "state": "succeeded",
+              "timeout_ms": 1000,
+              "max_output_bytes": 4096,
+              "exit_code": 0,
+              "stdout": "ok\n",
+              "stderr": "",
+              "started_at": "2026-11-02T07:00:01Z",
+              "finished_at": "2026-11-02T07:00:02Z",
+              "truncated": false,
+              "result_code": "EXEC_SUCCEEDED"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "model": "exec",
+        "exec_id": "exec_001",
+        "state": "succeeded",
+        "exit_code": 0,
+        "stdout": "ok\n",
+        "result_code": "EXEC_SUCCEEDED"
+      }
+    },
+    {
+      "name": "exec_timed_out",
+      "kind": "success",
+      "operation": "exec",
+      "input": {
+        "sandbox_id": "sb_001",
+        "command": ["python", "-c", "import time; time.sleep(10)"],
+        "run_id": "run_002",
+        "step_id": "step_002",
+        "timeout_ms": 1,
+        "max_output_bytes": 65536
+      },
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sandboxes/sb_001/exec",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "json": {
+              "run_id": "run_002",
+              "step_id": "step_002",
+              "timeout_ms": 1,
+              "max_output_bytes": 65536,
+              "command": ["python", "-c", "import time; time.sleep(10)"]
+            }
+          },
+          "response": {
+            "status": 202,
+            "json": {
+              "exec_id": "exec_timeout",
+              "sandbox_id": "sb_001",
+              "state": "running",
+              "timeout_ms": 1,
+              "max_output_bytes": 65536
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "path": "/v1/exec/exec_timeout",
+            "headers": {
+              "Accept": "application/json"
+            },
+            "json": null
+          },
+          "response": {
+            "status": 200,
+            "json": {
+              "exec_id": "exec_timeout",
+              "sandbox_id": "sb_001",
+              "state": "timed_out",
+              "timeout_ms": 1,
+              "max_output_bytes": 65536,
+              "exit_code": null,
+              "stdout": "",
+              "stderr": "",
+              "started_at": "2026-11-02T07:01:00Z",
+              "finished_at": "2026-11-02T07:01:01Z",
+              "truncated": false,
+              "result_code": "EXEC_TIMED_OUT"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "model": "exec",
+        "exec_id": "exec_timeout",
+        "state": "timed_out",
+        "exit_code": null,
+        "result_code": "EXEC_TIMED_OUT"
+      }
+    },
+    {
+      "name": "fn_success",
+      "kind": "success",
+      "operation": "fn",
+      "input": {
+        "sandbox_id": "sb_001",
+        "name": "read",
+        "args": ["notes.txt"],
+        "kwargs": {},
+        "run_id": "run_003",
+        "step_id": "step_003"
+      },
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sandboxes/sb_001/fn",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "json": {
+              "name": "read",
+              "args": ["notes.txt"],
+              "kwargs": {},
+              "run_id": "run_003",
+              "step_id": "step_003",
+              "timeout_ms": 30000,
+              "max_output_bytes": 65536
+            }
+          },
+          "response": {
+            "status": 202,
+            "json": {
+              "exec_id": "exec_fn",
+              "sandbox_id": "sb_001",
+              "state": "running",
+              "timeout_ms": 30000,
+              "max_output_bytes": 65536
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "path": "/v1/exec/exec_fn",
+            "headers": {
+              "Accept": "application/json"
+            },
+            "json": null
+          },
+          "response": {
+            "status": 200,
+            "json": {
+              "exec_id": "exec_fn",
+              "sandbox_id": "sb_001",
+              "state": "succeeded",
+              "timeout_ms": 30000,
+              "max_output_bytes": 65536,
+              "exit_code": 0,
+              "stdout": "hello\n",
+              "stderr": "",
+              "started_at": "2026-11-02T07:02:00Z",
+              "finished_at": "2026-11-02T07:02:01Z",
+              "truncated": false,
+              "result_code": "EXEC_SUCCEEDED"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "model": "exec",
+        "exec_id": "exec_fn",
+        "state": "succeeded",
+        "stdout": "hello\n",
+        "result_code": "EXEC_SUCCEEDED"
+      }
+    },
+    {
+      "name": "cancel_success",
+      "kind": "success",
+      "operation": "cancel",
+      "input": {
+        "exec_id": "exec_cancel"
+      },
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/exec/exec_cancel/cancel",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "json": {}
+          },
+          "response": {
+            "status": 200,
+            "json": {
+              "exec_id": "exec_cancel",
+              "sandbox_id": "sb_001",
+              "state": "cancelled",
+              "timeout_ms": 30000,
+              "max_output_bytes": 65536,
+              "exit_code": null,
+              "stdout": "",
+              "stderr": "",
+              "started_at": "2026-11-02T07:03:00Z",
+              "finished_at": "2026-11-02T07:03:01Z",
+              "truncated": false,
+              "result_code": "EXEC_CANCELLED"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "model": "exec",
+        "exec_id": "exec_cancel",
+        "state": "cancelled",
+        "result_code": "EXEC_CANCELLED"
+      }
+    },
+    {
+      "name": "destroy_success",
+      "kind": "success",
+      "operation": "destroy",
+      "input": {
+        "sandbox_id": "sb_001"
+      },
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sandboxes/sb_001/destroy",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "json": {}
+          },
+          "response": {
+            "status": 200,
+            "json": {
+              "sandbox_id": "sb_001",
+              "state": "reclaimed",
+              "node_id": "node_001",
+              "workspace_id": "ws_demo",
+              "created_at": "2026-11-02T07:00:00Z",
+              "expires_at": "2026-11-02T07:10:00Z",
+              "ttl_seconds": 600,
+              "reclaim_reason": "user_request",
+              "reclaimed_at": "2026-11-02T07:04:00Z"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "model": "sandbox",
+        "sandbox_id": "sb_001",
+        "state": "reclaimed",
+        "reclaim_reason": "user_request"
+      }
+    },
+    {
+      "name": "metrics_success",
+      "kind": "success",
+      "operation": "metrics",
+      "input": {},
+      "exchanges": [
+        {
+          "request": {
+            "method": "GET",
+            "path": "/metrics",
+            "headers": {
+              "Accept": "text/plain"
+            },
+            "json": null
+          },
+          "response": {
+            "status": 200,
+            "text": "# HELP personal_agent_exec_total Total accepted execs.\n# TYPE personal_agent_exec_total counter\npersonal_agent_exec_total 3\n"
+          }
+        }
+      ],
+      "expected": {
+        "model": "text"
+      }
+    },
+    {
+      "name": "wait_timeout_cancels",
+      "kind": "wait_timeout",
+      "operation": "exec",
+      "input": {
+        "sandbox_id": "sb_001",
+        "command": ["python", "-c", "import time; time.sleep(10)"],
+        "run_id": "run_004",
+        "step_id": "step_004",
+        "wait_timeout_seconds": 0
+      },
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sandboxes/sb_001/exec",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "json": {
+              "run_id": "run_004",
+              "step_id": "step_004",
+              "timeout_ms": 30000,
+              "max_output_bytes": 65536,
+              "command": ["python", "-c", "import time; time.sleep(10)"]
+            }
+          },
+          "response": {
+            "status": 202,
+            "json": {
+              "exec_id": "exec_wait",
+              "sandbox_id": "sb_001",
+              "state": "running",
+              "timeout_ms": 30000,
+              "max_output_bytes": 65536
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/exec/exec_wait/cancel",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "json": {}
+          },
+          "response": {
+            "status": 200,
+            "json": {
+              "exec_id": "exec_wait",
+              "sandbox_id": "sb_001",
+              "state": "cancelled",
+              "timeout_ms": 30000,
+              "max_output_bytes": 65536,
+              "exit_code": null,
+              "stdout": "",
+              "stderr": "",
+              "started_at": "2026-11-02T07:05:00Z",
+              "finished_at": "2026-11-02T07:05:01Z",
+              "truncated": false,
+              "result_code": "EXEC_CANCELLED"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "exec_id": "exec_wait",
+        "code": "SDK_WAIT_TIMEOUT",
+        "cancelled": true
+      }
+    },
+    {
+      "name": "error_invalid_idempotency_key",
+      "kind": "api_error",
+      "operation": "create",
+      "input": {
+        "tier": "tier1",
+        "workspace_id": "ws_demo",
+        "ttl_seconds": 600,
+        "idempotency_key": ""
+      },
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sandboxes",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+              "Idempotency-Key": ""
+            },
+            "json": {
+              "tier": "tier1",
+              "workspace_id": "ws_demo",
+              "ttl_seconds": 600
+            }
+          },
+          "response": {
+            "status": 400,
+            "json": {
+              "error": {
+                "code": "INVALID_IDEMPOTENCY_KEY",
+                "message": "The idempotency key is empty",
+                "retryable": false,
+                "request_id": "req_invalid_key"
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "code": "INVALID_IDEMPOTENCY_KEY",
+        "status_code": 400,
+        "request_id": "req_invalid_key",
+        "retryable": false
+      }
+    },
+    {
+      "name": "error_idempotency_conflict",
+      "kind": "api_error",
+      "operation": "create",
+      "input": {
+        "tier": "tier1",
+        "workspace_id": "ws_other",
+        "ttl_seconds": 600,
+        "idempotency_key": "create-fixture-001"
+      },
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sandboxes",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+              "Idempotency-Key": "create-fixture-001"
+            },
+            "json": {
+              "tier": "tier1",
+              "workspace_id": "ws_other",
+              "ttl_seconds": 600
+            }
+          },
+          "response": {
+            "status": 409,
+            "json": {
+              "error": {
+                "code": "IDEMPOTENCY_CONFLICT",
+                "message": "The key belongs to a different request",
+                "retryable": false,
+                "request_id": "req_conflict"
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "code": "IDEMPOTENCY_CONFLICT",
+        "status_code": 409,
+        "request_id": "req_conflict",
+        "retryable": false
+      }
+    },
+    {
+      "name": "error_sandbox_not_found",
+      "kind": "api_error",
+      "operation": "destroy",
+      "input": {
+        "sandbox_id": "sb_missing"
+      },
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sandboxes/sb_missing/destroy",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "json": {}
+          },
+          "response": {
+            "status": 404,
+            "json": {
+              "error": {
+                "code": "SANDBOX_NOT_FOUND",
+                "message": "Unknown sandbox",
+                "retryable": false,
+                "request_id": "req_not_found"
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "code": "SANDBOX_NOT_FOUND",
+        "status_code": 404,
+        "request_id": "req_not_found",
+        "retryable": false
+      }
+    },
+    {
+      "name": "error_sandbox_gone",
+      "kind": "api_error",
+      "operation": "destroy",
+      "input": {
+        "sandbox_id": "sb_gone"
+      },
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/sandboxes/sb_gone/destroy",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "json": {}
+          },
+          "response": {
+            "status": 410,
+            "json": {
+              "error": {
+                "code": "SANDBOX_GONE",
+                "message": "Sandbox has been reclaimed",
+                "retryable": false,
+                "request_id": "req_gone"
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "code": "SANDBOX_GONE",
+        "status_code": 410,
+        "request_id": "req_gone",
+        "retryable": false
+      }
+    },
+    {
+      "name": "error_exec_not_cancellable",
+      "kind": "api_error",
+      "operation": "cancel",
+      "input": {
+        "exec_id": "exec_finished"
+      },
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/v1/exec/exec_finished/cancel",
+            "headers": {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            "json": {}
+          },
+          "response": {
+            "status": 409,
+            "json": {
+              "error": {
+                "code": "EXEC_NOT_CANCELLABLE",
+                "message": "Exec already reached a terminal state",
+                "retryable": false,
+                "request_id": "req_not_cancellable"
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "code": "EXEC_NOT_CANCELLABLE",
+        "status_code": 409,
+        "request_id": "req_not_cancellable",
+        "retryable": false
+      }
+    },
+    {
+      "name": "error_rate_limited",
+      "kind": "api_error",
+      "operation": "metrics",
+      "input": {},
+      "exchanges": [
+        {
+          "request": {
+            "method": "GET",
+            "path": "/metrics",
+            "headers": {
+              "Accept": "text/plain"
+            },
+            "json": null
+          },
+          "response": {
+            "status": 429,
+            "json": {
+              "error": {
+                "code": "RATE_LIMITED",
+                "message": "Retry later",
+                "retryable": true,
+                "request_id": "req_rate_limited"
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "code": "RATE_LIMITED",
+        "status_code": 429,
+        "request_id": "req_rate_limited",
+        "retryable": true
+      }
+    }
+  ]
+}

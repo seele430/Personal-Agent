@@ -111,6 +111,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L1：Python SDK 与语言中立 v1 fixture（内存传输）
+    "unit/test_platform_sdk.py": TestSchema(
+        layer="unit",
+        domain="platform_sdk",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
     # L1：Agent 工具调用次数上限
     "test_agent_call_count.py": TestSchema(
         layer="unit",

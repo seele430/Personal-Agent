@@ -53,3 +53,9 @@
 - 今天做了什么：新增可复跑的本地确定性链路与真实模型 HTTP 验收脚本；使用 DeepSeek Flash（API 模型名 `deepseek-flash`）完成真实“发问 → 工具 → 回答”，并修复工具完成状态在前端停留过短的问题。新增真实浏览器录屏脚本，自动登录临时 member 账号、创建提醒并检查提醒页面。
 - 验收与卡点：本地链路 PASS，明确未调用外部模型，证据见 `docs/evidence/d9-local-tool-chain.txt`；真实外部模型调用 PASS，事件顺序为 `run_started → tool_started → tool_finished → text_delta … → done`，run / exec 均为 succeeded，证据见 `docs/evidence/d9-live-model.txt`。最终录屏的浏览器操作窗口为 60.509 秒，视频为 `docs/evidence/d9-g1-demo.webm`，工具完成、回答和提醒关键帧分别为 `d9-frame-tool.png`、`d9-frame-answer.png`、`d9-frame-reminder.png`；仅在临时数据库新增 1 条 `in_app` 提醒，未发送外部通知，临时服务已关闭。全量 **62 个文件 / 591 个用例 PASS，42.66 秒**，证据见 `docs/evidence/d9-backend-tests.txt`；前端生产构建 PASS，证据见 `docs/evidence/d9-frontend-build.txt`。
 - 明天第一件事：开始 D10，封装 Python SDK，并建立 v1 兼容性 fixture；保持真实模型验收与确定性测试证据分离。
+
+## D10 — 2026-11-02（W2 检查点）
+
+- 今天做了什么：新增可独立构建的 `sdk/python` 包，封装 create / exec / fn / get_exec / cancel / destroy / metrics；支持执行超时参数、默认轮询终态、主动取消、等待超时自动取消和仅停止等待选项，HTTP 状态与稳定错误码映射为 SDK 异常。新增 `sdk/fixtures/v1/contracts.json`，以 14 组语言中立场景冻结成功、执行超时、取消、等待超时和 400 / 404 / 409 / 410 / 429 错误；所有契约测试使用内存传输替身，未宣称平台 HTTP 服务已接通。
+- 验收与卡点：SDK 定向 **8 个测试方法 / 14 组 fixture PASS**，证据见 `docs/evidence/d10-sdk-contract-tests.txt`；SDK wheel 构建 PASS；测试索引审计 PASS，证据见 `docs/evidence/d10-test-audit.txt`；全量 **63 个文件 / 599 个用例 PASS，61.95 秒**，证据见 `docs/evidence/d10-backend-tests.txt`。显式空幂等键会原样发送并由服务端错误语义处理，非法等待时间在创建 exec 前拒绝。
+- 明天第一件事：开始 D11，将 exec 接入 tier1 process 沙箱并接通全链路取消；搜索并删除宿主直跑路径，验证取消后进程树无残留，同时明确 tier1 不是恶意代码安全边界。

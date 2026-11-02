@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 1b62f6594d1f4f10 -->
+<!-- membership-digest: 354e97a3269ebc3f -->
 
-## unit — L1 单元测试 (8 files)
+## unit — L1 单元测试 (9 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -29,6 +29,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_rss_errors.py` | tests/ 根 | rss | none | mocked | medium | registered-inferred |
 | `test_tool_registry.py` | tests/ 根 | tool_policy | none | none | low | registered-inferred |
 | `unit/test_agent_tool_limits.py` | tests/unit/ | reminder | none | mocked | medium | registered |
+| `unit/test_platform_sdk.py` | tests/unit/ | platform_sdk | none | none | low | registered-inferred |
 | `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 | `unit/test_url_policy.py` | tests/unit/ | rss | none | mocked | high | registered-inferred |
 

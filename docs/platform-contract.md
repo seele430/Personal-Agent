@@ -187,7 +187,7 @@ failed → reclaimed
 
 - 每条 trajectory 事件显式携带整数 `schema_version: 1`，并关联 `run_id`；工具执行事件同时关联 `step_id`、`exec_id`、`sandbox_id`。
 - 每个 run 内有单调递增的 `sequence`；事件必须有类型、时间戳和状态。最终状态必须能与 exec / sandbox 的最终记录对账。详细字段和 JSONL 形状在 D14 的 `docs/trajectory-schema.md` 冻结。
-- D10 冻结一组 v1 HTTP / SDK 请求与响应 fixture，覆盖 create、exec、fn、destroy、metrics、cancel 和典型错误；后续变更必须重跑兼容性测试。
+- D10 已冻结一组 v1 HTTP / SDK 请求与响应 fixture，覆盖 create、exec、fn、destroy、metrics、cancel 和典型错误；共享 fixture 位于 `sdk/fixtures/v1/contracts.json`，Python SDK 位于 `sdk/python/personal_agent_platform`，可用 `python tests/unit/test_platform_sdk.py` 重跑契约测试。fixture 使用内存传输替身，不代表平台 HTTP 服务已经实现。
 - v1 内可新增可选响应字段，旧调用方必须忽略未知可选响应字段；不得改变既有字段类型、单位、默认值或状态含义。
 - v1 内新增可选请求字段时，省略它的行为必须与旧版本完全一致。新增必填请求字段、删除字段、收紧既有合法输入或改变状态 / 错误语义，必须升级主版本。
 - 本周期只保留 v1 兼容性证据，不承诺并行维护多个主版本。真实训练接入与 trajectory 回放不在契约内。
