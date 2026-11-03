@@ -74,6 +74,7 @@ class ExecRequest(BaseModel):
 class RegisterNodeRequest(BaseModel):
     node_id: str | None = None
     capacity: int = 4
+    heartbeat_interval_seconds: int = 10
 
 
 class HeartbeatRequest(BaseModel):
@@ -250,6 +251,13 @@ def _node_body(row: dict[str, Any]) -> dict[str, Any]:
         "capacity": row["capacity"],
         "registered_at": row["registered_at"],
         "last_heartbeat": row["last_heartbeat"],
+        "heartbeat_interval_seconds": row.get(
+            "heartbeat_interval_seconds", 10
+        ),
+        "lease_seconds": row.get("lease_seconds"),
+        "lease_expires_at": row.get("lease_expires_at"),
+        "seconds_since_heartbeat": row.get("seconds_since_heartbeat"),
+        "expired": row.get("expired", False),
     }
 
 
@@ -257,7 +265,9 @@ def _node_body(row: dict[str, Any]) -> dict[str, Any]:
 def register_node(payload: RegisterNodeRequest):
     try:
         row = NodeRegistry().register(
-            node_id=payload.node_id, capacity=payload.capacity
+            node_id=payload.node_id,
+            capacity=payload.capacity,
+            heartbeat_interval_seconds=payload.heartbeat_interval_seconds,
         )
     except ValueError as exc:
         return _error(400, "INVALID_ARGUMENT", str(exc))

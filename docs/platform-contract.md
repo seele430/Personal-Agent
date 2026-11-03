@@ -161,6 +161,11 @@ failed → reclaimed
 > `NODE_GENERATION_STALE`，且不会改写 `last_heartbeat`。
 > **租约过期判定（连续 3 个周期无心跳 → `not_ready`）属于 D18**，D17 只记录
 > `last_heartbeat` 与状态字段。
+> D18（2026-11-03）：租约判定已实现。节点状态由 `last_heartbeat` 推导：超过
+> `heartbeat_interval_seconds × 3` 即 `not_ready`（响应带 `lease_seconds`、
+> `lease_expires_at`、`seconds_since_heartbeat`、`expired`）。有效 generation
+> 的心跳会把状态刷新回 `ready`；旧 generation 的心跳继续 409，且不改写心跳
+> 时间。过期只影响调度资格，不做进程清理（沙箱回收是 D16 的事）。
 
 - 节点每次注册都获得新的、单调不可复用的 `generation`；即使 `node_id` 相同，旧 generation 也不能续新实例的租约。
 - 心跳与续约必须同时匹配 `node_id + generation`，并携带服务端可校验的租约信息。

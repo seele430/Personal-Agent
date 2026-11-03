@@ -316,6 +316,16 @@ TEST_SCHEMAS = {
         risk="low",
     ),
 
+    # L2：D18 节点租约（3 个周期过期 / 续约 / 旧代际不能复活）
+    "integration/test_platform_lease.py": TestSchema(
+        layer="integration",
+        domain="platform_nodes",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",

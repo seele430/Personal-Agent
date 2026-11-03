@@ -108,3 +108,9 @@
 - 验收与卡点：`tests/integration/test_platform_nodes.py` **9 个用例全绿**（注册分配 generation 1 / 重复注册 +1 / 心跳推进 last_heartbeat / 旧代际 409 且不改写心跳 / 未知节点 404 / 列表含 last_heartbeat / 建沙箱自动登记默认节点 / capacity 非法 400 / 仓储层异常类型），证据见 `docs/evidence/d17-nodes.txt`；全量 **72 文件 / 672 用例 PASS，187.42 秒**（D16 基线 71 / 663，248.19 秒）。
 - 遗留限制：① **租约过期判定没做**（连续 3 个周期无心跳 → not_ready），按计划属于 D18；② 没有 cordon / drain（D19）；③ generation 只保留当前值，历史代际不留痕，排障时看不到「谁在什么时候注册了第几代」；④ 节点容量字段只是记录，还没有调度（D20）；⑤ `/v1/nodes` 同样没有认证。
 - 明天第一件事：D18 租约 + 续约 + 过期判定 —— 停心跳 3 个周期后 `not_ready`，旧 generation 的延迟心跳继续 409。
+## D18 — 2026-11-03
+
+- 今天做了什么：实现节点租约判定。`agent_nodes` 增加 `heartbeat_interval_seconds`（旧库补列，幂等），节点状态改为**由 `last_heartbeat` 推导**：超过 `间隔 × 3` 即 `not_ready`，响应同时给出 `lease_seconds`、`lease_expires_at`、`seconds_since_heartbeat`、`expired`。注册时可指定心跳间隔（1—300 秒），重复注册 generation +1 并刷新租约；有效 generation 的心跳把状态刷回 `ready`，旧 generation 仍然是 409 且不改写心跳时间。状态推导在读路径完成，不依赖后台任务刚好跑过。
+- 验收与卡点：`tests/integration/test_platform_lease.py` **7 个用例全绿**（间隔 × 3 的租约参数、29s 仍 ready / 31s not_ready、心跳续约、旧代际不能复活、非法间隔 400、API 真实时钟 1 秒周期等 3.4 秒后 not_ready、心跳恢复 ready），证据见 `docs/evidence/d18-lease.txt`；全量 **73 文件 / 679 用例 PASS，298.91 秒**（D17 是 72 / 672、187.42 秒；这次慢在整机负载，用例数与文件数都是净增），证据见 `docs/evidence\d18-backend-tests.txt`。
+- 遗留限制：① 过期只影响「状态展示」，还没有调度器消费这个状态（D20/D23）；② 没有 cordon / drain（D19）；③ 节点 generation 只保留当前值，历史代际不留痕；④ `/v1/nodes` 仍无认证；⑤ 租约判定用本机时钟，没有做时钟漂移处理。
+- 明天第一件事：D19 cordon / drain —— 摘流不杀存量、drain 期间不接新活、drain 完成才允许 remove。

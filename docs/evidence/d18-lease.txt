@@ -1,0 +1,19 @@
+# D18 节点租约：3 个周期过期、续约与旧代际
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_platform_lease -v
+> 时间：2026-11-03T19:08:22.6748098+08:00
+> 说明：仓储层用注入时钟；API 层用真实时钟（1 秒周期 + 等 3.4 秒）。
+
+test_heartbeat_restores_ready (tests.integration.test_platform_lease.NodeLeaseApiTest.test_heartbeat_restores_ready) ... 2026-11-03 19:08:28,606 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_node_goes_not_ready_after_three_missed_heartbeats (tests.integration.test_platform_lease.NodeLeaseApiTest.test_node_goes_not_ready_after_three_missed_heartbeats) ... 2026-11-03 19:08:32,191 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_heartbeat_renews_lease (tests.integration.test_platform_lease.NodeLeaseTest.test_heartbeat_renews_lease) ... ok
+test_invalid_heartbeat_interval_is_rejected (tests.integration.test_platform_lease.NodeLeaseTest.test_invalid_heartbeat_interval_is_rejected) ... ok
+test_node_stays_ready_until_three_periods_pass (tests.integration.test_platform_lease.NodeLeaseTest.test_node_stays_ready_until_three_periods_pass) ... ok
+test_registration_exposes_lease_parameters (tests.integration.test_platform_lease.NodeLeaseTest.test_registration_exposes_lease_parameters) ... ok
+test_stale_generation_cannot_revive_expired_node (tests.integration.test_platform_lease.NodeLeaseTest.test_stale_generation_cannot_revive_expired_node) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 7.324s
+
+OK
