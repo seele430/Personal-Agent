@@ -18,6 +18,7 @@ from src.inbox_api import router as inbox_router
 from src.monitors_api import router as monitor_router
 from src.notifications_api import router as notification_router
 from src.platform_api import router as platform_router
+from src.platform.reaper import start_reaper, stop_reaper
 from src.reminder_api import router as reminder_router
 from src.tts_api import router as tts_router
 from src.teams_api import router as teams_router
@@ -45,7 +46,13 @@ async def lifespan(_app: FastAPI):
             migrate_chat_ownership(conn)
             init_budget_schema(conn)
 
-    yield
+    # D16：平台 TTL 回收线程；测试环境用 PERSONAL_AGENT_PLATFORM_REAPER=0 关闭。
+    start_reaper()
+
+    try:
+        yield
+    finally:
+        stop_reaper()
 
 
 # ==========================================

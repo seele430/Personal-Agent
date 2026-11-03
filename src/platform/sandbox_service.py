@@ -103,6 +103,14 @@ def init_platform_schema(conn: sqlite3.Connection) -> None:
         """
     )
 
+    # D16：回收原因（manual / ttl_expired / reaper）。旧库补列，幂等。
+    columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(agent_sandboxes)")
+    }
+
+    if "reclaim_reason" not in columns:
+        conn.execute("ALTER TABLE agent_sandboxes ADD COLUMN reclaim_reason TEXT")
+
 
 class SandboxService:
     def __init__(
@@ -272,8 +280,12 @@ class SandboxService:
         with closing(self.connect()) as conn:
             return self._row(conn, sandbox_id)
 
-    def reclaim(self, sandbox_id: str) -> dict[str, Any]:
-        """回收工作区并把状态置为 reclaimed；重复调用幂等。"""
+    def reclaim(self, sandbox_id: str, *, reason: str = "manual") -> dict[str, Any]:
+        """回收工作区并把状态置为 reclaimed；重复调用幂等。
+
+        ``reason`` 会写进 tombstone：``manual``（用户/API 主动销毁）、
+        ``ttl_expired``（reaper 到期回收）。
+        """
 
         with closing(self.connect()) as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -290,10 +302,11 @@ class SandboxService:
                     conn.execute(
                         """
                         UPDATE agent_sandboxes
-                        SET state = 'reclaimed', reclaimed_at = ?
+                        SET state = 'reclaimed', reclaimed_at = ?,
+                            reclaim_reason = ?
                         WHERE id = ?
                         """,
-                        (utc_now(), sandbox_id),
+                        (utc_now(), reason, sandbox_id),
                     )
 
                 conn.commit()
@@ -304,6 +317,63 @@ class SandboxService:
         shutil.rmtree(self.root / sandbox_id, ignore_errors=True)
 
         return self.get(sandbox_id)
+
+    def list_expired(self, now: datetime | None = None) -> list[dict[str, Any]]:
+        """还没回收但已经过期的沙箱。"""
+
+        moment = now or datetime.now(timezone.utc)
+
+        with closing(self.connect()) as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM agent_sandboxes
+                WHERE state = 'created' AND expires_at <= ?
+                ORDER BY expires_at
+                """,
+                (moment.isoformat(),),
+            ).fetchall()
+
+        return [dict(row) for row in rows]
+
+    def purge_tombstones(self, before: datetime | None = None) -> int:
+        """删除回收时间早于 ``before`` 的 tombstone 及其幂等记录。
+
+        契约要求两者「原子清除」：同一事务里先删幂等记录再删沙箱，
+        避免出现「沙箱没了、key 还占着」的半状态。
+        """
+
+        moment = before or (datetime.now(timezone.utc) - timedelta(hours=24))
+
+        with closing(self.connect()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT id FROM agent_sandboxes
+                    WHERE state = 'reclaimed' AND reclaimed_at <= ?
+                    """,
+                    (moment.isoformat(),),
+                ).fetchall()
+
+                ids = [row["id"] for row in rows]
+
+                for sandbox_id in ids:
+                    conn.execute(
+                        "DELETE FROM sandbox_idempotency WHERE sandbox_id = ?",
+                        (sandbox_id,),
+                    )
+                    conn.execute(
+                        "DELETE FROM agent_sandboxes WHERE id = ?",
+                        (sandbox_id,),
+                    )
+
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+
+        return len(ids)
 
     # ------------------------------------------------------------------
     # 内部

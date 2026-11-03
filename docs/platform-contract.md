@@ -120,6 +120,14 @@ queued ─────────→ cancelled
 
 ### 4.2 sandbox 状态机
 
+> D16（2026-11-03）：TTL 回收与 tombstone 已实现于 `src/platform/reaper.py`。
+> `sweep_once()` 先取消该沙箱的活动 exec（进程树由执行器清理），再置
+> `reclaimed` 并写 `reclaim_reason=ttl_expired`；tombstone 与幂等记录默认保留
+> 24 小时（`PERSONAL_AGENT_TOMBSTONE_HOURS` 可覆盖），到期在同一事务里清除。
+> API 访问做过期兜底：reaper 还没跑时，访问一个已过期的沙箱会先触发同一条
+> 回收路径再返回 410。后台线程间隔 `PERSONAL_AGENT_PLATFORM_REAPER_INTERVAL`
+> （默认 60 秒），测试环境用 `PERSONAL_AGENT_PLATFORM_REAPER=0` 关闭。
+
 ```text
 created → running ↔ idle
 created / running / idle → failed

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import threading
 
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Header
@@ -18,6 +19,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from src.core.run_control import CancellationToken
+from src.platform import active_execs
 from src.platform.exec_service import (
     ERROR_OUTPUT_LIMIT,
     EXEC_CANCELLED,
@@ -40,9 +42,6 @@ from src.platform.sandbox_service import (
 router = APIRouter(prefix="/v1", tags=["沙箱平台"])
 
 NODE_ID = "node_local"
-
-ACTIVE_EXECS: dict[str, CancellationToken] = {}
-ACTIVE_LOCK = threading.Lock()
 
 
 # ==========================================
@@ -97,6 +96,7 @@ def _sandbox_body(sandbox: dict[str, Any]) -> dict[str, Any]:
         "expires_at": sandbox["expires_at"],
         "ttl_seconds": sandbox["ttl_seconds"],
         "reclaimed_at": sandbox.get("reclaimed_at"),
+        "reclaim_reason": sandbox.get("reclaim_reason"),
     }
 
 
@@ -133,13 +133,39 @@ def _result_code(outcome) -> str:
     return "EXEC_FAILED"
 
 
+def _sandbox_expired(sandbox: dict[str, Any]) -> bool:
+    """沙箱是否已经越过 TTL。
+
+    契约要求「到期后 reaper 先取消活动 exec、清进程树，再置 reclaimed」；
+    这里做惰性兜底：reaper 还没跑到时，访问本身也会触发同一条回收路径。
+    """
+
+    expires_at = sandbox.get("expires_at")
+
+    if not expires_at:
+        return False
+
+    try:
+        deadline = datetime.fromisoformat(expires_at)
+    except ValueError:
+        return False
+
+    return datetime.now(timezone.utc) >= deadline
+
+
 def _require_sandbox(sandbox_id: str, *, allow_reclaimed: bool = False):
     """返回 (sandbox, None) 或 (None, error_response)。"""
 
+    service = SandboxService()
+
     try:
-        sandbox = SandboxService().get(sandbox_id)
+        sandbox = service.get(sandbox_id)
     except SandboxNotFound:
         return None, _error(404, "SANDBOX_NOT_FOUND", "沙箱不存在")
+
+    if sandbox["state"] == "created" and _sandbox_expired(sandbox):
+        active_execs.cancel_for_sandbox(sandbox_id)
+        sandbox = service.reclaim(sandbox_id, reason="ttl_expired")
 
     if sandbox["state"] == "reclaimed" and not allow_reclaimed:
         return None, _error(410, "SANDBOX_GONE", "沙箱已回收")
@@ -157,8 +183,7 @@ def _run_exec(
     store = ExecStore()
     token = CancellationToken()
 
-    with ACTIVE_LOCK:
-        ACTIVE_EXECS[exec_id] = token
+    active_execs.register(exec_id, sandbox_id, token)
 
     try:
         outcome = Tier1Executor().execute_command(
@@ -192,8 +217,7 @@ def _run_exec(
             result_code="EXEC_FAILED",
         )
     finally:
-        with ACTIVE_LOCK:
-            ACTIVE_EXECS.pop(exec_id, None)
+        active_execs.unregister(exec_id)
 
 
 # ==========================================
@@ -237,7 +261,7 @@ def destroy_sandbox(sandbox_id: str):
     if error is not None:
         return error
 
-    return _sandbox_body(SandboxService().reclaim(sandbox_id))
+    return _sandbox_body(SandboxService().reclaim(sandbox_id, reason="manual"))
 
 
 # ==========================================
@@ -316,11 +340,7 @@ def cancel_exec(exec_id: str):
     if row["state"] in TERMINAL_EXEC_STATES:
         return _error(409, "EXEC_NOT_CANCELLABLE", "exec 已到不可取消的终态")
 
-    with ACTIVE_LOCK:
-        token = ACTIVE_EXECS.get(exec_id)
-
-    if token is not None:
-        token.cancel()
+    active_execs.cancel(exec_id)
 
     # 返回完整资源：SDK 的 cancel() 会按 ExecResult 解析，缺字段会炸。
     return JSONResponse(status_code=202, content=_exec_body(row))

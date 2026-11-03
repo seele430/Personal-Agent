@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "sandbox_id": "sbx_d78a4c3b6df74e45842e14fbfb5fec3d",
+  "ttl_seconds": 1,
+  "reaper_interval_seconds": 0.5,
+  "state_before": "created",
+  "state_after": "reclaimed",
+  "reclaim_reason": "ttl_expired",
+  "reclaimed_at": "2026-11-03T08:43:56.455508+00:00",
+  "api_status_after_reclaim": 410,
+  "proved_by": "background reaper thread (no API access before read)"
+}

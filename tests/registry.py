@@ -296,6 +296,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：D16 TTL 回收 / tombstone 保留 / 410 与惰性过期
+    "integration/test_platform_ttl.py": TestSchema(
+        layer="integration",
+        domain="platform_ttl",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",
