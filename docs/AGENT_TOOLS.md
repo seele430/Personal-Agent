@@ -126,6 +126,23 @@ if name != "create_reminder":
   → 终态 + trajectory 事件
 ```
 
+### D12 的工具面
+
+| 工具 | 执行位置 | 默认策略 | 暴露给模型 |
+| --- | --- | --- | --- |
+| `create_reminder` / `list_reminders` | tier1 handler | allow | ✅ |
+| `update_reminder` / `cancel_reminder` | tier1 handler | ask | ✅（等 D13 审批交互） |
+| `read_file` / `list_dir` | tier1 handler | allow | ✅ |
+| `write_file` / `run_shell` / `run_python` / `http_get` | tier1 handler | ask | ❌ 暂不暴露 |
+
+- **路径规则**：只接受工作区内的相对路径；先解析 real path 再判断归属，
+  `..`、绝对路径、盘符路径、符号链接逃逸都会被拒绝
+  （见 `tests/integration/test_sandbox_tools.py`）。
+- **工作区生命周期**：同一次 run 共享一个沙箱工作区（`open_run_sandbox`），
+  run 结束（成功 / 取消 / 失败）统一回收，文件不跨 run 残留。
+- **输出上限**：read / shell / python / http 都有字节上限；写入受工具参数
+  32 KB 上限约束。
+
 ---
 
 ## 2. 工具选择：两层决策

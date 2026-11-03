@@ -42,6 +42,7 @@ from src.knowledge.inject import (
     build_retrieval_context,
 )
 from src.tools.reminder import init_db
+from src.tools import sandbox_tools
 from src.platform.exec_service import (
     EXEC_CANCELLED,
     EXEC_SUCCEEDED,
@@ -87,7 +88,7 @@ MAX_USER_MESSAGE_BYTES = 32000
 
 MAX_REMINDER_TOOL_CALLS = 1
 MAX_REMINDER_MESSAGE_BYTES = 1024
-MAX_TOOL_ARGUMENT_BYTES = 4096
+MAX_TOOL_ARGUMENT_BYTES = 32768
 
 # 单次列出的提醒条数上限：
 # 不要把整张表塞进模型上下文。
@@ -214,11 +215,14 @@ UPDATE_REMINDER_TOOL = {
 
 # 暴露给模型的全部工具。
 # 每个工具都必须经过登录身份校验才能读写数据。
+# D12 只把 read_file / list_dir 暴露给模型：写文件、shell、python、http
+# 默认策略是 ask，等 D13 接入审批交互后再决定是否暴露。
 REMINDER_TOOLS = [
     REMINDER_TOOL,
     LIST_REMINDERS_TOOL,
     CANCEL_REMINDER_TOOL,
     UPDATE_REMINDER_TOOL,
+    *sandbox_tools.MODEL_VISIBLE_TOOLS,
 ]
 
 
@@ -624,6 +628,8 @@ TOOL_RULES = (
     "工具返回失败时必须明确告知用户。"
     "只有工具返回成功，才能说提醒已保存。"
     "提醒已保存不代表通知已经送达。"
+    "需要查看沙箱工作区时，可以调用 read_file 或 list_dir，"
+    "路径只能是工作区内的相对路径；不要编造文件内容。"
 )
 
 
@@ -674,6 +680,7 @@ def execute_tool_on_platform(
     tool_call,
     *,
     cancel_token: CancellationToken | None = None,
+    sandbox_id: str | None = None,
     on_started=None,
     on_cancel_requested=None,
     require_allow: bool = True,
@@ -722,6 +729,7 @@ def execute_tool_on_platform(
                 cancel_token=cancel_token,
                 on_started=on_started,
                 on_cancel_requested=on_cancel_requested,
+                sandbox_id=sandbox_id,
                 **limits,
             )
         else:
@@ -737,13 +745,36 @@ def execute_tool_on_platform(
                 cancel_token=cancel_token,
                 on_started=on_started,
                 on_cancel_requested=on_cancel_requested,
+                sandbox_id=sandbox_id,
                 **limits,
             )
     finally:
-        if outcome is not None:
+        # 调用方没给沙箱时，这次 exec 的沙箱就是一次性的，用完即回收；
+        # 复用的 run 级沙箱由调用方在 run 结束时 destroy。
+        if outcome is not None and sandbox_id is None:
             executor.destroy(outcome.sandbox_id)
 
     return outcome
+
+
+def open_run_sandbox() -> str:
+    """为一个 run 创建可复用的沙箱工作区。
+
+    同一次对话里的 read / ls / write 必须看到同一批文件，所以沙箱按 run
+    创建、按 run 回收；一次性的 exec 沙箱只适合无状态命令。
+    """
+
+    return default_executor().open_sandbox()
+
+
+def destroy_run_sandbox(sandbox_id: str | None) -> None:
+    if not sandbox_id:
+        return
+
+    try:
+        default_executor().destroy(sandbox_id)
+    except Exception:  # noqa: BLE001 - 回收失败不能掩盖 run 的真实结果
+        logger.exception("回收沙箱失败 sandbox_id=%s", sandbox_id)
 
 
 def outcome_to_result(outcome) -> dict:
@@ -960,6 +991,12 @@ for _schema, _policy in (
         _schema, policy=_policy, handler=_execute_reminder_tool
     )
 del _schema, _policy
+
+# D12 沙箱工具：read / ls 允许，write / shell / python / http 默认 ask。
+for _schema, _policy, _handler in sandbox_tools.TOOL_DEFINITIONS:
+    TOOL_REGISTRY.register(_schema, policy=_policy, handler=_handler)
+
+del _schema, _policy, _handler
 
 
 def _knowledge_context(

@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -88,6 +89,9 @@ RUNNER_PATH = Path(__file__).resolve().with_name("tier1_runner.py")
 
 ROOT_ENV = "PERSONAL_AGENT_SANDBOX_ROOT"
 DEFAULT_ROOT_NAME = "personal-agent-tier1"
+
+# 平台自己生成的沙箱 ID；复用沙箱时必须是这个形状，不能让调用方传路径进来。
+SANDBOX_ID_PATTERN = re.compile(r"sbx_[0-9a-f]{32}")
 
 TOOL_ERROR_TYPES: dict[str, type[BaseException]] = {
     "ValueError": ValueError,
@@ -273,6 +277,7 @@ class Tier1Executor:
         timeout_ms: int | None = None,
         max_output_bytes: int | None = None,
         call_id: str | None = None,
+        sandbox_id: str | None = None,
         on_started: Callable[[str], None] | None = None,
         on_cancel_requested: Callable[[str], None] | None = None,
     ) -> ExecOutcome:
@@ -287,6 +292,7 @@ class Tier1Executor:
             kind="tool",
             spec=spec,
             data_dir=self._data_dir(),
+            sandbox_id=sandbox_id,
             cancel_token=cancel_token,
             timeout_ms=timeout_ms,
             max_output_bytes=max_output_bytes,
@@ -301,6 +307,7 @@ class Tier1Executor:
         cancel_token: CancellationToken | None = None,
         timeout_ms: int | None = None,
         max_output_bytes: int | None = None,
+        sandbox_id: str | None = None,
         on_started: Callable[[str], None] | None = None,
         on_cancel_requested: Callable[[str], None] | None = None,
     ) -> ExecOutcome:
@@ -308,12 +315,22 @@ class Tier1Executor:
             kind="command",
             spec={"argv": list(argv)},
             data_dir=None,
+            sandbox_id=sandbox_id,
             cancel_token=cancel_token,
             timeout_ms=timeout_ms,
             max_output_bytes=max_output_bytes,
             on_started=on_started,
             on_cancel_requested=on_cancel_requested,
         )
+
+    def open_sandbox(self) -> str:
+        """创建一个可跨多次 exec 复用的沙箱工作区（D12 文件工具需要）。"""
+
+        sandbox_id = f"sbx_{uuid.uuid4().hex}"
+        (self.root / sandbox_id / "workspace").mkdir(
+            parents=True, exist_ok=False
+        )
+        return sandbox_id
 
     def destroy(self, sandbox_id: str) -> None:
         """回收工作区。D11 只做本地目录清理；路径由平台自己生成。"""
@@ -344,13 +361,17 @@ class Tier1Executor:
         max_output_bytes: int | None,
         on_started: Callable[[str], None] | None,
         on_cancel_requested: Callable[[str], None] | None,
+        sandbox_id: str | None = None,
     ) -> ExecOutcome:
         timeout = clamp(timeout_ms, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS)
         output_limit = clamp(
             max_output_bytes, DEFAULT_MAX_OUTPUT_BYTES, MAX_OUTPUT_BYTES
         )
 
-        sandbox_id = f"sbx_{uuid.uuid4().hex}"
+        if sandbox_id is not None and SANDBOX_ID_PATTERN.fullmatch(sandbox_id) is None:
+            raise ValueError("非法 sandbox_id")
+
+        sandbox_id = sandbox_id or f"sbx_{uuid.uuid4().hex}"
         started = time.monotonic()
 
         if cancel_token is not None and cancel_token.cancelled:
@@ -369,7 +390,8 @@ class Tier1Executor:
 
         sandbox_dir = self.root / sandbox_id
         workspace = sandbox_dir / "workspace"
-        workspace.mkdir(parents=True, exist_ok=False)
+        # 复用已存在的沙箱；新建时等价于 mkdir。
+        workspace.mkdir(parents=True, exist_ok=True)
         result_path = sandbox_dir / "result.json"
 
         payload = {"schema_version": 1, "kind": kind, **spec}

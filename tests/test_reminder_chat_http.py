@@ -655,6 +655,9 @@ class TestReminderChatHTTP(unittest.TestCase):
                 "list_reminders",
                 "cancel_reminder",
                 "update_reminder",
+                # D12：只把安全的只读沙箱工具暴露给模型
+                "read_file",
+                "list_dir",
             ],
         )
 

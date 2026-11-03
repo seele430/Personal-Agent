@@ -150,6 +150,8 @@ def run_chat_stream(
     active_step = None
     active_parts: list[str] = []
     terminal_emitted = False
+    # D12：同一次 run 内的工具共享一个沙箱工作区；run 结束（含取消/失败）回收。
+    run_sandbox: str | None = None
 
     def start_assistant_step():
         nonlocal active_step, active_parts
@@ -254,9 +256,12 @@ def run_chat_stream(
 
             try:
                 if policy == "allow":
+                    if run_sandbox is None:
+                        run_sandbox = agent.open_run_sandbox()
                     outcome = agent.execute_tool_on_platform(
                         tool_call,
                         cancel_token=cancel_token,
+                        sandbox_id=run_sandbox,
                         on_started=on_started,
                         on_cancel_requested=on_cancel_requested,
                     )
@@ -359,3 +364,6 @@ def run_chat_stream(
         if not terminal_emitted:
             emit({"type": "run_failed", "run_id": run_id, "error": str(exc)})
         raise
+    finally:
+        # run 结束（成功 / 取消 / 失败）都回收工作区；文件不跨 run 残留。
+        agent.destroy_run_sandbox(run_sandbox)

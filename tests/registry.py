@@ -246,6 +246,16 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
+    # L2：D12 沙箱工具（read / write / ls / shell / python / http）与路径负向测试
+    "integration/test_sandbox_tools.py": TestSchema(
+        layer="integration",
+        domain="platform_exec",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",
