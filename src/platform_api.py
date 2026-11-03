@@ -20,6 +20,11 @@ from pydantic import BaseModel
 
 from src.core.run_control import CancellationToken
 from src.platform import active_execs
+from src.platform.node_registry import (
+    NodeNotFound,
+    NodeRegistry,
+    StaleGeneration,
+)
 from src.platform.exec_service import (
     ERROR_OUTPUT_LIMIT,
     EXEC_CANCELLED,
@@ -41,7 +46,11 @@ from src.platform.sandbox_service import (
 
 router = APIRouter(prefix="/v1", tags=["沙箱平台"])
 
-NODE_ID = "node_local"
+
+def _default_node_id() -> str:
+    """单机部署下所有沙箱都在默认节点上；顺手保证节点表里有这一行。"""
+
+    return NodeRegistry().ensure_default_node()["node_id"]
 
 
 # ==========================================
@@ -60,6 +69,15 @@ class ExecRequest(BaseModel):
     step_id: str | None = None
     timeout_ms: int = 30_000
     max_output_bytes: int = 65_536
+
+
+class RegisterNodeRequest(BaseModel):
+    node_id: str | None = None
+    capacity: int = 4
+
+
+class HeartbeatRequest(BaseModel):
+    generation: int
 
 
 # ==========================================
@@ -90,7 +108,7 @@ def _sandbox_body(sandbox: dict[str, Any]) -> dict[str, Any]:
     return {
         "sandbox_id": sandbox["id"],
         "state": sandbox["state"],
-        "node_id": NODE_ID,
+        "node_id": _default_node_id(),
         "workspace_id": sandbox["workspace_id"],
         "created_at": sandbox["created_at"],
         "expires_at": sandbox["expires_at"],
@@ -218,6 +236,53 @@ def _run_exec(
         )
     finally:
         active_execs.unregister(exec_id)
+
+
+# ==========================================
+# 节点（D17）
+# ==========================================
+
+def _node_body(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "node_id": row["node_id"],
+        "generation": row["generation"],
+        "state": row["state"],
+        "capacity": row["capacity"],
+        "registered_at": row["registered_at"],
+        "last_heartbeat": row["last_heartbeat"],
+    }
+
+
+@router.post("/nodes", status_code=201)
+def register_node(payload: RegisterNodeRequest):
+    try:
+        row = NodeRegistry().register(
+            node_id=payload.node_id, capacity=payload.capacity
+        )
+    except ValueError as exc:
+        return _error(400, "INVALID_ARGUMENT", str(exc))
+
+    return JSONResponse(status_code=201, content=_node_body(row))
+
+
+@router.get("/nodes")
+def list_nodes():
+    rows = NodeRegistry().list_nodes()
+    return {"nodes": [_node_body(row) for row in rows]}
+
+
+@router.post("/nodes/{node_id}/heartbeat", status_code=202)
+def heartbeat(node_id: str, payload: HeartbeatRequest):
+    try:
+        row = NodeRegistry().heartbeat(
+            node_id, generation=payload.generation
+        )
+    except NodeNotFound:
+        return _error(404, "NODE_NOT_FOUND", "节点不存在")
+    except StaleGeneration as exc:
+        return _error(409, "NODE_GENERATION_STALE", str(exc))
+
+    return JSONResponse(status_code=202, content=_node_body(row))
 
 
 # ==========================================

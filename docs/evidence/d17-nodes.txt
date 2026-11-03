@@ -1,0 +1,27 @@
+# D17 节点注册与心跳测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_platform_nodes -v
+> 时间：2026-11-03T18:01:19.3397069+08:00
+
+test_creating_sandbox_registers_default_node (tests.integration.test_platform_nodes.PlatformNodesTest.test_creating_sandbox_registers_default_node) ... 2026-11-03 18:01:22,904 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_heartbeat_unknown_node_returns_404 (tests.integration.test_platform_nodes.PlatformNodesTest.test_heartbeat_unknown_node_returns_404) ... 2026-11-03 18:01:23,045 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_heartbeat_updates_last_heartbeat (tests.integration.test_platform_nodes.PlatformNodesTest.test_heartbeat_updates_last_heartbeat) ... 2026-11-03 18:01:23,110 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_invalid_capacity_is_rejected (tests.integration.test_platform_nodes.PlatformNodesTest.test_invalid_capacity_is_rejected) ... 2026-11-03 18:01:23,226 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_list_includes_registered_nodes (tests.integration.test_platform_nodes.PlatformNodesTest.test_list_includes_registered_nodes) ... 2026-11-03 18:01:23,309 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_register_allocates_generation_and_heartbeat (tests.integration.test_platform_nodes.PlatformNodesTest.test_register_allocates_generation_and_heartbeat) ... 2026-11-03 18:01:23,420 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_registry_errors_are_typed (tests.integration.test_platform_nodes.PlatformNodesTest.test_registry_errors_are_typed) ... 2026-11-03 18:01:23,495 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_reregister_bumps_generation (tests.integration.test_platform_nodes.PlatformNodesTest.test_reregister_bumps_generation) ... 2026-11-03 18:01:23,555 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_stale_generation_is_rejected (tests.integration.test_platform_nodes.PlatformNodesTest.test_stale_generation_is_rejected) ... 2026-11-03 18:01:23,647 | INFO | personal_agent.chat | Chat request storage ready
+ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.889s
+
+OK

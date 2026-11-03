@@ -31,7 +31,9 @@
 ## 2. HTTP API 与 Python SDK
 
 > D15.1（2026-11-03）：下表前六项已实现于 `src/platform_api.py`（`/v1` 路由），
-> 由 `platform.db` 与 tier1 执行层支撑；`fn` / `nodes` / `metrics` 仍未实现。
+> 由 `platform.db` 与 tier1 执行层支撑；`fn` / `metrics` 仍未实现。
+> D17（2026-11-03）：节点接口 `POST /v1/nodes`、`GET /v1/nodes`、
+> `POST /v1/nodes/{node_id}/heartbeat` 已实现（`src/platform/node_registry.py`）。
 > `/v1` 目前**没有接入登录认证**，只适合本机单用户使用（见威胁模型第 12 节）。
 
 ### 2.1 最小接口面
@@ -153,6 +155,12 @@ failed → reclaimed
 ## 5. 节点租约与最小调度
 
 ### 5.1 generation 与过期
+
+> D17（2026-11-03）：注册与心跳已实现于 `src/platform/node_registry.py`。
+> 每次注册 generation +1；心跳必须匹配当前 generation，否则 409
+> `NODE_GENERATION_STALE`，且不会改写 `last_heartbeat`。
+> **租约过期判定（连续 3 个周期无心跳 → `not_ready`）属于 D18**，D17 只记录
+> `last_heartbeat` 与状态字段。
 
 - 节点每次注册都获得新的、单调不可复用的 `generation`；即使 `node_id` 相同，旧 generation 也不能续新实例的租约。
 - 心跳与续约必须同时匹配 `node_id + generation`，并携带服务端可校验的租约信息。

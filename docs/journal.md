@@ -102,3 +102,9 @@
 - 验收与卡点：`tests/integration/test_platform_ttl.py` **6 个用例全绿**（sweep 回收 + reason、sweep 幂等、到期取消活动 exec、惰性过期返回 410、tombstone 保留期内同 key 返回同一沙箱、超过 24 小时后 tombstone/幂等记录清除且旧 key 能建新沙箱），证据见 `docs/evidence/d16-ttl.txt`；**真实服务验证后台线程**：起 uvicorn（reaper 间隔 0.5 秒），创建 ttl=1 的沙箱后**不访问 API**、直接读 `platform.db`，确认线程把状态改成 reclaimed/ttl_expired，随后 GET 返回 410，证据见 `docs/evidence/d16-reaper.json`。全量 **71 文件 / 663 用例 PASS，248.19 秒**，证据见 `docs/evidence/d16-backend-tests.txt`。
 - 遗留限制：① 回收粒度是「过期扫描间隔」，最坏会晚 60 秒才回收（惰性访问是即时兜底）；② tombstone 清理依赖同一进程的 reaper，服务停机期间不会推进；③ 沙箱状态机还没有 running/idle/failed 迁移（D20），当前只有 created/reclaimed；④ 活动 exec 表只存在进程内，多进程部署时会漏掉别的进程里的 exec（单机单进程假设）。
 - 明天第一件事：D17 节点注册与心跳（`/v1/nodes`，last_heartbeat + generation），或先把 `running/idle` 状态迁移补上，为 D18 租约铺路。
+## D17 — 2026-11-03
+
+- 今天做了什么：实现节点注册与心跳（`src/platform/node_registry.py` + `/v1/nodes` 三个接口：注册、心跳、列表）。每次注册 generation 单调 +1；心跳必须匹配当前 generation，否则 409 `NODE_GENERATION_STALE`，而且**不会改写 last_heartbeat**（旧代际不能续新实例的租约）。单机部署用 `ensure_default_node()` 保证 `node_local` 这一行存在：创建沙箱时会顺带登记默认节点，节点列表因此有真实内容；沙箱响应的 `node_id` 也来自节点表，不再是硬编码常量。
+- 验收与卡点：`tests/integration/test_platform_nodes.py` **9 个用例全绿**（注册分配 generation 1 / 重复注册 +1 / 心跳推进 last_heartbeat / 旧代际 409 且不改写心跳 / 未知节点 404 / 列表含 last_heartbeat / 建沙箱自动登记默认节点 / capacity 非法 400 / 仓储层异常类型），证据见 `docs/evidence/d17-nodes.txt`；全量 **72 文件 / 672 用例 PASS，187.42 秒**（D16 基线 71 / 663，248.19 秒）。
+- 遗留限制：① **租约过期判定没做**（连续 3 个周期无心跳 → not_ready），按计划属于 D18；② 没有 cordon / drain（D19）；③ generation 只保留当前值，历史代际不留痕，排障时看不到「谁在什么时候注册了第几代」；④ 节点容量字段只是记录，还没有调度（D20）；⑤ `/v1/nodes` 同样没有认证。
+- 明天第一件事：D18 租约 + 续约 + 过期判定 —— 停心跳 3 个周期后 `not_ready`，旧 generation 的延迟心跳继续 409。
