@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 from src import agent
 from src.core.ai_usage import AIUsageStore
+from tests.helper import called_tool, tool_result_outcome
 
 
 class TestAgentModelUsage(unittest.TestCase):
@@ -143,14 +144,8 @@ class TestAgentModelUsage(unittest.TestCase):
 
             with patch.object(
                 agent,
-                "create_reminder",
-                return_value=(
-                    "rem_1",
-                    datetime(
-                        2026, 10, 12,
-                        tzinfo=timezone.utc,
-                    ),
-                ),
+                "execute_tool_on_platform",
+                return_value=tool_result_outcome({"success": True}),
             ) as reminder:
 
                 with agent.track_chat_usage(
@@ -171,9 +166,9 @@ class TestAgentModelUsage(unittest.TestCase):
             2,
         )
 
-        reminder.assert_called_once_with(
-            "喝水",
-            5,
+        self.assertEqual(
+            called_tool(reminder),
+            ("create_reminder", {"message": "喝水", "minutes": 5}),
         )
 
         summary = self.store.user_summary("alice")

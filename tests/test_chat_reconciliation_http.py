@@ -19,7 +19,7 @@ from unittest.mock import patch
 from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
-from tests.helper import isolate_paths
+from tests.helper import called_tool, isolate_paths, tool_result_outcome
 from src import agent
 from src import api
 from src.auth_api import get_current_user
@@ -237,14 +237,8 @@ class TestChatReconciliationHTTP(unittest.TestCase):
 
             with patch.object(
                 agent,
-                "create_reminder",
-                return_value=(
-                    "reminder_test",
-                    datetime(
-                        2026, 10, 12,
-                        tzinfo=timezone.utc,
-                    ),
-                ),
+                "execute_tool_on_platform",
+                return_value=tool_result_outcome({"success": True}),
             ) as reminder:
 
                 result = self.send(
@@ -261,9 +255,9 @@ class TestChatReconciliationHTTP(unittest.TestCase):
 
         self.assertEqual(model.call_count, 2)
 
-        reminder.assert_called_once_with(
-            "喝水",
-            5,
+        self.assertEqual(
+            called_tool(reminder),
+            ("create_reminder", {"message": "喝水", "minutes": 5}),
         )
 
         self.assertEqual(

@@ -225,6 +225,27 @@ TEST_SCHEMAS = {
         risk="low",
     ),
 
+    # L2：tier1 runner 的工作区隔离 / 环境清洗 / 超时 / 输出上限 / 进程树清理
+    # 真实创建 OS 子进程，因此 risk=high；数据库只用临时目录。
+    "integration/test_tier1_runner.py": TestSchema(
+        layer="integration",
+        domain="platform_exec",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
+
+    # L2：助手 → 平台 exec → runner 的取消传播与 trajectory 事件顺序
+    "integration/test_platform_exec_cancel.py": TestSchema(
+        layer="integration",
+        domain="platform_exec",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",

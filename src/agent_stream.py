@@ -1,4 +1,9 @@
-"""单用户对话的流式 run 编排、取消事件与 run / step / exec 留痕。"""
+"""单用户对话的流式 run 编排、取消事件与 run / step / exec 留痕。
+
+allow 工具不再由本进程直接执行：调用交给 ``src.platform.exec_service``，
+在 tier1 runner 子进程里跑；取消先落到 CancellationToken，再终止 runner
+的进程树，进程树清空之后才允许写 cancelled 终态。
+"""
 
 from __future__ import annotations
 
@@ -11,6 +16,14 @@ from src import agent
 from src.core.run_control import CancellationToken, ChatCancelled
 from src.core.run_store import RunStore
 from src.core.tool_registry import ToolApprovalRequired, ToolDenied
+from src.platform.exec_service import (
+    ERROR_CANCELLED,
+    ERROR_RUNNER,
+    EXEC_CANCELLED,
+    EXEC_SUCCEEDED,
+    PlatformExecutionError,
+    raise_tool_error,
+)
 
 
 EventEmitter = Callable[[dict[str, Any]], None]
@@ -54,6 +67,62 @@ def _initial_messages(user_input: str, bot: dict | None):
         messages.append({"role": "system", "content": knowledge.text})
     messages.append({"role": "user", "content": user_input})
     return messages, knowledge
+
+
+def _finish_platform_exec(
+    outcome,
+    *,
+    store: RunStore | None,
+    execution: dict[str, Any] | None,
+    record_event,
+) -> dict[str, Any]:
+    """解释一次平台执行结果，并把终态写进 exec 与 trajectory。
+
+    分工刻意保持「一个终态只写一次」：
+
+    - 成功：exec 由上层既有的 ``else`` 分支写，这里只记 trajectory；
+    - 取消：exec 由 ``except ChatCancelled`` 分支写，这里只记 trajectory；
+    - 工具自身报错：exec 由既有的 except 分支写，这里只还原异常类型；
+    - 平台级失败（超时 / 输出超限 / 清树失败）：上层不会写 exec，在这里写。
+    """
+
+    payload = {
+        "exit_code": outcome.exit_code,
+        "error_code": outcome.error_code,
+        "cleanup": outcome.cleanup,
+        "duration_ms": outcome.duration_ms,
+        "truncated": outcome.truncated,
+    }
+
+    if outcome.status == EXEC_SUCCEEDED:
+        record_event("exec_finished", "succeeded", payload=payload)
+        return outcome.result or {}
+
+    if outcome.status == EXEC_CANCELLED:
+        # ExecOutcome 只有在进程树清空之后才返回，因此这里落 cancelled 是安全的。
+        record_event("exec_finished", "cancelled", payload=payload)
+        raise ChatCancelled("工具执行已取消")
+
+    if outcome.tool_error is not None:
+        payload["error_type"] = outcome.tool_error.get("error_type")
+        record_event("exec_finished", "failed", payload=payload)
+        raise_tool_error(outcome.tool_error)
+        raise RuntimeError("工具错误没有被正确还原")
+
+    if store is not None and execution is not None:
+        store.update_exec(
+            execution["id"],
+            status=outcome.status,
+            error_code=outcome.error_code,
+        )
+
+    record_event("exec_finished", outcome.status, payload=payload)
+
+    raise PlatformExecutionError(
+        f"平台执行失败：{outcome.status} / {outcome.error_code}",
+        status=outcome.status,
+        error_code=outcome.error_code or ERROR_RUNNER,
+    )
 
 
 def run_chat_stream(
@@ -142,22 +211,73 @@ def run_chat_stream(
             )
             execution = None
             if policy == "allow" and store is not None:
+                # queued 起步：running 由平台真正启动 runner 之后再迁移。
                 execution = store.record_exec(
                     tool_step["id"], tool_name=name,
-                    request=agent._tool_arguments(tool_call), status="running",
+                    request=agent._tool_arguments(tool_call), status="queued",
                 )
             emit({
                 "type": "tool_started", "run_id": run_id,
                 "tool": name, "policy": policy,
                 "exec_id": execution["id"] if execution is not None else None,
             })
-            try:
-                result = agent.TOOL_REGISTRY.execute(
-                    tool_call, cancel_token=cancel_token
+
+            exec_id = execution["id"] if execution is not None else None
+            sandbox_ref: dict[str, str | None] = {"id": None}
+
+            def record_event(event_type, status, *, sandbox_id=None, payload=None):
+                if store is None or run_id is None:
+                    return None
+                return store.append_event(
+                    run_id,
+                    event_type=event_type,
+                    status=status,
+                    step_id=tool_step["id"] if tool_step is not None else None,
+                    exec_id=exec_id,
+                    sandbox_id=sandbox_id or sandbox_ref["id"],
+                    payload=payload,
                 )
+
+            def on_started(sandbox_id):
+                sandbox_ref["id"] = sandbox_id
+                if store is not None and execution is not None:
+                    store.start_exec(execution["id"], sandbox_id=sandbox_id)
+                record_event("exec_started", "running", sandbox_id=sandbox_id)
+
+            def on_cancel_requested(requested_at):
+                # 取消请求与最终 cancelled 必须可区分，且先于终态写入。
+                record_event(
+                    "exec_cancel_requested",
+                    "cancel_requested",
+                    payload={"requested_at": requested_at},
+                )
+
+            try:
+                if policy == "allow":
+                    outcome = agent.execute_tool_on_platform(
+                        tool_call,
+                        cancel_token=cancel_token,
+                        on_started=on_started,
+                        on_cancel_requested=on_cancel_requested,
+                    )
+                    result = _finish_platform_exec(
+                        outcome,
+                        store=store,
+                        execution=execution,
+                        record_event=record_event,
+                    )
+                else:
+                    # ask / deny 在产生 exec 之前就抛错，仍然走原有分支。
+                    result = agent.TOOL_REGISTRY.execute(
+                        tool_call, cancel_token=cancel_token
+                    )
             except ChatCancelled:
                 if store is not None and execution is not None:
-                    store.update_exec(execution["id"], status="cancelled")
+                    store.update_exec(
+                        execution["id"],
+                        status="cancelled",
+                        error_code=ERROR_CANCELLED,
+                    )
                     store.update_step(tool_step["id"], status="cancelled", content=name)
                 raise
             except (

@@ -91,7 +91,7 @@ kwargs = {
 第 2 次的 `tool_choice="none"` 很关键：**它保证了这一轮不会自旋**，
 模型不能一边总结一边再发起工具调用。
 
-### 第 3 段 · 执行（`_execute_reminder_tool`）
+### 第 3 段 · 执行（D11 起改为 tier1 平台执行）
 
 按函数名分发到四个分支，每个分支都走"经过登录身份校验的入口"。
 未知工具名直接拒绝：
@@ -99,6 +99,31 @@ kwargs = {
 ```python
 if name != "create_reminder":
     raise ValueError("未知工具")
+```
+
+**D11 改变的是「谁来跑这段代码」**：
+
+- 宿主进程（助手 / API）只做三件事：查策略（allow / ask / deny）、校验参数与
+  字节上限、读当前认证身份。它不再调用 `_execute_reminder_tool`。
+- allow 工具一律交给 `src/platform/exec_service.py`：平台开一个独立工作区，
+  用清洗过的环境启动 `src/platform/tier1_runner.py`，由 runner 在子进程里
+  调用注册表里的 handler。`_execute_reminder_tool` 现在是**子进程侧的
+  handler**，不是宿主入口。
+- 工具声明自己在哪里执行：`ToolDefinition.execution`。提醒工具用
+  `{"kind": "tool"}`；`{"kind": "command", "argv": [...]}` 留给 D12 的
+  shell / python 工具，测试里的进程树探针也用它。
+- ask / deny 仍然在产生 exec **之前**就拦下 —— 审批不是隔离，中间件位置不变。
+
+因此一次工具调用的完整链路是：
+
+```text
+模型 tool_call
+  → 策略 / 参数 / 身份（宿主）
+  → 平台 exec（queued → running）
+  → tier1 runner 子进程（清洗环境 + 独立工作区）
+  → handler 或 command
+  → 进程树清理（Job Object 活动进程数归零）
+  → 终态 + trajectory 事件
 ```
 
 ---

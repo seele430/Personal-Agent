@@ -1,4 +1,10 @@
-"""D7 流式模型、工具执行和取消留痕（SDK 与网络全部模拟）。"""
+"""D7 流式模型、工具执行和取消留痕（SDK 与网络全部模拟）。
+
+D11 起 allow 工具不再在宿主进程里执行；这里用平台层替身验证「助手 → 平台
+exec」的取消传播与 trajectory 顺序。真实进程树的清理证据在
+``tests/integration/test_tier1_runner.py`` 与
+``tests/integration/test_platform_exec_cancel.py``。
+"""
 
 import sqlite3
 import unittest
@@ -15,6 +21,7 @@ from src.agent_stream import run_chat_stream
 from src.core.reminder_identity import bind_authenticated_reminder
 from src.core.run_control import CancellationToken, ChatCancelled
 from src.core.run_store import RunStore
+from src.platform.exec_service import ExecOutcome
 from tests.helper import isolate_paths
 
 
@@ -110,20 +117,41 @@ class AgentStreamTest(unittest.TestCase):
         entered = Event()
         interrupted = Event()
 
-        def blocking_tool(tool_call, cancel_token=None):
+        def fake_platform(
+            tool_call,
+            *,
+            cancel_token=None,
+            on_started=None,
+            on_cancel_requested=None,
+        ):
+            on_started("sbx_stream_test")
             unregister = cancel_token.register_canceller(interrupted.set)
             try:
                 entered.set()
                 self.assertTrue(interrupted.wait(2))
-                cancel_token.check()
             finally:
                 unregister()
+            on_cancel_requested("2026-11-03T00:00:00+00:00")
+            return ExecOutcome(
+                sandbox_id="sbx_stream_test",
+                status="cancelled",
+                exit_code=None,
+                stdout="",
+                stderr="",
+                truncated=False,
+                error_code="EXEC_CANCELLED",
+                duration_ms=1,
+                cancel_requested_at="2026-11-03T00:00:00+00:00",
+            )
 
         with (
             patch.object(agent, "init_db"),
             patch.object(agent, "_knowledge_context", return_value=None),
-            patch.object(agent.TOOL_REGISTRY, "execute", side_effect=blocking_tool),
-            patch.object(agent.client.chat.completions, "create", return_value=self.tool_stream()),
+            patch.object(
+                agent, "execute_tool_on_platform", side_effect=fake_platform
+            ),
+            patch.object(agent.client.chat.completions, "create",
+                         return_value=self.tool_stream()),
         ):
             from contextvars import copy_context
             with ThreadPoolExecutor(max_workers=1) as pool:
@@ -131,10 +159,10 @@ class AgentStreamTest(unittest.TestCase):
                     copy_context().run, run_chat_stream, "五分钟后提醒我喝水",
                     emit=self.events.append, cancel_token=self.token,
                 )
-                self.assertTrue(entered.wait(2))
+                self.assertTrue(entered.wait(5))
                 self.token.cancel()
                 with self.assertRaises(ChatCancelled):
-                    future.result(timeout=2)
+                    future.result(timeout=5)
 
         self.assertEqual(self.events[-1]["type"], "cancelled")
         run = self.stored_run()
@@ -144,6 +172,20 @@ class AgentStreamTest(unittest.TestCase):
         )
         self.assertEqual(tool_step["status"], "cancelled")
         self.assertEqual(tool_step["exec"]["status"], "cancelled")
+        self.assertEqual(tool_step["exec"]["sandbox_id"], "sbx_stream_test")
+
+        events = RunStore(self.db_path).list_events(run["id"])
+        self.assertEqual(
+            [(event["event_type"], event["status"]) for event in events],
+            [
+                ("exec_started", "running"),
+                ("exec_cancel_requested", "cancel_requested"),
+                ("exec_finished", "cancelled"),
+            ],
+        )
+        self.assertEqual(
+            {event["exec_id"] for event in events}, {tool_step["exec_id"]}
+        )
 
 
 if __name__ == "__main__":

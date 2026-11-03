@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from src import agent
+from tests.helper import called_tool, tool_error_outcome, tool_result_outcome
 
 
 class TestAgentToolLimits(unittest.TestCase):
@@ -95,7 +96,8 @@ class TestAgentToolLimits(unittest.TestCase):
 
             with patch.object(
                 agent,
-                "create_reminder",
+                "execute_tool_on_platform",
+                return_value=tool_result_outcome({"success": True}),
             ) as reminder:
 
                 with self.assertRaises(RuntimeError):
@@ -126,14 +128,8 @@ class TestAgentToolLimits(unittest.TestCase):
 
             with patch.object(
                 agent,
-                "create_reminder",
-                return_value=(
-                    "reminder_1",
-                    datetime(
-                        2026, 10, 12,
-                        tzinfo=timezone.utc,
-                    ),
-                ),
+                "execute_tool_on_platform",
+                return_value=tool_result_outcome({"success": True}),
             ) as reminder:
 
                 result = agent.chat(
@@ -143,9 +139,9 @@ class TestAgentToolLimits(unittest.TestCase):
         self.assertEqual(result, "提醒已设置")
         self.assertEqual(model.call_count, 2)
 
-        reminder.assert_called_once_with(
-            "喝水",
-            5,
+        self.assertEqual(
+            called_tool(reminder),
+            ("create_reminder", {"message": "喝水", "minutes": 5}),
         )
 
     # ======================================
@@ -178,14 +174,16 @@ class TestAgentToolLimits(unittest.TestCase):
 
             with patch.object(
                 agent,
-                "create_reminder",
+                "execute_tool_on_platform",
+                return_value=tool_error_outcome("ValueError", "提醒内容太长"),
             ) as reminder:
 
                 result = agent.chat(
                     "创建一条长提醒"
                 )
 
-        reminder.assert_not_called()
+        # 参数检查现在发生在 runner 子进程里，宿主只负责分派。
+        reminder.assert_called_once()
 
         self.assertEqual(
             result,
@@ -228,7 +226,8 @@ class TestAgentToolLimits(unittest.TestCase):
 
             with patch.object(
                 agent,
-                "create_reminder",
+                "execute_tool_on_platform",
+                return_value=tool_result_outcome({"success": True}),
             ) as reminder:
 
                 with self.assertRaises(RuntimeError):
@@ -263,7 +262,8 @@ class TestAgentToolLimits(unittest.TestCase):
 
             with patch.object(
                 agent,
-                "create_reminder",
+                "execute_tool_on_platform",
+                return_value=tool_result_outcome({"success": True}),
             ) as reminder:
 
                 result = agent.chat(

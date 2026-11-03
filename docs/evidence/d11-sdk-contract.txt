@@ -1,0 +1,18 @@
+# D10 v1 fixture / Python SDK 契约测试（D11 回归时复跑）
+> 命令：.venv/Scripts/python.exe tests/unit/test_platform_sdk.py -v
+> 时间：2026-11-03T12:59:30.5926188+08:00
+> 目的：证明 D11 没有破坏 D10 冻结的 v1 fixture 契约。
+
+test_fixture_coverage_and_shape (__main__.TestPlatformSdkV1Fixtures.test_fixture_coverage_and_shape) ... ok
+test_invalid_limits_do_not_send_requests (__main__.TestPlatformSdkV1Fixtures.test_invalid_limits_do_not_send_requests) ... ok
+test_unknown_optional_response_fields_are_ignored (__main__.TestPlatformSdkV1Fixtures.test_unknown_optional_response_fields_are_ignored) ... ok
+test_v1_api_error_fixtures (__main__.TestPlatformSdkV1Fixtures.test_v1_api_error_fixtures) ... ok
+test_v1_success_fixtures (__main__.TestPlatformSdkV1Fixtures.test_v1_success_fixtures) ... ok
+test_wait_false_returns_accepted_exec (__main__.TestPlatformSdkV1Fixtures.test_wait_false_returns_accepted_exec) ... ok
+test_wait_timeout_can_stop_without_cancelling (__main__.TestPlatformSdkV1Fixtures.test_wait_timeout_can_stop_without_cancelling) ... ok
+test_wait_timeout_cancels_exec (__main__.TestPlatformSdkV1Fixtures.test_wait_timeout_cancels_exec) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.011s
+
+OK

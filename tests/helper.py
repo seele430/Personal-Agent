@@ -85,3 +85,59 @@ def isolated_paths(container):
 
     with ExitStack() as stack:
         yield _enter(stack, container)
+
+
+def tool_result_outcome(result: dict | None = None):
+    """平台执行成功的替身结果。
+
+    D11 起工具在 tier1 子进程里执行，宿主不再调用 ``agent.create_reminder``
+    这类 handler。需要「工具已经执行成功」的用例改为替身平台执行层。
+    """
+
+    from src.platform.exec_service import ExecOutcome
+
+    return ExecOutcome(
+        sandbox_id="sbx_test",
+        status="succeeded",
+        exit_code=0,
+        stdout="",
+        stderr="",
+        truncated=False,
+        result=result if result is not None else {"success": True},
+        error_code=None,
+    )
+
+
+def tool_error_outcome(error_type: str, message: str):
+    """平台执行完成、但工具自身报错的替身结果。"""
+
+    from src.platform.exec_service import ExecOutcome
+
+    return ExecOutcome(
+        sandbox_id="sbx_test",
+        status="failed",
+        exit_code=3,
+        stdout="",
+        stderr="",
+        truncated=False,
+        tool_error={"ok": False, "error_type": error_type, "message": message},
+        error_code="TOOL_FAILED",
+    )
+
+
+def called_tool(mock):
+    """取出交给平台执行层的 (工具名, 参数字典)。"""
+
+    import json
+
+    call = mock.call_args
+
+    if call is None:
+        return None
+
+    tool_call = call.args[0] if call.args else call.kwargs["tool_call"]
+
+    return (
+        tool_call.function.name,
+        json.loads(tool_call.function.arguments),
+    )

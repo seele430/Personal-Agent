@@ -1,0 +1,115 @@
+{
+  "status": "PASS",
+  "server_port": 62363,
+  "scenarios": [
+    {
+      "request_id": "d11_live_cancel",
+      "path": "explicit-cancel",
+      "cancel_http_status": 202,
+      "request_status_after_cancel": "unknown",
+      "pid_file": "pids.json.14284.json",
+      "pids": {
+        "parent": 14284,
+        "child": 15604
+      },
+      "run_id": "run_02e37a4098fa4391b25fb25f0b99b2bd",
+      "run_status": "cancelled",
+      "execs": [
+        {
+          "id": "exec_c066585060db47cd9c81ac1b7d9e39f1",
+          "status": "cancelled",
+          "error_code": "EXEC_CANCELLED",
+          "sandbox_id": "sbx_489f59595b204d27a9d69501678f0994",
+          "started_at": "2026-11-03T04:55:04.748935+00:00",
+          "finished_at": "2026-11-03T04:55:05.139754+00:00"
+        }
+      ],
+      "events": [
+        {
+          "sequence": 1,
+          "event_type": "exec_started",
+          "status": "running",
+          "run_id": "run_02e37a4098fa4391b25fb25f0b99b2bd",
+          "step_id": "step_bc8f1dc78c3a403db62c98755b87fff1",
+          "exec_id": "exec_c066585060db47cd9c81ac1b7d9e39f1",
+          "sandbox_id": "sbx_489f59595b204d27a9d69501678f0994"
+        },
+        {
+          "sequence": 2,
+          "event_type": "exec_cancel_requested",
+          "status": "cancel_requested",
+          "run_id": "run_02e37a4098fa4391b25fb25f0b99b2bd",
+          "step_id": "step_bc8f1dc78c3a403db62c98755b87fff1",
+          "exec_id": "exec_c066585060db47cd9c81ac1b7d9e39f1",
+          "sandbox_id": "sbx_489f59595b204d27a9d69501678f0994"
+        },
+        {
+          "sequence": 3,
+          "event_type": "exec_finished",
+          "status": "cancelled",
+          "run_id": "run_02e37a4098fa4391b25fb25f0b99b2bd",
+          "step_id": "step_bc8f1dc78c3a403db62c98755b87fff1",
+          "exec_id": "exec_c066585060db47cd9c81ac1b7d9e39f1",
+          "sandbox_id": "sbx_489f59595b204d27a9d69501678f0994"
+        }
+      ],
+      "parent_alive": false,
+      "child_alive": false,
+      "unrelated_process_alive": true
+    },
+    {
+      "request_id": "d11_live_disconnect",
+      "path": "client-disconnect",
+      "request_status_after_disconnect": "unknown",
+      "pid_file": "pids.json.27640.json",
+      "pids": {
+        "parent": 27640,
+        "child": 18260
+      },
+      "run_id": "run_77699f875085466d84fa6a00fb586763",
+      "run_status": "cancelled",
+      "execs": [
+        {
+          "id": "exec_912f7b169d7048a3a1afbd935e24158d",
+          "status": "cancelled",
+          "error_code": "EXEC_CANCELLED",
+          "sandbox_id": "sbx_32ef0e7502ce4935b278b5f90655c3bc",
+          "started_at": "2026-11-03T04:55:05.320141+00:00",
+          "finished_at": "2026-11-03T04:55:05.734693+00:00"
+        }
+      ],
+      "events": [
+        {
+          "sequence": 1,
+          "event_type": "exec_started",
+          "status": "running",
+          "run_id": "run_77699f875085466d84fa6a00fb586763",
+          "step_id": "step_5feb32525f21490c889fa19e015aabdc",
+          "exec_id": "exec_912f7b169d7048a3a1afbd935e24158d",
+          "sandbox_id": "sbx_32ef0e7502ce4935b278b5f90655c3bc"
+        },
+        {
+          "sequence": 2,
+          "event_type": "exec_cancel_requested",
+          "status": "cancel_requested",
+          "run_id": "run_77699f875085466d84fa6a00fb586763",
+          "step_id": "step_5feb32525f21490c889fa19e015aabdc",
+          "exec_id": "exec_912f7b169d7048a3a1afbd935e24158d",
+          "sandbox_id": "sbx_32ef0e7502ce4935b278b5f90655c3bc"
+        },
+        {
+          "sequence": 3,
+          "event_type": "exec_finished",
+          "status": "cancelled",
+          "run_id": "run_77699f875085466d84fa6a00fb586763",
+          "step_id": "step_5feb32525f21490c889fa19e015aabdc",
+          "exec_id": "exec_912f7b169d7048a3a1afbd935e24158d",
+          "sandbox_id": "sbx_32ef0e7502ce4935b278b5f90655c3bc"
+        }
+      ],
+      "parent_alive": false,
+      "child_alive": false,
+      "unrelated_process_alive": true
+    }
+  ]
+}

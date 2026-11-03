@@ -28,6 +28,13 @@ EXEC_STATUSES = (
     "timed_out",
 )
 
+TERMINAL_EXEC_STATUSES = frozenset(
+    {"succeeded", "failed", "cancelled", "timed_out"}
+)
+
+# D11 只落最小事件；完整 schema 与 JSONL 形状在 D14 冻结。
+TRAJECTORY_SCHEMA_VERSION = 1
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -119,6 +126,28 @@ def init_run_schema(conn: sqlite3.Connection) -> None:
         """
         CREATE INDEX IF NOT EXISTS idx_agent_execs_status
             ON agent_execs(status)
+        """,
+        # D11：最小 trajectory 事件表。schema_version 固定为 1，完整事件集合与
+        # JSONL 形状在 D14 冻结；这里只保证取消请求与最终终态可区分、可对账。
+        """
+        CREATE TABLE IF NOT EXISTS agent_trajectory_events (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+            sequence INTEGER NOT NULL CHECK (sequence > 0),
+            schema_version INTEGER NOT NULL,
+            event_type TEXT NOT NULL,
+            status TEXT,
+            step_id TEXT,
+            exec_id TEXT,
+            sandbox_id TEXT,
+            payload_json TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE (run_id, sequence)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_trajectory_run
+            ON agent_trajectory_events(run_id, sequence)
         """,
     )
     for statement in statements:
@@ -287,6 +316,37 @@ class RunStore:
             )
         return self.get_exec(exec_id)
 
+    def start_exec(self, exec_id: str, *, sandbox_id: str | None = None) -> None:
+        """queued → running 的唯一合法入口。
+
+        不能复用 ``update_exec`` 做中间迁移：那个方法会同时写 finished_at，
+        制造出「running 却已 finished」的记录。
+        """
+
+        with closing(self.connect()) as conn, conn:
+            row = conn.execute(
+                "SELECT status FROM agent_execs WHERE id = ?", (exec_id,)
+            ).fetchone()
+
+            if row is None:
+                raise KeyError(exec_id)
+
+            if row["status"] != "queued":
+                raise ValueError(
+                    f"exec 不能从 {row['status']} 迁移到 running"
+                )
+
+            conn.execute(
+                """
+                UPDATE agent_execs
+                SET status = 'running',
+                    sandbox_id = COALESCE(?, sandbox_id),
+                    started_at = COALESCE(started_at, ?)
+                WHERE id = ?
+                """,
+                (sandbox_id, utc_now(), exec_id),
+            )
+
     def update_exec(
         self,
         exec_id: str,
@@ -295,10 +355,32 @@ class RunStore:
         result: dict[str, Any] | None = None,
         error_code: str | None = None,
     ) -> None:
+        """写 exec 终态。
+
+        只接受终态：终态之间不得互相覆盖，否则并发取消会盖掉真实结果。
+        """
+
         if status not in EXEC_STATUSES:
             raise ValueError("exec 状态无效")
+
+        if status not in TERMINAL_EXEC_STATUSES:
+            raise ValueError("update_exec 只能写终态；中间迁移请用 start_exec")
+
         now = utc_now()
+
         with closing(self.connect()) as conn, conn:
+            row = conn.execute(
+                "SELECT status FROM agent_execs WHERE id = ?", (exec_id,)
+            ).fetchone()
+
+            if row is None:
+                raise KeyError(exec_id)
+
+            if row["status"] in TERMINAL_EXEC_STATUSES:
+                raise ValueError(
+                    f"exec 已是终态 {row['status']}，不能再迁移到 {status}"
+                )
+
             conn.execute(
                 """
                 UPDATE agent_execs
@@ -315,6 +397,103 @@ class RunStore:
                     exec_id,
                 ),
             )
+
+    def append_event(
+        self,
+        run_id: str,
+        *,
+        event_type: str,
+        status: str | None = None,
+        step_id: str | None = None,
+        exec_id: str | None = None,
+        sandbox_id: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """向 trajectory 追加一条事件，sequence 在 run 内单调递增。
+
+        取消请求由事件循环线程写入、终态由执行线程写入，可能同时发生；
+        序号冲突时重试，不能吞掉取消事件。
+        """
+
+        event_id = new_id("evt")
+        payload_json = (
+            None if payload is None else json.dumps(payload, ensure_ascii=False)
+        )
+        created_at = utc_now()
+
+        for attempt in range(3):
+            try:
+                with closing(self.connect()) as conn, conn:
+                    row = conn.execute(
+                        """
+                        SELECT COALESCE(MAX(sequence), 0) + 1
+                        FROM agent_trajectory_events WHERE run_id = ?
+                        """,
+                        (run_id,),
+                    ).fetchone()
+                    sequence = int(row[0])
+                    conn.execute(
+                        """
+                        INSERT INTO agent_trajectory_events(
+                            id, run_id, sequence, schema_version, event_type,
+                            status, step_id, exec_id, sandbox_id,
+                            payload_json, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            event_id,
+                            run_id,
+                            sequence,
+                            TRAJECTORY_SCHEMA_VERSION,
+                            event_type,
+                            status,
+                            step_id,
+                            exec_id,
+                            sandbox_id,
+                            payload_json,
+                            created_at,
+                        ),
+                    )
+                return {
+                    "id": event_id,
+                    "run_id": run_id,
+                    "sequence": sequence,
+                    "schema_version": TRAJECTORY_SCHEMA_VERSION,
+                    "event_type": event_type,
+                    "status": status,
+                    "step_id": step_id,
+                    "exec_id": exec_id,
+                    "sandbox_id": sandbox_id,
+                    "payload": payload,
+                    "created_at": created_at,
+                }
+            except sqlite3.IntegrityError:
+                if attempt == 2:
+                    raise
+
+        raise RuntimeError("trajectory 事件写入失败")
+
+    def list_events(self, run_id: str) -> list[dict[str, Any]]:
+        """按 run 内顺序读出 trajectory，供验收脚本与 D14 CLI 使用。"""
+
+        with closing(self.connect()) as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM agent_trajectory_events
+                WHERE run_id = ? ORDER BY sequence
+                """,
+                (run_id,),
+            ).fetchall()
+
+        events: list[dict[str, Any]] = []
+
+        for row in rows:
+            item = dict(row)
+            raw = item.pop("payload_json")
+            item["payload"] = json.loads(raw) if raw else None
+            events.append(item)
+
+        return events
 
     def finish(self, run_id: str, *, status: str) -> None:
         if status not in RUN_STATUSES:

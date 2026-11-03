@@ -42,6 +42,15 @@ from src.knowledge.inject import (
     build_retrieval_context,
 )
 from src.tools.reminder import init_db
+from src.platform.exec_service import (
+    EXEC_CANCELLED,
+    EXEC_SUCCEEDED,
+    ERROR_RUNNER,
+    PlatformExecutionError,
+    PlatformToolError,
+    default_executor,
+    raise_tool_error,
+)
 
 
 # ==========================================
@@ -50,7 +59,10 @@ from src.tools.reminder import init_db
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-load_dotenv(BASE_DIR / ".env")
+# tier1 runner 子进程绝不读取宿主 .env：
+# 工具只需要数据目录，不需要模型凭据；读 .env 会把真实 key 带进沙箱。
+if os.getenv("PERSONAL_AGENT_TIER1") != "1":
+    load_dotenv(BASE_DIR / ".env")
 
 # 注意：这里**不能 raise**。
 # 桌面版首次启动时用户还没填 key，一 raise 整个应用都起不来
@@ -658,6 +670,135 @@ def build_system_prompt(
 # 执行一次提醒工具调用
 # ==========================================
 
+def execute_tool_on_platform(
+    tool_call,
+    *,
+    cancel_token: CancellationToken | None = None,
+    on_started=None,
+    on_cancel_requested=None,
+    require_allow: bool = True,
+):
+    """把一次工具调用交给 tier1 平台执行层。
+
+    宿主进程只做策略、参数与身份检查；真正的 handler 在 runner 子进程里跑
+    （见 ``src/platform/tier1_runner.py``）。返回 ``ExecOutcome``，由调用方
+    解释状态、落库并写 trajectory。
+
+    ``require_allow=False`` 只给旧 JSON 聊天用：D8 的策略矩阵只接进了流式
+    链路，旧接口在 D13 之前保持「工具存在就执行」的既有行为，但执行位置
+    同样在沙箱里。
+
+    没有认证身份时直接拒绝，不启动进程 —— 与提醒入口「没有身份就拒绝」一致。
+    """
+
+    name = tool_call.function.name
+    definition = TOOL_REGISTRY.definition(name)
+
+    if definition is None:
+        raise ToolDenied(f"工具被拒绝：{name}")
+
+    if require_allow and definition.policy != "allow":
+        raise ToolApprovalRequired(f"工具需要审批，不进入执行：{name}")
+
+    identity = current_identity()
+
+    if identity is None:
+        raise PermissionError("没有经过认证的提醒身份，拒绝执行工具")
+
+    execution = definition.execution or {"kind": "tool"}
+    executor = default_executor()
+    outcome = None
+
+    # 工具可以自带更严格的执行限制；省略时用平台默认值。
+    limits = {
+        "timeout_ms": execution.get("timeout_ms"),
+        "max_output_bytes": execution.get("max_output_bytes"),
+    }
+
+    try:
+        if execution.get("kind") == "command":
+            outcome = executor.execute_command(
+                [str(item) for item in execution.get("argv") or []],
+                cancel_token=cancel_token,
+                on_started=on_started,
+                on_cancel_requested=on_cancel_requested,
+                **limits,
+            )
+        else:
+            outcome = executor.execute_tool(
+                name,
+                _tool_arguments(tool_call),
+                identity={
+                    "user_id": identity.user_id,
+                    "request_id": identity.request_id,
+                    "role": identity.role,
+                },
+                call_id=getattr(tool_call, "id", None),
+                cancel_token=cancel_token,
+                on_started=on_started,
+                on_cancel_requested=on_cancel_requested,
+                **limits,
+            )
+    finally:
+        if outcome is not None:
+            executor.destroy(outcome.sandbox_id)
+
+    return outcome
+
+
+def outcome_to_result(outcome) -> dict:
+    """把平台执行结果解释成工具结果。
+
+    工具自身报错（ValueError 等）还原成同类型异常，交给调用方既有的
+    except 分支；平台级失败（超时 / 输出超限 / 清树失败）单独抛。
+    """
+
+    if outcome.status == EXEC_SUCCEEDED:
+        return outcome.result or {}
+
+    if outcome.status == EXEC_CANCELLED:
+        raise ChatCancelled("工具执行已取消")
+
+    if outcome.tool_error is not None:
+        raise_tool_error(outcome.tool_error)
+        raise PlatformToolError("工具错误没有被正确还原")
+
+    raise PlatformExecutionError(
+        f"平台执行失败：{outcome.status} / {outcome.error_code}",
+        status=outcome.status,
+        error_code=outcome.error_code or ERROR_RUNNER,
+    )
+
+
+def _execute_tool_call(
+    tool_call,
+    cancel_token: CancellationToken | None = None,
+) -> dict:
+    """旧 JSON 聊天的工具分派入口。
+
+    D8 的策略矩阵只接进了流式链路，旧接口在此之前是「工具存在就执行」。
+    这里保留那个行为（未知工具仍然报「未知工具」），但执行同样交给 tier1
+    沙箱；审批门留到 D13 统一接。
+    """
+
+    definition = TOOL_REGISTRY.definition(tool_call.function.name)
+
+    if definition is None:
+        raise ValueError("未知工具")
+
+    if definition.policy == "deny":
+        raise ToolDenied(f"工具被拒绝：{definition.name}")
+
+    # 宿主侧先做参数形状校验：格式坏掉就不该为了报错而启动一个进程。
+    _tool_arguments(tool_call)
+
+    outcome = execute_tool_on_platform(
+        tool_call, cancel_token=cancel_token, require_allow=False
+    )
+
+    return outcome_to_result(outcome)
+
+
 def _tool_arguments(tool_call) -> dict:
     """解析工具参数，必须是一个 JSON 对象。"""
 
@@ -946,8 +1087,9 @@ def chat(user_input: str, *, bot: dict | None = None) -> str:
     for tool_call in tool_calls:
 
         try:
-            # 旧 JSON 聊天保持既有提醒行为；D13 再统一接入审批门。
-            result = _execute_reminder_tool(tool_call)
+            # 旧 JSON 聊天的提醒行为不变，但工具已经在 tier1 沙箱里执行；
+            # D13 再把 ask / deny 的交互接进来。
+            result = _execute_tool_call(tool_call)
 
         except (
             ValueError,

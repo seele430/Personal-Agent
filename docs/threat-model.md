@@ -18,7 +18,7 @@
 ## 2. 保护对象
 
 - 宿主工作区外的文件、个人数据和 SQLite 数据库。
-- `.env`、API key、Bearer token、NTFY topic 等凭据；本项目副本不包含真实 `.env`。
+- `.env`、API key、Bearer token、NTFY topic 等凭据；真实 `.env` 不纳入 Git / 证据。
 - 宿主网络、内网服务与外部 HTTP 目标。
 - 并行 run 的工作区、进程、输出与沙箱状态。
 - 控制面数据库、节点租约、幂等记录和 trajectory 完整性。
@@ -122,3 +122,33 @@ runner
 - 沙箱回收后的 tombstone 与轨迹保留期如何区分。
 
 这些问题不是安全实现的豁免项；在实测前统一按“未证明、未承诺”处理。
+
+## 10. D11 实测状态（2026-11-03）
+
+已落地的控制（都有测试与证据）：
+
+- **进程树清理**：runner 启动后先被分配进独立 Windows Job Object，宿主随后才
+  通过 stdin 放行任务说明；取消 / 超时 / 输出超限一律 `TerminateJobObject`，
+  并且只在 `ActiveProcesses == 0` 之后才写终态。证据见
+  `docs/evidence/d11-runner-tests.txt` 与 `docs/evidence/d11-live-cancel.json`
+  （父进程与子进程 PID 均不再存活）。
+- **环境清洗**：子进程只拿到 `PATH / PATHEXT / SYSTEMROOT / WINDIR / COMSPEC /
+  TEMP / TMP / LANG / LC_ALL`，外加平台自己的 `PERSONAL_AGENT_TIER1=1`；
+  tier1 模式下不执行 `load_dotenv`，宿主 `.env` 里的凭据不进入子进程。
+- **工具位置**：`agent_stream` 与旧 JSON 聊天路径都不再在宿主调用工具 handler；
+  两者都经过 `src/platform/exec_service.py`。宿主只做策略、参数与身份检查。
+- **输出与终态**：stdout + stderr 共用一个字节预算；超限先清树，再落
+  `failed / OUTPUT_LIMIT_EXCEEDED`。
+- **取消顺序**：trajectory 先记 `exec_cancel_requested`，进程树清空之后才写
+  `exec_finished / cancelled`；清理失败落 `failed / RUNNER_CLEANUP_FAILED`，
+  不伪造 cancelled。
+
+仍然不承诺（D11 不改变这些结论）：
+
+- tier1 没有 OS 级网络隔离，也没有文件系统 jail。提醒工具通过平台显式授予的
+  `--data-dir` 打开自己的数据库，这是**显式授权**，不是隔离。
+- 文件工具的相对路径、`..` 与符号链接逃逸测试属于 D12；D11 只保证在分配好的
+  工作区里启动，不保证工具自身不会越界。
+- 「先分配 Job Object、再通过 stdin 放行」关掉的是启动竞态，不构成对恶意
+  runner 的防护 —— tier1 只跑受信任代码。
+- CPU / 内存 / 进程数限额要等 D34 的 C++ runner；D11 只控制时间、输出与进程树。
