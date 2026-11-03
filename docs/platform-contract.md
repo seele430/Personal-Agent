@@ -30,6 +30,10 @@
 
 ## 2. HTTP API 与 Python SDK
 
+> D15.1（2026-11-03）：下表前六项已实现于 `src/platform_api.py`（`/v1` 路由），
+> 由 `platform.db` 与 tier1 执行层支撑；`fn` / `nodes` / `metrics` 仍未实现。
+> `/v1` 目前**没有接入登录认证**，只适合本机单用户使用（见威胁模型第 12 节）。
+
 ### 2.1 最小接口面
 
 | 能力 | HTTP 接口 | Python SDK | 成功语义 |

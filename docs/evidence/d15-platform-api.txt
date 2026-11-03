@@ -1,0 +1,28 @@
+# D15 续 平台 v1 HTTP API 测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_platform_api -v
+> 时间：2026-11-03T16:33:11.5873430+08:00
+> 说明：TestClient 走 ASGI，不起真实端口；真实端口的 SDK 验证见 d15-platform-v1-sdk.json。
+
+test_cancel_stops_exec (tests.integration.test_platform_api.PlatformApiTest.test_cancel_stops_exec) ... 2026-11-03 16:33:15,442 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_create_is_idempotent_and_returns_resource (tests.integration.test_platform_api.PlatformApiTest.test_create_is_idempotent_and_returns_resource) ... 2026-11-03 16:33:15,661 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_destroy_reclaims_and_blocks_further_exec (tests.integration.test_platform_api.PlatformApiTest.test_destroy_reclaims_and_blocks_further_exec) ... 2026-11-03 16:33:15,769 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_exec_rejects_invalid_command (tests.integration.test_platform_api.PlatformApiTest.test_exec_rejects_invalid_command) ... 2026-11-03 16:33:15,947 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_exec_runs_and_returns_output (tests.integration.test_platform_api.PlatformApiTest.test_exec_runs_and_returns_output) ... 2026-11-03 16:33:16,079 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_exec_timeout_reports_timed_out (tests.integration.test_platform_api.PlatformApiTest.test_exec_timeout_reports_timed_out) ... 2026-11-03 16:33:16,525 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_missing_idempotency_key_is_rejected (tests.integration.test_platform_api.PlatformApiTest.test_missing_idempotency_key_is_rejected) ... 2026-11-03 16:33:17,318 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_same_key_different_body_conflicts (tests.integration.test_platform_api.PlatformApiTest.test_same_key_different_body_conflicts) ... 2026-11-03 16:33:17,392 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_unknown_sandbox_and_exec_return_404 (tests.integration.test_platform_api.PlatformApiTest.test_unknown_sandbox_and_exec_return_404) ... 2026-11-03 16:33:17,502 | INFO | personal_agent.chat | Chat request storage ready
+ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 2.207s
+
+OK

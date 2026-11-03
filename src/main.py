@@ -17,6 +17,7 @@ from src.chat_secure_api import router as chat_router
 from src.inbox_api import router as inbox_router
 from src.monitors_api import router as monitor_router
 from src.notifications_api import router as notification_router
+from src.platform_api import router as platform_router
 from src.reminder_api import router as reminder_router
 from src.tts_api import router as tts_router
 from src.teams_api import router as teams_router
@@ -138,6 +139,9 @@ app.include_router(tts_router)
 
 # 已认证聊天、额度及费用保护
 app.include_router(chat_router)
+
+# 沙箱平台 v1（create / exec / get_exec / cancel / destroy）
+app.include_router(platform_router)
 
 # 个人站内提醒查询
 app.include_router(reminder_router)

@@ -286,6 +286,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：D15 续 平台 v1 HTTP API（create / exec / get_exec / cancel / destroy）
+    "integration/test_platform_api.py": TestSchema(
+        layer="integration",
+        domain="platform_http",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",
