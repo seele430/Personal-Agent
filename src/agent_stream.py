@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any
 
 from src import agent
+from src.core import approvals
 from src.core.run_control import CancellationToken, ChatCancelled
 from src.core.run_store import RunStore
 from src.core.tool_registry import ToolApprovalRequired, ToolDenied
@@ -224,18 +225,19 @@ def run_chat_stream(
                 "exec_id": execution["id"] if execution is not None else None,
             })
 
-            exec_id = execution["id"] if execution is not None else None
             sandbox_ref: dict[str, str | None] = {"id": None}
 
             def record_event(event_type, status, *, sandbox_id=None, payload=None):
                 if store is None or run_id is None:
                     return None
+                # exec 可能是审批通过之后才建的，这里每次现取。
+                current_exec = execution["id"] if execution is not None else None
                 return store.append_event(
                     run_id,
                     event_type=event_type,
                     status=status,
                     step_id=tool_step["id"] if tool_step is not None else None,
-                    exec_id=exec_id,
+                    exec_id=current_exec,
                     sandbox_id=sandbox_id or sandbox_ref["id"],
                     payload=payload,
                 )
@@ -255,7 +257,85 @@ def run_chat_stream(
                 )
 
             try:
-                if policy == "allow":
+                if policy == "ask":
+                    # D13：审批之前不产生 exec；批准之后才建 exec 并执行。
+                    if store is None or run_id is None:
+                        raise ToolDenied("没有 run 记录，无法审批这次工具调用")
+
+                    arguments = agent._tool_arguments(tool_call)
+                    approval = store.create_approval(
+                        run_id,
+                        step_id=tool_step["id"],
+                        tool_name=name,
+                        arguments=arguments,
+                        preview=approvals.build_preview(name, arguments),
+                    )
+                    record_event(
+                        "tool_approval_requested",
+                        "pending",
+                        payload={"approval_id": approval["id"], "tool": name},
+                    )
+                    emit({
+                        "type": "approval_required", "run_id": run_id,
+                        "tool": name, "approval_id": approval["id"],
+                        "preview": approval["arguments_preview"],
+                    })
+
+                    decision = approvals.wait_for_decision(
+                        store, approval["id"], cancel_token=cancel_token
+                    )
+
+                    if decision == "cancelled":
+                        store.expire_approval(approval["id"])
+                        record_event(
+                            "tool_approval_decided", "expired",
+                            payload={
+                                "approval_id": approval["id"],
+                                "reason": "run_cancelled",
+                            },
+                        )
+                        raise ChatCancelled("审批期间 run 被取消")
+
+                    record_event(
+                        "tool_approval_decided", decision,
+                        payload={"approval_id": approval["id"]},
+                    )
+                    emit({
+                        "type": "approval_decided", "run_id": run_id,
+                        "tool": name, "approval_id": approval["id"],
+                        "decision": decision,
+                    })
+
+                    if decision != approvals.APPROVED:
+                        raise ToolDenied(
+                            "用户拒绝了这次工具调用"
+                            if decision == approvals.REJECTED
+                            else "审批超时，未执行工具"
+                        )
+
+                    approvals.verify_digest(approval, arguments)
+
+                    execution = store.record_exec(
+                        tool_step["id"], tool_name=name,
+                        request=arguments, status="queued",
+                    )
+                    if run_sandbox is None:
+                        run_sandbox = agent.open_run_sandbox()
+                    outcome = agent.execute_tool_on_platform(
+                        tool_call,
+                        cancel_token=cancel_token,
+                        sandbox_id=run_sandbox,
+                        on_started=on_started,
+                        on_cancel_requested=on_cancel_requested,
+                        require_allow=False,
+                    )
+                    result = _finish_platform_exec(
+                        outcome,
+                        store=store,
+                        execution=execution,
+                        record_event=record_event,
+                    )
+                elif policy == "allow":
                     if run_sandbox is None:
                         run_sandbox = agent.open_run_sandbox()
                     outcome = agent.execute_tool_on_platform(
@@ -272,7 +352,7 @@ def run_chat_stream(
                         record_event=record_event,
                     )
                 else:
-                    # ask / deny 在产生 exec 之前就抛错，仍然走原有分支。
+                    # deny：在产生 exec 之前就抛错，走既有分支。
                     result = agent.TOOL_REGISTRY.execute(
                         tool_call, cancel_token=cancel_token
                     )
@@ -306,9 +386,7 @@ def run_chat_stream(
                         tool_step["id"], status=status,
                         content=json.dumps(result, ensure_ascii=False),
                     )
-                if isinstance(exc, ToolApprovalRequired):
-                    emit({"type": "approval_required", "run_id": run_id, "tool": name})
-                elif isinstance(exc, ToolDenied):
+                if isinstance(exc, ToolDenied):
                     emit({"type": "tool_denied", "run_id": run_id, "tool": name})
             else:
                 if store is not None and execution is not None:
@@ -367,3 +445,10 @@ def run_chat_stream(
     finally:
         # run 结束（成功 / 取消 / 失败）都回收工作区；文件不跨 run 残留。
         agent.destroy_run_sandbox(run_sandbox)
+
+        # 还有挂着没决定的审批就一并过期，避免永远停在 pending。
+        if store is not None and run_id is not None:
+            try:
+                store.expire_pending_approvals(run_id)
+            except Exception:  # noqa: BLE001 - 收尾失败不能盖掉真实结果
+                pass

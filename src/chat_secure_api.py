@@ -29,13 +29,16 @@ from fastapi import (
     Response,
 )
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 
 from src import agent
 from src import api as legacy_chat
 from src.agent_stream import run_chat_stream
 from src.auth_api import get_current_user
+from src.core import approvals as approval_core
 from src.core.bot_store import BotStore
 from src.core.run_control import ChatCancelled, active_runs
+from src.core.run_store import RunStore
 
 from src.core.ai_budget import (
     BudgetExceeded,
@@ -331,6 +334,98 @@ def cancel_chat_request(
         status_code=409,
         headers=NO_STORE,
         content={"request_id": request_id, "status": "not_active"},
+    )
+
+
+# ==========================================
+# D13 工具审批
+# ==========================================
+
+class ApprovalDecision(BaseModel):
+    decision: str
+
+
+def _owned_run(request_id: str, user_id: str):
+    if _read(request_id, user_id) is None:
+        return None
+
+    return RunStore().find_run_by_request(request_id, owner_id=user_id)
+
+
+@router.get("/chat/requests/{request_id}/approvals")
+def list_chat_approvals(
+    request_id: str,
+    response: Response,
+    user: dict = Depends(get_current_user),
+):
+    legacy_chat.validate_request_id(request_id)
+    response.headers["Cache-Control"] = "no-store"
+
+    run = _owned_run(request_id, user["id"])
+
+    if run is None:
+        raise HTTPException(status_code=404, detail="请求不存在")
+
+    pending = RunStore().list_approvals(run["id"], status="pending")
+
+    return {
+        "request_id": request_id,
+        "approvals": [
+            {
+                "approval_id": item["id"],
+                "tool": item["tool_name"],
+                "preview": item["arguments_preview"],
+                "status": item["status"],
+                "created_at": item["created_at"],
+            }
+            for item in pending
+        ],
+    }
+
+
+@router.post("/chat/requests/{request_id}/approvals/{approval_id}")
+def decide_chat_approval(
+    request_id: str,
+    approval_id: str,
+    payload: ApprovalDecision,
+    user: dict = Depends(get_current_user),
+):
+    legacy_chat.validate_request_id(request_id)
+
+    if _owned_run(request_id, user["id"]) is None:
+        raise HTTPException(status_code=404, detail="请求不存在")
+
+    try:
+        approval = approval_core.decide_for_request(
+            RunStore(),
+            request_id=request_id,
+            approval_id=approval_id,
+            user_id=user["id"],
+            decision=payload.decision,
+        )
+    except KeyError:
+        # 不属于这个 run / 这个用户：不泄露存在性。
+        raise HTTPException(status_code=404, detail="审批不存在") from None
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=409,
+            headers=NO_STORE,
+            content={
+                "request_id": request_id,
+                "approval_id": approval_id,
+                "status": "conflict",
+                "detail": str(exc),
+            },
+        )
+
+    return JSONResponse(
+        status_code=202,
+        headers=NO_STORE,
+        content={
+            "request_id": request_id,
+            "approval_id": approval["id"],
+            "status": approval["status"],
+        },
     )
 
 

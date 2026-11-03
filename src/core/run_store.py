@@ -149,6 +149,28 @@ def init_run_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_trajectory_run
             ON agent_trajectory_events(run_id, sequence)
         """,
+        # D13：一次工具调用一条审批记录；批准之前不产生 exec。
+        """
+        CREATE TABLE IF NOT EXISTS agent_approvals (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+            step_id TEXT NOT NULL REFERENCES agent_steps(id) ON DELETE CASCADE,
+            tool_name TEXT NOT NULL,
+            arguments_digest TEXT NOT NULL,
+            arguments_preview TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (
+                status IN ('pending', 'approved', 'rejected', 'expired')
+            ),
+            created_at TEXT NOT NULL,
+            decided_at TEXT,
+            decided_by TEXT,
+            UNIQUE (step_id)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_approvals_run
+            ON agent_approvals(run_id, status)
+        """,
     )
     for statement in statements:
         conn.execute(statement)
@@ -494,6 +516,164 @@ class RunStore:
             events.append(item)
 
         return events
+
+    # ------------------------------------------------------------------
+    # D13 审批
+    # ------------------------------------------------------------------
+
+    def find_run_by_request(
+        self, request_id: str, *, owner_id: str | None = None
+    ) -> dict[str, Any] | None:
+        with closing(self.connect()) as conn:
+            if owner_id is None:
+                row = conn.execute(
+                    "SELECT * FROM agent_runs WHERE request_id = ?",
+                    (request_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT * FROM agent_runs
+                    WHERE request_id = ? AND owner_id = ?
+                    """,
+                    (request_id, owner_id),
+                ).fetchone()
+
+        return None if row is None else dict(row)
+
+    def create_approval(
+        self,
+        run_id: str,
+        *,
+        step_id: str,
+        tool_name: str,
+        arguments: dict[str, Any],
+        preview: str,
+        approval_id: str | None = None,
+    ) -> dict[str, Any]:
+        """为一次工具调用建审批记录；同一 step 重复调用返回同一条。"""
+
+        from src.core.approvals import digest_arguments
+
+        approval_id = approval_id or new_id("appr")
+
+        with closing(self.connect()) as conn, conn:
+            conn.execute(
+                """
+                INSERT INTO agent_approvals(
+                    id, run_id, step_id, tool_name, arguments_digest,
+                    arguments_preview, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+                ON CONFLICT(step_id) DO NOTHING
+                """,
+                (
+                    approval_id,
+                    run_id,
+                    step_id,
+                    tool_name,
+                    digest_arguments(arguments),
+                    preview,
+                    utc_now(),
+                ),
+            )
+            row = conn.execute(
+                "SELECT * FROM agent_approvals WHERE step_id = ?", (step_id,)
+            ).fetchone()
+
+        if row is None:
+            raise RuntimeError("审批记录创建失败")
+
+        return dict(row)
+
+    def get_approval(self, approval_id: str) -> dict[str, Any]:
+        with closing(self.connect()) as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_approvals WHERE id = ?", (approval_id,)
+            ).fetchone()
+
+        if row is None:
+            raise KeyError(approval_id)
+
+        return dict(row)
+
+    def decide_approval(
+        self,
+        approval_id: str,
+        *,
+        decision: str,
+        decided_by: str,
+    ) -> dict[str, Any]:
+        """批准 / 拒绝；只能发生一次，重复决定抛 ValueError。"""
+
+        from src.core.approvals import DECISION_TO_STATUS
+
+        status = DECISION_TO_STATUS.get(decision)
+
+        if status is None:
+            raise ValueError(f"未知审批决定：{decision}")
+
+        with closing(self.connect()) as conn, conn:
+            changed = conn.execute(
+                """
+                UPDATE agent_approvals
+                SET status = ?, decided_at = ?, decided_by = ?
+                WHERE id = ? AND status = 'pending'
+                """,
+                (status, utc_now(), decided_by, approval_id),
+            ).rowcount
+
+        if changed == 0:
+            self.get_approval(approval_id)  # 不存在 → KeyError
+            raise ValueError("审批已经决定过")
+
+        return self.get_approval(approval_id)
+
+    def expire_approval(self, approval_id: str) -> dict[str, Any]:
+        with closing(self.connect()) as conn, conn:
+            conn.execute(
+                """
+                UPDATE agent_approvals
+                SET status = 'expired', decided_at = ?
+                WHERE id = ? AND status = 'pending'
+                """,
+                (utc_now(), approval_id),
+            )
+
+        return self.get_approval(approval_id)
+
+    def expire_pending_approvals(self, run_id: str) -> int:
+        with closing(self.connect()) as conn, conn:
+            return conn.execute(
+                """
+                UPDATE agent_approvals
+                SET status = 'expired', decided_at = ?
+                WHERE run_id = ? AND status = 'pending'
+                """,
+                (utc_now(), run_id),
+            ).rowcount
+
+    def list_approvals(
+        self, run_id: str, *, status: str | None = None
+    ) -> list[dict[str, Any]]:
+        with closing(self.connect()) as conn:
+            if status is None:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM agent_approvals
+                    WHERE run_id = ? ORDER BY created_at
+                    """,
+                    (run_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM agent_approvals
+                    WHERE run_id = ? AND status = ? ORDER BY created_at
+                    """,
+                    (run_id, status),
+                ).fetchall()
+
+        return [dict(row) for row in rows]
 
     def finish(self, run_id: str, *, status: str) -> None:
         if status not in RUN_STATUSES:

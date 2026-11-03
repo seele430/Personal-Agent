@@ -143,6 +143,18 @@ if name != "create_reminder":
 - **输出上限**：read / shell / python / http 都有字节上限；写入受工具参数
   32 KB 上限约束。
 
+### D13 审批门
+
+- `ask` 工具不再直接抛错：先写一条审批记录（`agent_approvals`），SSE 发
+  `approval_required`（带 `approval_id` 与参数预览），run 停在等待状态。
+  **批准之前没有 exec**，这是 D8 就定下的约束。
+- 批准后服务端才建 exec 并执行一次；拒绝 / 超时 / run 取消都不产生 exec，
+  step 落 `denied`，trajectory 只留 `tool_approval_requested` →
+  `tool_approval_decided`。
+- 参数在批准时冻结（sha256 摘要），执行前再校验一次；参数被换掉直接拒绝。
+- 决定接口：`POST /chat/requests/{request_id}/approvals/{approval_id}`，
+  202 接受 / 404 非本人 / 409 已经决定过。
+
 ---
 
 ## 2. 工具选择：两层决策

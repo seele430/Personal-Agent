@@ -187,10 +187,10 @@ class PlatformExecCancelTest(unittest.TestCase):
         self.assertLess(events[1]["sequence"], events[2]["sequence"])
 
     # ------------------------------------------------------------------
-    # 2. ask：审批门在 exec 之前，不产生 exec
+    # 2. ask：进入审批门，批准之前没有 exec（D13）
     # ------------------------------------------------------------------
 
-    def test_ask_tool_never_creates_exec(self):
+    def test_ask_tool_waits_for_approval_and_never_creates_exec(self):
         final_stream = iter([chunk(text="好的", finish="stop")])
 
         with (
@@ -207,23 +207,62 @@ class PlatformExecCancelTest(unittest.TestCase):
                 ],
             ),
         ):
-            run_chat_stream(
-                "改一下提醒", emit=self.events.append, cancel_token=self.token
-            )
+            with self.run_in_thread() as pool:
+                future = pool.submit(
+                    copy_context().run,
+                    run_chat_stream,
+                    "改一下提醒",
+                    emit=self.events.append,
+                    cancel_token=self.token,
+                )
 
-        self.assertEqual(self.exec_rows(), [])
+                approval = self.wait_pending_approval()
+
+                # 审批还没决定时不能有任何 exec
+                self.assertEqual(self.exec_rows(), [])
+
+                self.store().decide_approval(
+                    approval["id"], decision="reject", decided_by="alice"
+                )
+                future.result(timeout=60)
 
         run = self.stored_run()
         tool_step = next(
             step for step in run["turns"][0]["steps"] if step["kind"] == "tool"
         )
-        self.assertEqual(tool_step["status"], "awaiting_approval")
+        self.assertEqual(tool_step["status"], "denied")
         self.assertIsNone(tool_step["exec"])
+        self.assertEqual(self.exec_rows(), [])
 
-        self.assertIn(
-            "approval_required", [event["type"] for event in self.events]
+        self.assertEqual(
+            [
+                (event["event_type"], event["status"])
+                for event in self.events_of(run["id"])
+            ],
+            [
+                ("tool_approval_requested", "pending"),
+                ("tool_approval_decided", "rejected"),
+            ],
         )
-        self.assertEqual(self.events_of(run["id"]), [])
+
+    def store(self) -> RunStore:
+        return RunStore(self.db_path)
+
+    def wait_pending_approval(self, timeout: float = 15.0) -> dict:
+        deadline = time.monotonic() + timeout
+
+        while time.monotonic() < deadline:
+            row = self.run_row()
+
+            if row is not None:
+                pending = self.store().list_approvals(row["id"], status="pending")
+
+                if pending:
+                    return pending[0]
+
+            time.sleep(0.02)
+
+        raise AssertionError("等不到 pending 审批")
 
     # ------------------------------------------------------------------
     # 3. 平台超时：exec 落 timed_out，进程树同样要清

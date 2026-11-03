@@ -256,6 +256,16 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
+    # L2：D13 审批门（批准前无 exec、批准后恰好一次、拒绝 / 超时 / 取消 / 归属）
+    "integration/test_approval_gate.py": TestSchema(
+        layer="integration",
+        domain="approval",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",

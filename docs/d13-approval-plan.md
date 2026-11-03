@@ -1,8 +1,9 @@
 # D13 审批门设计草案（接 D12 现状）
 
 > 日期：2026-11-03
-> 状态：设计草案，尚未实现。D13 的验收是「危险工具拒绝路径有测试」，
-> 这份文档只固定决策与边界，避免实现时来回改语义。
+> 状态：**已实现**（commit 见 journal 的 D13 条目）。实现与草案的差异记在第 9 节。
+> D13 的验收是「危险工具拒绝路径有测试」，这份文档只固定决策与边界，
+> 避免实现时来回改语义。
 
 ## 1. 现状（D12 结束时）
 
@@ -99,3 +100,27 @@ CREATE TABLE IF NOT EXISTS agent_approvals (
 - `run_shell` / `run_python`：暴露前要先有「命令预览 + 明确的风险提示」，
   否则用户点「批准」时并不知道自己在批什么。
 - `http_get`：先定网络允许集（D13 只做目标提示，真正的策略留给后续）。
+
+## 9. 实现记录（2026-11-03）
+
+- 数据表：`agent_approvals`（`src/core/run_store.py` 的 `init_run_schema` 新增），
+  `UNIQUE(step_id)` 保证一次调用只有一条审批记录。
+- 核心逻辑：`src/core/approvals.py`（摘要、预览、等待、按请求决定）。等待用
+  50ms 轮询 SQLite，不依赖进程内事件 —— 决策可以来自任意线程 / 任意进程。
+- 流式链路：`src/agent_stream.py` 的 `ask` 分支改成「建审批 → 发事件 → 等待 →
+  批准之后才建 exec 并执行」；run 结束时把残留 pending 审批统一过期。
+- 接口：`GET /chat/requests/{request_id}/approvals` 与
+  `POST /chat/requests/{request_id}/approvals/{approval_id}`（202 / 404 / 409）。
+- trajectory 新增 `tool_approval_requested` 与 `tool_approval_decided`；
+  只有批准之后才会出现 `exec_started`。
+- 测试：`tests/integration/test_approval_gate.py` 共 11 个用例
+  （7 个链路级 + 4 个 HTTP 级）。
+
+与草案的差异：
+
+- 等待实现改为轮询而不是进程内 Event：少一份会和数据库打架的状态。
+- 超时时间可用 `PERSONAL_AGENT_APPROVAL_TIMEOUT_SECONDS` 覆盖，默认 300 秒。
+- HTTP 测试里 `_read`（legacy 聊天记录读取）用替身，只测审批路由本身；
+  归属校验由 `approvals.decide_for_request` 覆盖。
+- 前端交互未做：D13 只交付服务端语义与 SSE 事件（`approval_required` /
+  `approval_decided`）。前端接入放在 D13.5 / D14 一起做。
