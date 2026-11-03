@@ -330,7 +330,7 @@ def run_chat_stream(
                         request=arguments, status="queued",
                     )
                     if run_sandbox is None:
-                        run_sandbox = agent.open_run_sandbox()
+                        run_sandbox = agent.open_run_sandbox(run_id)
                     outcome = agent.execute_tool_on_platform(
                         tool_call,
                         cancel_token=cancel_token,
@@ -347,7 +347,7 @@ def run_chat_stream(
                     )
                 elif policy == "allow":
                     if run_sandbox is None:
-                        run_sandbox = agent.open_run_sandbox()
+                        run_sandbox = agent.open_run_sandbox(run_id)
                     outcome = agent.execute_tool_on_platform(
                         tool_call,
                         cancel_token=cancel_token,

@@ -35,6 +35,8 @@ class Paths:
     ai_usage_db: Path
     knowledge_db: Path
     bots_db: Path
+    # D15：平台控制面（沙箱与幂等记录），与聊天库分开，便于 D16—D20 单独演进。
+    platform_db: Path
 
     # 为兼容性保留的属性别名（逐步迁移后可删除）
     @property
@@ -72,6 +74,7 @@ def build_paths(data_dir: str | Path | None = None) -> Paths:
         ai_usage_db=root / "ai_usage.db",
         knowledge_db=root / "knowledge.db",
         bots_db=root / "bots.db",
+        platform_db=root / "platform.db",
     )
 
 

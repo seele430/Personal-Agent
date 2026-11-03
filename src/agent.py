@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from src.config import paths
 
 from contextlib import contextmanager
@@ -757,14 +758,26 @@ def execute_tool_on_platform(
     return outcome
 
 
-def open_run_sandbox() -> str:
-    """为一个 run 创建可复用的沙箱工作区。
+def open_run_sandbox(run_id: str | None = None) -> str:
+    """为一个 run 创建（或复用）可共享的沙箱工作区。
 
     同一次对话里的 read / ls / write 必须看到同一批文件，所以沙箱按 run
     创建、按 run 回收；一次性的 exec 沙箱只适合无状态命令。
+
+    D15 起走平台的幂等 create：key 按 run 固定，同一个 run 重复调用拿到的
+    永远是同一个 sandbox_id，不会凭空多出第二份工作区。
     """
 
-    return default_executor().open_sandbox()
+    from src.platform.sandbox_service import SandboxService
+
+    key = f"run-{run_id}" if run_id else f"run-{uuid.uuid4().hex}"
+
+    sandbox = SandboxService().create(
+        idempotency_key=key,
+        workspace_id=run_id or key,
+    )
+
+    return sandbox["id"]
 
 
 def destroy_run_sandbox(sandbox_id: str | None) -> None:
@@ -772,7 +785,9 @@ def destroy_run_sandbox(sandbox_id: str | None) -> None:
         return
 
     try:
-        default_executor().destroy(sandbox_id)
+        from src.platform.sandbox_service import SandboxService
+
+        SandboxService().reclaim(sandbox_id)
     except Exception:  # noqa: BLE001 - 回收失败不能掩盖 run 的真实结果
         logger.exception("回收沙箱失败 sandbox_id=%s", sandbox_id)
 

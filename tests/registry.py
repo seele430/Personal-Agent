@@ -276,6 +276,16 @@ TEST_SCHEMAS = {
         risk="low",
     ),
 
+    # L2：D15 幂等 create（同 key 重试 / 并发 / 指纹冲突 / 重启后仍生效）
+    "integration/test_sandbox_create.py": TestSchema(
+        layer="integration",
+        domain="platform_create",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",

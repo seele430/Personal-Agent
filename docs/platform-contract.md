@@ -74,6 +74,9 @@
 
 ### 3.1 create 必须原子幂等
 
+> D15（2026-11-03）：控制面服务已实现（`src/platform/sandbox_service.py`，
+> 独立库 `platform.db`）。HTTP `/v1/sandboxes` 入口尚未实现，SDK 仍打内存替身。
+
 | 情况 | 结果 |
 | --- | --- |
 | 同 key + 同规范化请求体，顺序重试 | 返回同一 `sandbox_id`，不得重复分配容量或创建工作区 |

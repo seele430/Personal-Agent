@@ -84,3 +84,9 @@
 - 验收与卡点：CLI 用例 **6 个全绿**（渲染内容、JSON 序列化、文本 / JSON 输出、按 request_id 查、未知 run 退出码 2），证据见 `docs/evidence/d14-trace-cli.txt`；全量 **68 文件 / 638 用例 PASS，144.08 秒**，证据见 `docs/evidence/d14-backend-tests.txt`；前端 `tsc -b && vite build` PASS，证据见 `docs/evidence/d14-frontend-build.txt`；测试索引审计 PASS（`d14-test-audit.txt`）。加事件后修了 4 处「断言整条事件列表」的用例，改成按 `exec_id` / 事件前缀过滤，避免以后再加事件就红。
 - 遗留限制：① 前端审批卡片没有浏览器端到端测试（只有 tsc / vite 构建证据），真实点击路径还没跑过；② CLI 不做跨 run 检索（`trace --limit` 之类），要按 run_id 或 request_id 查；③ trajectory 目前随 run 级联删除，没有独立保留期（等 D16—D20 的 reaper）；④ payload 上限 2 KB 只是文档约定，代码还没强制截断；⑤ `run_finished` 与 `store.finish` 不是同一事务，极端崩溃下可能出现「事件已写、状态未改」。
 - 明天第一件事：D15 幂等 create（idempotency key + 指纹 + 并发只建一个沙箱），并把审批卡片的真实点击路径补成浏览器端到端用例。
+## D15 — 2026-11-03
+
+- 今天做了什么：新增平台控制面服务 `src/platform/sandbox_service.py` 与独立库 `platform.db`（`config.paths.platform_db`）。`create(idempotency_key, tier, workspace_id, ttl_seconds)` 用 SQLite 唯一约束 + `BEGIN IMMEDIATE` 同一事务实现幂等：同 key 同请求体返回同一 sandbox，同 key 不同请求体 409 `IDEMPOTENCY_CONFLICT`，非法 key 400 `INVALID_IDEMPOTENCY_KEY`，并发只允许一个创建者；`reclaim()` 幂等回收并把状态置为 reclaimed。run 级沙箱改为按 `run-<run_id>` 固定 key 创建（`agent.open_run_sandbox(run_id)`），同一个 run 重复调用不会多出第二份工作区；`destroy_run_sandbox` 走 `reclaim`，状态与磁盘一起收。沙箱根目录抽到 `src/platform/paths.py`，exec 与 create 共用同一个根。
+- 验收与卡点：**10 个用例全绿**（同 key 重试 10 次只有 1 行 sandbox / 1 行幂等记录、省略 workspace 时默认值确定性规范化后指纹一致、重启后仍命中、同 key 不同 workspace 或 ttl → 409、8 线程 16 次并发只建 1 个、非法 key / ttl / tier 拒绝、回收幂等且删除工作区、run 级沙箱按 run_id 复用），证据见 `docs/evidence/d15-idempotent-create.txt`。全量 **69 文件 / 648 用例 PASS，216.01 秒**（D14 是 68 / 638、144.08 秒），证据见 `docs/evidence/d15-backend-tests.txt`；测试索引审计 PASS（`d15-test-audit.txt`）。
+- 遗留限制：① 只实现服务层，**没有 HTTP `/v1/sandboxes` 入口**，D10 的 SDK 仍然只能打内存替身；② 幂等记录没有过期 / 清理（契约要求回收后保留 24 小时，等 D16 的 reaper）；③ 一次性 exec 沙箱（不传 sandbox_id 时）仍走本地随机 id，不登记到控制面；④ `expires_at` 只写不校验，TTL 语义在 D16；⑤ 没有 tombstone / 410。
+- 明天第一件事：D16 reaper + TTL + 410 —— 到期回收、幂等记录保留 24 小时、已回收沙箱上的操作返回 410。

@@ -144,12 +144,11 @@ def clamp(value: int | None, default: int, maximum: int) -> int:
 
 
 def default_root() -> Path:
-    override = os.getenv(ROOT_ENV, "").strip()
+    """与 sandbox_service 共用同一个根目录（见 src/platform/paths.py）。"""
 
-    if override:
-        return Path(override).expanduser()
+    from src.platform.paths import sandbox_root
 
-    return Path(tempfile.gettempdir()) / DEFAULT_ROOT_NAME
+    return sandbox_root()
 
 
 def platform_environment() -> dict[str, str]:
