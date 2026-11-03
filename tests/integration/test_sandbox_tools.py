@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import unittest
 
 from contextvars import copy_context
@@ -175,23 +176,51 @@ class SandboxToolsTest(unittest.TestCase):
                 )
 
     def test_symlink_escape_is_rejected(self):
-        outside = Path(self.temp.name) / "outside-secret.txt"
-        outside.write_text("secret", encoding="utf-8")
+        outside = Path(self.temp.name) / "outside"
+        outside.mkdir()
+        secret = outside / "secret.txt"
+        secret.write_text("secret", encoding="utf-8")
 
-        link = self.workspace / "escape.txt"
+        link = self.workspace / "escape"
 
-        try:
-            os.symlink(outside, link)
-        except (OSError, NotImplementedError):
-            self.skipTest("当前环境不允许创建符号链接")
+        if not self._make_directory_link(outside, link):
+            self.skipTest("当前环境既不能建符号链接，也不能建目录联接")
 
-        self.tool_error(self.run_tool("read_file", {"path": "escape.txt"}), "路径")
         self.tool_error(
-            self.run_tool("write_file", {"path": "escape.txt", "content": "x"}),
+            self.run_tool("read_file", {"path": "escape/secret.txt"}), "路径"
+        )
+        self.tool_error(self.run_tool("list_dir", {"path": "escape"}), "路径")
+        self.tool_error(
+            self.run_tool(
+                "write_file", {"path": "escape/new.txt", "content": "x"}
+            ),
             "路径",
         )
 
-        self.assertEqual(outside.read_text(encoding="utf-8"), "secret")
+        # 拒绝之后，工作区外的东西一个字节都不能变。
+        self.assertEqual(secret.read_text(encoding="utf-8"), "secret")
+        self.assertFalse((outside / "new.txt").exists())
+
+    @staticmethod
+    def _make_directory_link(target: Path, link: Path) -> bool:
+        """优先符号链接；没有权限时退回目录联接（junction 不需要管理员）。"""
+
+        try:
+            os.symlink(target, link, target_is_directory=True)
+            return True
+        except (OSError, NotImplementedError):
+            pass
+
+        try:
+            completed = subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return False
+
+        return completed.returncode == 0
 
     # ------------------------------------------------------------------
     # 执行工具

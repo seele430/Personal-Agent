@@ -152,3 +152,18 @@ runner
 - 「先分配 Job Object、再通过 stdin 放行」关掉的是启动竞态，不构成对恶意
   runner 的防护 —— tier1 只跑受信任代码。
 - CPU / 内存 / 进程数限额要等 D34 的 C++ runner；D11 只控制时间、输出与进程树。
+
+## 11. D12 实测状态（2026-11-03）
+
+- **路径归属**：`src/tools/sandbox_tools.py` 只接受工作区内相对路径，先解析
+  real path 再判断是否仍在工作区；`..`、绝对路径、盘符路径、目录联接
+  （junction）逃逸都有负向测试，证据见 `docs/evidence/d12-sandbox-tools.txt`。
+  判断依据是解析后的路径归属，不是字符串前缀。
+- **工作区**：同一次 run 共享一个沙箱工作区（`open_run_sandbox`），run 结束
+  （成功 / 取消 / 失败）统一回收，文件不跨 run 残留。
+- **工具面**：`read_file` / `list_dir` 对模型开放（allow）；`write_file` /
+  `run_shell` / `run_python` / `http_get` 已在注册表中，但策略是 ask 且不暴露
+  给模型 —— 在 D13 接入审批交互之前，它们无法通过对话触发。
+- **仍然不承诺**：`run_shell` / `run_python` 一旦执行就是任意代码，tier1 没有
+  网络隔离也没有文件 jail；`http_get` 只做协议 / 超时 / 输出上限，不做 SSRF
+  目标限制（网络允许集等 D13 之后再定义）。
