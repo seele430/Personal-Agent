@@ -1,0 +1,588 @@
+# D14 测试索引与隔离审计
+> 命令：.venv/Scripts/python.exe scripts/run_tests.py list --doc && .venv/Scripts/python.exe scripts/run_tests.py audit
+> 时间：2026-11-03T16:17:49.4409656+08:00
+> 说明：新增 integration/test_trajectory_cli.py 已登记。
+
+
+Personal Agent Test Schema Audit
+================================================
+Layer: audit
+Files: 68
+Registered schemas: 67
+
+unit           9 files
+integration    43 files
+api            15 files
+legacy         1 files
+
+Registered test schemas:
+
+  integration/test_approval_gate.py
+    layer: integration
+    domain: approval
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: none
+    risk: medium
+
+  integration/test_guarded_asyncio.py
+    layer: integration
+    domain: test_infra
+    database: none
+    authentication: none
+    external_network: none
+    risk: low
+
+  integration/test_platform_exec_cancel.py
+    layer: integration
+    domain: platform_exec
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: none
+    risk: high
+
+  integration/test_reminder_store.py
+    layer: integration
+    domain: reminder
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: high
+
+  integration/test_sandbox_tools.py
+    layer: integration
+    domain: platform_exec
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: none
+    risk: high
+
+  integration/test_task_pipeline.py
+    layer: integration
+    domain: monitor
+    database: temporary_sqlite
+    authentication: none
+    external_network: mocked
+    risk: high
+
+  integration/test_test_safety.py
+    layer: integration
+    domain: test_infra
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: medium
+
+  integration/test_tier1_runner.py
+    layer: integration
+    domain: platform_exec
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: none
+    risk: high
+
+  integration/test_trajectory_cli.py
+    layer: integration
+    domain: trajectory
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: low
+
+  test_access_policy_dispatcher.py
+    layer: integration
+    domain: access_policy
+    database: temporary_sqlite
+    authentication: none
+    external_network: mocked
+    risk: medium
+
+  test_admin_alerts.py
+    layer: integration
+    domain: alerting
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: medium
+
+  test_agent_bounds.py
+    layer: unit
+    domain: agent
+    database: none
+    authentication: none
+    external_network: none
+    risk: low
+
+  test_agent_call_count.py
+    layer: unit
+    domain: agent
+    database: none
+    authentication: none
+    external_network: none
+    risk: low
+
+  test_agent_stream.py
+    layer: integration
+    domain: agent_stream
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: mocked
+    risk: high
+
+  test_agent_usage.py
+    layer: unit
+    domain: agent
+    database: none
+    authentication: none
+    external_network: none
+    risk: low
+
+  test_agent_usage_trace.py
+    layer: integration
+    domain: agent
+    database: temporary_sqlite
+    authentication: none
+    external_network: mocked
+    risk: high
+
+  test_ai_budget.py
+    layer: integration
+    domain: billing
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: high
+
+  test_ai_budget_reconcile.py
+    layer: integration
+    domain: billing
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: high
+
+  test_ai_pricing.py
+    layer: integration
+    domain: billing
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: high
+
+  test_ai_usage.py
+    layer: integration
+    domain: billing
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: high
+
+  test_ai_usage_trace.py
+    layer: integration
+    domain: billing
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: high
+
+  test_auth_api.py
+    layer: api
+    domain: auth
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: mocked
+    risk: high
+
+  test_auth_store.py
+    layer: integration
+    domain: auth
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: none
+    risk: high
+
+  test_bootstrap_owner.py
+    layer: integration
+    domain: auth
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: none
+    risk: high
+
+  test_bot_api.py
+    layer: api
+    domain: bot
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: none
+    risk: medium
+
+  test_bot_chat.py
+    layer: integration
+    domain: bot
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: medium
+
+  test_bot_memory.py
+    layer: integration
+    domain: knowledge
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: high
+
+  test_bot_store.py
+    layer: integration
+    domain: bot
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: medium
+
+  test_chat_admission.py
+    layer: integration
+    domain: chat
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: medium
+
+  test_chat_budget_http.py
+    layer: api
+    domain: billing
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: mocked
+    risk: high
+
+  test_chat_db_restart.py
+    layer: integration
+    domain: chat
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: medium
+
+  test_chat_ownership.py
+    layer: integration
+    domain: chat
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: medium
+
+  test_chat_quota.py
+    layer: integration
+    domain: chat
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: medium
+
+  test_chat_quota_http.py
+    layer: api
+    domain: chat
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: mocked
+    risk: medium
+
+  test_chat_reconciliation_http.py
+    layer: api
+    domain: billing
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: mocked
+    risk: high
+
+  test_chat_request_validation_http.py
+    layer: api
+    domain: chat
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: mocked
+    risk: medium
+
+  test_chat_secure_api.py
+    layer: api
+    domain: chat
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: mocked
+    risk: high
+
+  test_chat_usage_http.py
+    layer: api
+    domain: chat
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: mocked
+    risk: medium
+
+  test_dispatcher_history.py
+    layer: integration
+    domain: dispatcher
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: medium
+
+  test_inbox_api.py
+    layer: api
+    domain: monitor
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: none
+    risk: high
+
+  test_knowledge.py
+    layer: integration
+    domain: knowledge
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: high
+
+  test_knowledge_inject.py
+    layer: integration
+    domain: knowledge
+    database: temporary_sqlite
+    authentication: none
+    external_network: mocked
+    risk: high
+
+  test_knowledge_r5.py
+    layer: integration
+    domain: knowledge
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: high
+
+  test_knowledge_vector.py
+    layer: integration
+    domain: knowledge
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: high
+
+  test_login_rate_limit.py
+    layer: api
+    domain: auth
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: mocked
+    risk: high
+
+  test_monitor_api.py
+    layer: api
+    domain: monitor
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: none
+    risk: high
+
+  test_monitor_lease.py
+    layer: integration
+    domain: monitor
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: medium
+
+  test_notifications_api.py
+    layer: api
+    domain: monitor
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: none
+    risk: high
+
+  test_outbox.py
+    layer: integration
+    domain: outbox
+    database: temporary_sqlite
+    authentication: none
+    external_network: mocked
+    risk: medium
+
+  test_outbox_429.py
+    layer: integration
+    domain: outbox
+    database: temporary_sqlite
+    authentication: none
+    external_network: mocked
+    risk: medium
+
+  test_outbox_backoff.py
+    layer: integration
+    domain: outbox
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: medium
+
+  test_outbox_http.py
+    layer: integration
+    domain: outbox
+    database: temporary_sqlite
+    authentication: none
+    external_network: mocked
+    risk: medium
+
+  test_reminder_api.py
+    layer: api
+    domain: reminder
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: none
+    risk: high
+
+  test_reminder_chat_http.py
+    layer: api
+    domain: reminder
+    database: temporary_sqlite
+    authentication: mocked
+    external_network: mocked
+    risk: high
+
+  test_reminder_identity.py
+    layer: integration
+    domain: reminder
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: medium
+
+  test_reminder_scheduler.py
+    layer: integration
+    domain: reminder
+    database: temporary_sqlite
+    authentication: none
+    external_network: mocked
+    risk: high
+
+  test_rss_errors.py
+    layer: unit
+    domain: rss
+    database: none
+    authentication: none
+    external_network: mocked
+    risk: medium
+
+  test_run_migration.py
+    layer: integration
+    domain: run_model
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: high
+
+  test_run_store.py
+    layer: integration
+    domain: run_model
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: high
+
+  test_task_health.py
+    layer: integration
+    domain: task
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: medium
+
+  test_task_run_history.py
+    layer: integration
+    domain: task
+    database: temporary_sqlite
+    authentication: none
+    external_network: none
+    risk: medium
+
+  test_tool_registry.py
+    layer: unit
+    domain: tool_policy
+    database: none
+    authentication: none
+    external_network: none
+    risk: low
+
+  test_tts_api.py
+    layer: api
+    domain: bot
+    database: temporary_sqlite
+    authentication: none
+    external_network: mocked
+    risk: medium
+
+  unit/test_agent_tool_limits.py
+    layer: unit
+    domain: reminder
+    database: none
+    authentication: none
+    external_network: mocked
+    risk: medium
+
+  unit/test_platform_sdk.py
+    layer: unit
+    domain: platform_sdk
+    database: none
+    authentication: none
+    external_network: none
+    risk: low
+
+  unit/test_reminder_eval.py
+    layer: unit
+    domain: eval
+    database: none
+    authentication: none
+    external_network: none
+    risk: low
+
+  unit/test_url_policy.py
+    layer: unit
+    domain: rss
+    database: none
+    authentication: none
+    external_network: mocked
+    risk: high
+
+Note: metadata describes tests; it does not enforce network isolation.
+Duration: 0.00s
+================================================
+
+Layer membership
+------------------------------------------------
+  unit           9 files
+  integration    43 files
+  api            15 files
+  source: schema layer in tests/registry.py (not the directory layout)
+
+  warning [membership] test_team_dispatch.py: 未登记且不在 layer 目录，将归入 legacy
+
+Isolation audit (static source review)
+------------------------------------------------
+Files reviewed: 68
+Violations: 0
+Warnings: 2
+
+  warning [database/warning] integration/test_reminder_store.py:29
+    self.path = Path(self.temp.name) / "reminders.db"
+    reason: reminders.db is resolved under a temporary root
+
+  warning [database/warning] integration/test_reminder_store.py:239
+    self.path = Path(self.temp.name) / "reminders.db"
+    reason: reminders.db is resolved under a temporary root
+
+Note: database and network facts come from static source review, not from a runtime sandbox.
+
+Duration: 0.17s
+Result: PASS
+
+PASS: Test Schema audit

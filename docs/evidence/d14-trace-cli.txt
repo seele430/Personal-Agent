@@ -1,0 +1,64 @@
+# D14 轨迹 CLI 证据
+> 命令：python scripts/trace_run.py <run_id>（下面是测试 fixture 的真实输出）
+> 时间：2026-11-03T16:18:09.2218167+08:00
+
+## 文本模式
+
+run run_78301a7aaf2f4a71abc7c7f34589138f  status=succeeded  owner=alice
+created=2026-11-03T08:18:09.448386+00:00  updated=2026-11-03T08:18:09.522977+00:00
+
+run 事件：
+  ·   1 run_started/running
+  ·   4 run_finished/succeeded
+
+turn 1  succeeded  五分钟后提醒我喝水
+  step 1  user      succeeded
+       五分钟后提醒我喝水
+  step 2  assistant succeeded
+       提醒已创建
+  step 3  tool      succeeded   create_reminder exec=exec_ee8c0b1334374677a6b575e25e8fe807 [succeeded]
+       {"reminder_id": 1}
+       ·   2 exec_started/running
+       ·   3 exec_finished/succeeded  {"cleanup": "job_object", "duration_ms": 42, "exit_code": 0}
+
+审批：
+  appr_669fe87bc675459c9941214b3f948a29  write_file  rejected  by=alice  write_file {...}
+
+## JSON 模式（前 12 行）
+
+{
+  "run": {
+    "id": "run_78301a7aaf2f4a71abc7c7f34589138f",
+    "request_id": "d14_trace_request",
+    "owner_id": "alice",
+    "status": "succeeded",
+    "created_at": "2026-11-03T08:18:09.448386+00:00",
+    "updated_at": "2026-11-03T08:18:09.522977+00:00",
+    "turns": [
+      {
+        "id": "turn_75b3a9ce012e426b871142fbe397c44a",
+        "run_id": "run_78301a7aaf2f4a71abc7c7f34589138f",
+
+## 用例输出
+
+python.exe : test_cli_json_output (tests.integration.test_trajectory_cli.TrajectoryCliTest.test_cli_json_output) ... ok
+所在位置 行:22 字符: 352
++ ... $testOut = (& .\.venv\Scripts\python.exe -m unittest tests.integratio ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (test_cli_json_o..._output) ... ok:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+test_cli_lookup_by_request_id (tests.integration.test_trajectory_cli.TrajectoryCliTest.test_cli_lookup_by_request_id) .
+.. ok
+test_cli_text_output (tests.integration.test_trajectory_cli.TrajectoryCliTest.test_cli_text_output) ... ok
+test_cli_unknown_run_returns_2 (tests.integration.test_trajectory_cli.TrajectoryCliTest.test_cli_unknown_run_returns_2)
+ ... ok
+test_collect_run_is_json_serializable (tests.integration.test_trajectory_cli.TrajectoryCliTest.test_collect_run_is_json
+_serializable) ... ok
+test_render_shows_steps_exec_and_events (tests.integration.test_trajectory_cli.TrajectoryCliTest.test_render_shows_step
+s_exec_and_events) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.916s
+
+OK

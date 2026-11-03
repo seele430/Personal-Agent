@@ -423,6 +423,14 @@ export default function App(
   const [finishedTool, setFinishedTool] = useState("");
   const [error, setError] = useState("");
 
+  // D13 审批门：服务端会停在等待状态，这里必须让用户真的能批准 / 拒绝。
+  const [pendingApproval, setPendingApproval] = useState<{
+    approvalId: string;
+    requestId: string;
+    tool: string;
+    preview: string;
+  } | null>(null);
+
   const [checkingId, setCheckingId] =
     useState<string | null>(null);
 
@@ -792,12 +800,42 @@ export default function App(
     if (!requestId) return;
     cancelledRequests.current.add(requestId);
     activeController.current?.abort();
+    setPendingApproval(null);
     markCancelled(requestId);
     void fetch(`/api/chat/requests/${encodeURIComponent(requestId)}/cancel`, {
       method: "POST",
       headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
       keepalive: true,
     }).catch(() => undefined);
+  }
+
+  async function decideApproval(decision: "approve" | "reject") {
+    const pending = pendingApproval;
+    if (!pending || !pending.approvalId) return;
+
+    setPendingApproval(null);
+
+    try {
+      const response = await fetch(
+        `/api/chat/requests/${encodeURIComponent(pending.requestId)}` +
+          `/approvals/${encodeURIComponent(pending.approvalId)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify({ decision }),
+        },
+      );
+
+      if (!response.ok) {
+        const result = await readJson(response);
+        setError(result.detail ?? "审批没有生效，请重试。");
+      }
+    } catch {
+      setError("审批请求没有送达，请重试。");
+    }
   }
 
   useEffect(() => {
@@ -822,6 +860,7 @@ export default function App(
     setSending(true);
     setActiveTool("");
     setFinishedTool("");
+    setPendingApproval(null);
     setError("");
     const requestId = crypto.randomUUID();
     cancelledRequests.current.delete(requestId);
@@ -837,7 +876,7 @@ export default function App(
     const controller = new AbortController();
     activeController.current = controller;
     activeRequestId.current = requestId;
-    const timeout = window.setTimeout(() => controller.abort(), 60000);
+    let timeout = window.setTimeout(() => controller.abort(), 60000);
 
     try {
       const response = await fetch("/api/chat", {
@@ -870,6 +909,9 @@ export default function App(
             text?: string;
             reply?: string;
             tool?: string;
+            approval_id?: string;
+            preview?: string;
+            decision?: string;
           };
           if (payload.type === "text_delta" && payload.text) {
             appendAssistantDelta(requestId, payload.text);
@@ -881,7 +923,22 @@ export default function App(
             setFinishedTool(payload.tool ?? "工具");
           } else if (payload.type === "approval_required") {
             setActiveTool("");
-            setError(`工具 ${payload.tool ?? ""} 需要确认，本次未执行。`);
+            setPendingApproval({
+              approvalId: payload.approval_id ?? "",
+              requestId,
+              tool: payload.tool ?? "工具",
+              preview: payload.preview ?? "",
+            });
+            // 审批可以等很久：把 60 秒的流超时换成 10 分钟，
+            // 否则客户端会在用户点批准之前主动断开。
+            window.clearTimeout(timeout);
+            timeout = window.setTimeout(() => controller.abort(), 600000);
+          } else if (payload.type === "approval_decided") {
+            setPendingApproval((current) =>
+              current && current.approvalId === payload.approval_id
+                ? null
+                : current,
+            );
           } else if (payload.type === "done" && typeof payload.reply === "string") {
             terminal = true;
             finishRequest(requestId, payload.reply);
@@ -2340,16 +2397,42 @@ export default function App(
               </article>
             ))}
 
+            {pendingApproval && (
+              <div className="approval-card" role="alertdialog" aria-label="工具审批">
+                <div className="approval-title">
+                  工具「{pendingApproval.tool}」需要你的批准
+                </div>
+                <pre className="approval-preview">{pendingApproval.preview}</pre>
+                <div className="approval-actions">
+                  <button
+                    type="button"
+                    onClick={() => void decideApproval("approve")}
+                  >
+                    批准执行
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => void decideApproval("reject")}
+                  >
+                    拒绝
+                  </button>
+                </div>
+              </div>
+            )}
+
             {sending && (
               <div className="loading" role="status">
                 <div className="spinner" />
 
                 <span>
-                  {activeTool
-                    ? `正在执行工具：${activeTool}（Esc 停止）`
-                    : finishedTool
-                      ? `工具 ${finishedTool} 已完成，正在生成回答…`
-                      : "助手正在生成，按 Esc 停止…"}
+                  {pendingApproval
+                    ? "等待你批准工具调用…"
+                    : activeTool
+                      ? `正在执行工具：${activeTool}（Esc 停止）`
+                      : finishedTool
+                        ? `工具 ${finishedTool} 已完成，正在生成回答…`
+                        : "助手正在生成，按 Esc 停止…"}
                 </span>
               </div>
             )}

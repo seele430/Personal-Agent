@@ -266,6 +266,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：D14 轨迹渲染与 CLI（step / exec / 审批 / 事件）
+    "integration/test_trajectory_cli.py": TestSchema(
+        layer="integration",
+        domain="trajectory",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",

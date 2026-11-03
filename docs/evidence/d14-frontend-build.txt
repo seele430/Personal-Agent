@@ -1,0 +1,19 @@
+# D14 前端构建（审批卡片）
+> 命令：cd frontend && npm run build
+> 时间：2026-11-03T16:17:40.2508393+08:00
+> 说明：tsc -b 通过，vite 产物正常；审批卡片调用 /api/chat/requests/{id}/approvals/{approval_id}。
+
+
+> frontend@0.0.0 build
+> tsc -b && vite build
+
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 20 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.46 kB │ gzip:  0.30 kB
+dist/assets/index-CgDs_pp9.css   18.95 kB │ gzip:  4.64 kB
+dist/assets/index-BABggHFT.js   265.24 kB │ gzip: 81.95 kB
+
+✓ built in 132ms

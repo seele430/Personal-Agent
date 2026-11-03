@@ -374,6 +374,58 @@ textarea {
   }
 }
 
+/* D13 工具审批 */
+
+.approval-card {
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 1px solid #e4c98a;
+  border-radius: 12px;
+  background: #fffaf0;
+}
+
+.approval-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #7a5a1e;
+}
+
+.approval-preview {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  max-height: 140px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #efe0bf;
+  font-size: 12px;
+  color: #5b6270;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.approval-actions button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #d8c08a;
+  background: #f6d58a;
+  color: #4a3a12;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.approval-actions button.secondary {
+  background: #ffffff;
+  color: #6b7280;
+  border-color: #d8dde4;
+}
+
 /* Composer */
 
 .input-section {

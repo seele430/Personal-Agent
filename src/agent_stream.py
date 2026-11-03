@@ -147,7 +147,17 @@ def run_chat_stream(
             turn["id"], kind="user", actor="user",
             content=user_input, status="succeeded",
         )
+        store.append_event(run["id"], event_type="run_started", status="running")
     run_id = run["id"] if run is not None else None
+
+    def finish_run(status: str) -> None:
+        """写终态：先落 trajectory 事件，再改 run 状态。"""
+
+        if store is None or run_id is None:
+            return
+        store.append_event(run_id, event_type="run_finished", status=status)
+        store.finish(run_id, status=status)
+
     active_step = None
     active_parts: list[str] = []
     terminal_emitted = False
@@ -191,7 +201,7 @@ def run_chat_stream(
             reply = assistant.content or ""
             agent._record_citations(knowledge, reply)
             if store is not None:
-                store.finish(run_id, status="succeeded")
+                finish_run("succeeded")
             terminal_emitted = True
             emit({"type": "done", "run_id": run_id, "reply": reply})
             return reply
@@ -416,7 +426,7 @@ def run_chat_stream(
         finish_assistant_step(reply)
         agent._record_citations(knowledge, reply)
         if store is not None:
-            store.finish(run_id, status="succeeded")
+            finish_run("succeeded")
         terminal_emitted = True
         emit({"type": "done", "run_id": run_id, "reply": reply})
         return reply
@@ -427,7 +437,7 @@ def run_chat_stream(
                     active_step["id"], status="cancelled",
                     content="".join(active_parts),
                 )
-            store.finish(run_id, status="cancelled")
+            finish_run("cancelled")
         terminal_emitted = True
         emit({"type": "cancelled", "run_id": run_id})
         raise
@@ -438,7 +448,7 @@ def run_chat_stream(
                     active_step["id"], status="failed",
                     content="".join(active_parts),
                 )
-            store.finish(run_id, status="failed")
+            finish_run("failed")
         if not terminal_emitted:
             emit({"type": "run_failed", "run_id": run_id, "error": str(exc)})
         raise

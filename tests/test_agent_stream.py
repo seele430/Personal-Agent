@@ -176,7 +176,10 @@ class AgentStreamTest(unittest.TestCase):
         self.assertEqual(tool_step["exec"]["status"], "cancelled")
         self.assertEqual(tool_step["exec"]["sandbox_id"], "sbx_stream_test")
 
-        events = RunStore(self.db_path).list_events(run["id"])
+        events = [
+            event for event in RunStore(self.db_path).list_events(run["id"])
+            if event["exec_id"] is not None
+        ]
         self.assertEqual(
             [(event["event_type"], event["status"]) for event in events],
             [

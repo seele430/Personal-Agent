@@ -164,7 +164,10 @@ class PlatformExecCancelTest(unittest.TestCase):
         self.assertEqual(tool_step["exec"]["status"], "cancelled")
         self.assertEqual(tool_step["exec"]["error_code"], "EXEC_CANCELLED")
 
-        events = self.events_of(run["id"])
+        events = [
+            event for event in self.events_of(run["id"])
+            if event["exec_id"] is not None
+        ]
         self.assertEqual(
             [(event["event_type"], event["status"]) for event in events],
             [
@@ -238,6 +241,7 @@ class PlatformExecCancelTest(unittest.TestCase):
             [
                 (event["event_type"], event["status"])
                 for event in self.events_of(run["id"])
+                if event["event_type"].startswith("tool_approval")
             ],
             [
                 ("tool_approval_requested", "pending"),
@@ -299,7 +303,10 @@ class PlatformExecCancelTest(unittest.TestCase):
         run = self.stored_run()
         self.assertEqual(run["status"], "failed")
 
-        events = self.events_of(run["id"])
+        events = [
+            event for event in self.events_of(run["id"])
+            if event["exec_id"] is not None
+        ]
         self.assertEqual(
             [(event["event_type"], event["status"]) for event in events],
             [("exec_started", "running"), ("exec_finished", "timed_out")],

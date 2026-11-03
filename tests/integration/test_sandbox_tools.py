@@ -314,7 +314,10 @@ class SandboxToolsTest(unittest.TestCase):
 
         self.assertEqual([row[0] for row in execs], ["succeeded"])
 
-        trajectory = store.list_events(run_id)
+        trajectory = [
+            event for event in store.list_events(run_id)
+            if event["exec_id"] is not None
+        ]
         self.assertEqual(
             [event["event_type"] for event in trajectory],
             ["exec_started", "exec_finished"],

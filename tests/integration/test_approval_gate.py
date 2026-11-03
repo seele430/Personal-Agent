@@ -170,11 +170,16 @@ class ApprovalGateTest(unittest.TestCase):
 
         return self.future
 
-    def trajectory(self) -> list[tuple[str, str]]:
-        return [
-            (event["event_type"], event["status"])
-            for event in self.store().list_events(self.run_id())
-        ]
+    def trajectory(self, prefix: str | None = None) -> list[tuple[str, str]]:
+        events = self.store().list_events(self.run_id())
+
+        if prefix:
+            events = [
+                event for event in events
+                if event["event_type"].startswith(prefix)
+            ]
+
+        return [(event["event_type"], event["status"]) for event in events]
 
     # ------------------------------------------------------------------
     # 1. 批准之前没有 exec
@@ -209,7 +214,7 @@ class ApprovalGateTest(unittest.TestCase):
         self.assertEqual(step["status"], "denied")
 
         self.assertEqual(
-            self.trajectory(),
+            self.trajectory("tool_approval"),
             [
                 ("tool_approval_requested", "pending"),
                 ("tool_approval_decided", "rejected"),
@@ -238,7 +243,10 @@ class ApprovalGateTest(unittest.TestCase):
         self.assertEqual(rows[0][1], "succeeded")
 
         self.assertEqual(
-            self.trajectory(),
+            [
+                item for item in self.trajectory()
+                if not item[0].startswith("run_")
+            ],
             [
                 ("tool_approval_requested", "pending"),
                 ("tool_approval_decided", "approved"),
@@ -315,7 +323,7 @@ class ApprovalGateTest(unittest.TestCase):
         self.assertEqual([item["status"] for item in records], ["expired"])
 
         self.assertEqual(
-            self.trajectory(),
+            self.trajectory("tool_approval"),
             [
                 ("tool_approval_requested", "pending"),
                 ("tool_approval_decided", "expired"),
