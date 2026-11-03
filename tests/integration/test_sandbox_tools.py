@@ -245,6 +245,18 @@ class SandboxToolsTest(unittest.TestCase):
         self.assertEqual(result["exit_code"], 0)
         self.assertIn("workspace", result["stdout"])
 
+    def test_exec_output_is_capped_while_streaming(self):
+        # 20 万字符远超 64 KB 上限：必须边读边截断，不能先全读进内存。
+        result = self.ok(
+            self.run_tool(
+                "run_python",
+                {"code": "import sys; sys.stdout.write('x' * 200000)"},
+            )
+        )
+
+        self.assertTrue(result["stdout_truncated"])
+        self.assertEqual(len(result["stdout"]), MAX_READ_BYTES)
+
     def test_http_get_failure_is_a_tool_error(self):
         # 只连本机拒绝端口，不产生任何外部网络流量。
         outcome = self.run_tool("http_get", {"url": "http://127.0.0.1:1/nope"})

@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
 import urllib.error
 import urllib.request
 
@@ -182,6 +183,95 @@ def list_dir(tool_call, cancel_token=None) -> dict:
     }
 
 
+def _drain_limited(stream, process, limit: int) -> tuple[bytes, bool]:
+    """边读边限流，超限就杀掉子进程。
+
+    不能用 ``subprocess.run(capture_output=True)``：那条路会先把整段输出
+    读进内存再截断，一个死循环打印就能把 runner 撑爆。
+    """
+
+    chunks: list[bytes] = []
+    used = 0
+    truncated = False
+
+    while True:
+        block = stream.read(4096)
+
+        if not block:
+            break
+
+        room = limit - used
+
+        if room <= 0:
+            truncated = True
+        else:
+            kept = block[:room]
+            chunks.append(kept)
+            used += len(kept)
+
+            if len(kept) < len(block):
+                truncated = True
+
+        if truncated and process.poll() is None:
+            try:
+                process.kill()
+            except OSError:
+                pass
+
+    return b"".join(chunks), truncated
+
+
+def _run_capped(argv, *, shell: bool) -> dict:
+    """在沙箱工作区里执行一条命令，stdout / stderr 各自限量。"""
+
+    process = subprocess.Popen(
+        argv,
+        shell=shell,
+        cwd=str(workspace_root()),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    streams = [
+        _Thread(target=_drain_limited, args=(process.stdout, process, MAX_READ_BYTES)),
+        _Thread(target=_drain_limited, args=(process.stderr, process, MAX_READ_BYTES)),
+    ]
+
+    for thread in streams:
+        thread.start()
+
+    results = []
+    for thread in streams:
+        thread.join()
+        results.append(thread.result)
+
+    (stdout, out_truncated), (stderr, err_truncated) = results
+    process.wait()
+
+    return {
+        "success": True,
+        "exit_code": int(process.returncode),
+        "stdout": stdout.decode("utf-8", "replace"),
+        "stderr": stderr.decode("utf-8", "replace"),
+        "stdout_truncated": out_truncated,
+        "stderr_truncated": err_truncated,
+    }
+
+
+class _Thread(threading.Thread):
+    """带返回值的读线程；两条管道必须并发读，否则会互相阻塞。"""
+
+    def __init__(self, *, target, args):
+        super().__init__(daemon=True)
+        self._target = target
+        self._args = args
+        self.result = None
+
+    def run(self) -> None:  # noqa: D102
+        self.result = self._target(*self._args)
+
+
 # ==========================================
 # 执行工具
 # ==========================================
@@ -193,20 +283,7 @@ def run_shell(tool_call, cancel_token=None) -> dict:
     if not isinstance(command, str) or not command.strip():
         raise ValueError("command 不能为空")
 
-    completed = subprocess.run(
-        command,
-        shell=True,
-        cwd=str(workspace_root()),
-        capture_output=True,
-        check=False,
-    )
-
-    return {
-        "success": True,
-        "exit_code": int(completed.returncode),
-        "stdout": _text(completed.stdout),
-        "stderr": _text(completed.stderr),
-    }
+    return _run_capped(command, shell=True)
 
 
 def run_python(tool_call, cancel_token=None) -> dict:
@@ -216,19 +293,7 @@ def run_python(tool_call, cancel_token=None) -> dict:
     if not isinstance(code, str) or not code.strip():
         raise ValueError("code 不能为空")
 
-    completed = subprocess.run(
-        [sys.executable, "-c", code],
-        cwd=str(workspace_root()),
-        capture_output=True,
-        check=False,
-    )
-
-    return {
-        "success": True,
-        "exit_code": int(completed.returncode),
-        "stdout": _text(completed.stdout),
-        "stderr": _text(completed.stderr),
-    }
+    return _run_capped([sys.executable, "-c", code], shell=False)
 
 
 def http_get(tool_call, cancel_token=None) -> dict:
