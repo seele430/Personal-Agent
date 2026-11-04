@@ -3,24 +3,24 @@
   "http_status": 200,
   "tool_started_events": 3,
   "tool_finished_events": 3,
-  "run_id": "run_5b778ab244994d909ae75dd158d5b948",
+  "run_id": "run_f426b05c1875412ebfc6b147dc4bcc90",
   "run_status": "succeeded",
   "tool_steps": 3,
   "execs": [
     {
       "tool": "list_dir",
       "status": "succeeded",
-      "sandbox_id": "sbx_9edae41541734765a3b8d597dab46ca9"
+      "sandbox_id": "sbx_3036213510b84a3e9494027bb76a65bb"
     },
     {
       "tool": "g2_echo",
       "status": "succeeded",
-      "sandbox_id": "sbx_9edae41541734765a3b8d597dab46ca9"
+      "sandbox_id": "sbx_3036213510b84a3e9494027bb76a65bb"
     },
     {
       "tool": "list_dir",
       "status": "succeeded",
-      "sandbox_id": "sbx_9edae41541734765a3b8d597dab46ca9"
+      "sandbox_id": "sbx_3036213510b84a3e9494027bb76a65bb"
     }
   ],
   "trajectory_exec_events": [
@@ -32,9 +32,9 @@
     "exec_finished"
   ],
   "traceparents": [
-    "00-b2148487ba57b37721e16019078e6c42-97c941bd47ff5d88-01",
-    "00-b2148487ba57b37721e16019078e6c42-3e7378dbb320296c-01",
-    "00-b2148487ba57b37721e16019078e6c42-641de1ca01ba1ca8-01"
+    "00-71daf38511cda9f106edcc15233bd1b3-e36aef0c6a54274a-01",
+    "00-71daf38511cda9f106edcc15233bd1b3-7ba9d3d44b591513-01",
+    "00-71daf38511cda9f106edcc15233bd1b3-ed3fc92e07aba08b-01"
   ],
   "trace_exit_code": 0,
   "trace_lines": 25

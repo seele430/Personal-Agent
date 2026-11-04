@@ -1,0 +1,24 @@
+# 首次运行建站长账号测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_auth_bootstrap -v
+> 时间：2026-11-04T13:18:23.7517068+08:00
+
+test_after_bootstrap_normal_login_works (tests.integration.test_auth_bootstrap.TestAuthBootstrap.test_after_bootstrap_normal_login_works) ... 2026-11-04 13:18:26,412 | INFO | personal_agent.chat | Chat request storage ready
+PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用
+ok
+test_bootstrap_creates_owner_and_session (tests.integration.test_auth_bootstrap.TestAuthBootstrap.test_bootstrap_creates_owner_and_session) ... 2026-11-04 13:18:27,610 | INFO | personal_agent.chat | Chat request storage ready
+PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用
+ok
+test_bootstrap_is_one_time (tests.integration.test_auth_bootstrap.TestAuthBootstrap.test_bootstrap_is_one_time) ... 2026-11-04 13:18:28,420 | INFO | personal_agent.chat | Chat request storage ready
+PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用
+ok
+test_empty_database_reports_registration_open (tests.integration.test_auth_bootstrap.TestAuthBootstrap.test_empty_database_reports_registration_open) ... 2026-11-04 13:18:29,270 | INFO | personal_agent.chat | Chat request storage ready
+PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用
+ok
+test_short_password_is_rejected (tests.integration.test_auth_bootstrap.TestAuthBootstrap.test_short_password_is_rejected) ... 2026-11-04 13:18:29,373 | INFO | personal_agent.chat | Chat request storage ready
+PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用
+ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 3.088s
+
+OK

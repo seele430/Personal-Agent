@@ -20,14 +20,14 @@ from fastapi.testclient import TestClient
 from src.main import app
 from src.platform import reaper
 from src.platform.sandbox_service import SandboxService
-from tests.helper import isolate_paths
+from tests.helper import isolate_paths, wait_for_exec_worker
 
 PYTHON = __import__("sys").executable
 
 
 class PlatformTtlTest(unittest.TestCase):
     def setUp(self):
-        self.temp = TemporaryDirectory()
+        self.temp = TemporaryDirectory(ignore_cleanup_errors=True)
         self.addCleanup(self.temp.cleanup)
         isolate_paths(self, self.temp)
 
@@ -129,6 +129,9 @@ class PlatformTtlTest(unittest.TestCase):
 
         self.assertEqual(body["state"], "cancelled", body)
         self.assertEqual(body["result_code"], "EXEC_CANCELLED")
+
+        # 等 worker 真正退场再拆临时目录（Windows 上会锁 platform.db）
+        wait_for_exec_worker(exec_id)
 
     # ------------------------------------------------------------------
     # 惰性过期

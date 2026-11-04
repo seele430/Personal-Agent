@@ -1,27 +1,27 @@
 {
   "status": "PASS",
-  "server_port": 63641,
+  "server_port": 51278,
   "scenarios": [
     {
       "request_id": "d11_live_cancel",
       "path": "explicit-cancel",
       "cancel_http_status": 202,
       "request_status_after_cancel": "unknown",
-      "pid_file": "pids.json.27204.json",
+      "pid_file": "pids.json.25820.json",
       "pids": {
-        "parent": 27204,
-        "child": 17976
+        "parent": 25820,
+        "child": 28172
       },
-      "run_id": "run_4faf60267e654cfda97bf85ff9c3be18",
+      "run_id": "run_b118744041f34d8a87704aea4685f21d",
       "run_status": "cancelled",
       "execs": [
         {
-          "id": "exec_baa15745ee414ba5a6b6b3177e669b92",
+          "id": "exec_c8749961d9b140869bf8a4107fe70187",
           "status": "cancelled",
           "error_code": "EXEC_CANCELLED",
-          "sandbox_id": "sbx_730c46252ce94de39989c9e781534556",
-          "started_at": "2026-11-04T03:58:11.494881+00:00",
-          "finished_at": "2026-11-04T03:58:11.772445+00:00"
+          "sandbox_id": "sbx_2f6cc35fcecd4abe96b9537788781142",
+          "started_at": "2026-11-04T04:59:31.625452+00:00",
+          "finished_at": "2026-11-04T04:59:31.997393+00:00"
         }
       ],
       "events": [
@@ -29,7 +29,7 @@
           "sequence": 1,
           "event_type": "run_started",
           "status": "running",
-          "run_id": "run_4faf60267e654cfda97bf85ff9c3be18",
+          "run_id": "run_b118744041f34d8a87704aea4685f21d",
           "step_id": null,
           "exec_id": null,
           "sandbox_id": null
@@ -38,34 +38,34 @@
           "sequence": 2,
           "event_type": "exec_started",
           "status": "running",
-          "run_id": "run_4faf60267e654cfda97bf85ff9c3be18",
-          "step_id": "step_8c0b8b961a7840958bf31cc7f8ecbe5c",
-          "exec_id": "exec_baa15745ee414ba5a6b6b3177e669b92",
-          "sandbox_id": "sbx_730c46252ce94de39989c9e781534556"
+          "run_id": "run_b118744041f34d8a87704aea4685f21d",
+          "step_id": "step_12e9d4cce16d462b8773b2c920a3e959",
+          "exec_id": "exec_c8749961d9b140869bf8a4107fe70187",
+          "sandbox_id": "sbx_2f6cc35fcecd4abe96b9537788781142"
         },
         {
           "sequence": 3,
           "event_type": "exec_cancel_requested",
           "status": "cancel_requested",
-          "run_id": "run_4faf60267e654cfda97bf85ff9c3be18",
-          "step_id": "step_8c0b8b961a7840958bf31cc7f8ecbe5c",
-          "exec_id": "exec_baa15745ee414ba5a6b6b3177e669b92",
-          "sandbox_id": "sbx_730c46252ce94de39989c9e781534556"
+          "run_id": "run_b118744041f34d8a87704aea4685f21d",
+          "step_id": "step_12e9d4cce16d462b8773b2c920a3e959",
+          "exec_id": "exec_c8749961d9b140869bf8a4107fe70187",
+          "sandbox_id": "sbx_2f6cc35fcecd4abe96b9537788781142"
         },
         {
           "sequence": 4,
           "event_type": "exec_finished",
           "status": "cancelled",
-          "run_id": "run_4faf60267e654cfda97bf85ff9c3be18",
-          "step_id": "step_8c0b8b961a7840958bf31cc7f8ecbe5c",
-          "exec_id": "exec_baa15745ee414ba5a6b6b3177e669b92",
-          "sandbox_id": "sbx_730c46252ce94de39989c9e781534556"
+          "run_id": "run_b118744041f34d8a87704aea4685f21d",
+          "step_id": "step_12e9d4cce16d462b8773b2c920a3e959",
+          "exec_id": "exec_c8749961d9b140869bf8a4107fe70187",
+          "sandbox_id": "sbx_2f6cc35fcecd4abe96b9537788781142"
         },
         {
           "sequence": 5,
           "event_type": "run_finished",
           "status": "cancelled",
-          "run_id": "run_4faf60267e654cfda97bf85ff9c3be18",
+          "run_id": "run_b118744041f34d8a87704aea4685f21d",
           "step_id": null,
           "exec_id": null,
           "sandbox_id": null
@@ -79,21 +79,21 @@
       "request_id": "d11_live_disconnect",
       "path": "client-disconnect",
       "request_status_after_disconnect": "unknown",
-      "pid_file": "pids.json.2416.json",
+      "pid_file": "pids.json.27108.json",
       "pids": {
-        "parent": 2416,
-        "child": 21696
+        "parent": 27108,
+        "child": 18036
       },
-      "run_id": "run_d1dfa81b9d634f439b16e773289cf1f5",
+      "run_id": "run_05052dd73c5e40df826dbcbd58faa1d1",
       "run_status": "cancelled",
       "execs": [
         {
-          "id": "exec_91948dcf460441d0adc73eb6cc1b0a18",
+          "id": "exec_b053304348824cd7a398ab1897451448",
           "status": "cancelled",
           "error_code": "EXEC_CANCELLED",
-          "sandbox_id": "sbx_fda09e72881640e8a7974a94c48fe2b5",
-          "started_at": "2026-11-04T03:58:11.915505+00:00",
-          "finished_at": "2026-11-04T03:58:12.178325+00:00"
+          "sandbox_id": "sbx_2f880d1fe107470a8d254be9dc57609d",
+          "started_at": "2026-11-04T04:59:32.207989+00:00",
+          "finished_at": "2026-11-04T04:59:32.560603+00:00"
         }
       ],
       "events": [
@@ -101,7 +101,7 @@
           "sequence": 1,
           "event_type": "run_started",
           "status": "running",
-          "run_id": "run_d1dfa81b9d634f439b16e773289cf1f5",
+          "run_id": "run_05052dd73c5e40df826dbcbd58faa1d1",
           "step_id": null,
           "exec_id": null,
           "sandbox_id": null
@@ -110,34 +110,34 @@
           "sequence": 2,
           "event_type": "exec_started",
           "status": "running",
-          "run_id": "run_d1dfa81b9d634f439b16e773289cf1f5",
-          "step_id": "step_cadccd525ca44273916c3d43e22fa2da",
-          "exec_id": "exec_91948dcf460441d0adc73eb6cc1b0a18",
-          "sandbox_id": "sbx_fda09e72881640e8a7974a94c48fe2b5"
+          "run_id": "run_05052dd73c5e40df826dbcbd58faa1d1",
+          "step_id": "step_908222dcfabb462fa10ef80a4cc7fcd9",
+          "exec_id": "exec_b053304348824cd7a398ab1897451448",
+          "sandbox_id": "sbx_2f880d1fe107470a8d254be9dc57609d"
         },
         {
           "sequence": 3,
           "event_type": "exec_cancel_requested",
           "status": "cancel_requested",
-          "run_id": "run_d1dfa81b9d634f439b16e773289cf1f5",
-          "step_id": "step_cadccd525ca44273916c3d43e22fa2da",
-          "exec_id": "exec_91948dcf460441d0adc73eb6cc1b0a18",
-          "sandbox_id": "sbx_fda09e72881640e8a7974a94c48fe2b5"
+          "run_id": "run_05052dd73c5e40df826dbcbd58faa1d1",
+          "step_id": "step_908222dcfabb462fa10ef80a4cc7fcd9",
+          "exec_id": "exec_b053304348824cd7a398ab1897451448",
+          "sandbox_id": "sbx_2f880d1fe107470a8d254be9dc57609d"
         },
         {
           "sequence": 4,
           "event_type": "exec_finished",
           "status": "cancelled",
-          "run_id": "run_d1dfa81b9d634f439b16e773289cf1f5",
-          "step_id": "step_cadccd525ca44273916c3d43e22fa2da",
-          "exec_id": "exec_91948dcf460441d0adc73eb6cc1b0a18",
-          "sandbox_id": "sbx_fda09e72881640e8a7974a94c48fe2b5"
+          "run_id": "run_05052dd73c5e40df826dbcbd58faa1d1",
+          "step_id": "step_908222dcfabb462fa10ef80a4cc7fcd9",
+          "exec_id": "exec_b053304348824cd7a398ab1897451448",
+          "sandbox_id": "sbx_2f880d1fe107470a8d254be9dc57609d"
         },
         {
           "sequence": 5,
           "event_type": "run_finished",
           "status": "cancelled",
-          "run_id": "run_d1dfa81b9d634f439b16e773289cf1f5",
+          "run_id": "run_05052dd73c5e40df826dbcbd58faa1d1",
           "step_id": null,
           "exec_id": null,
           "sandbox_id": null

@@ -210,3 +210,13 @@
 - 砍单：D31–D36 不做了 —— 本机没有 Docker，也没有任何 C++ 工具链（docker / cl / g++ / clang++ / cmake 全缺）。计划第 5 节本来就把容器 tier 与 C++ SDK 列为可砍；没验证过的东西不写进交付。
 - 验收：`test_platform_alerts.py` 3 条全绿；全量 **85 文件 / 757 用例 PASS，203.60 秒**。证据：`d37-alerts.txt`、`d38-fault-injection.json/.txt`、`d40-backend-tests.txt`、`docs/PLAN-STATUS.md`。
 - 唯一还卡在门上的：**G3 的 60 秒录屏**（命令已冻结、一键可跑 19s/3 PASS）。录屏脚本 `scripts/record_g3.ps1` 在本机需要交互桌面，Agent 进程拉窗口拿不到焦点。
+## 首次运行体验修复 — 2026-11-04
+
+- 问题（真实使用暴露）：新数据目录首次登录必然失败，因为没有注册入口 —— 站长只能靠终端脚本 `bootstrap_owner` 创建，用户看到的就是「用户名或密码不正确」。
+- 修复：
+  - 后端 `GET /auth/state` 返回 `{initialized, registration_open}`；`POST /auth/bootstrap` 在**空库**时创建站长并直接返回会话（已初始化返回 409，密码不足 12 字节返回 400）。
+  - `AuthStore.has_users()` 提供判断；前端登录页在空库时自动切换成「创建站长账号」表单（用户名 / 密码 / 确认密码），建完直接进工作空间。
+  - 已有账号的库行为不变（照常显示登录页）。
+- 验收：`tests/integration/test_auth_bootstrap.py` **5 条全绿**（空库可注册、建完能登录、只能建一次、短密码 400、建完后 state 变 initialized）；前端 `npm run build`（tsc + vite）通过；全量 **86 文件 / 762 用例 PASS，187.53 秒**。证据：`docs/evidence/first-run-bootstrap.txt`、`d41-first-run-backend-tests.txt`。
+- 顺手修：`test_active_exec_is_cancelled_on_expiry` 的 WinError 32 竞态（等 worker 退场 + 清理容错）。
+- 遗留：① 邀请码流程还没有 UI（创建其他用户仍需 owner 发邀请码）；② `/auth/bootstrap` 目前只靠「空库」+ 登录限流保护，没有额外限制来源；③ 终端脚本保留，作为离线/应急手段。

@@ -199,6 +199,15 @@ class AuthStore:
     # 首次创建站长
     # ======================================
 
+    def has_users(self) -> bool:
+        """用户库是否已经有账号（用来决定要不要显示首次初始化表单）。"""
+
+        with closing(self._connect()) as conn:
+            return (
+                conn.execute("SELECT 1 FROM auth_users LIMIT 1").fetchone()
+                is not None
+            )
+
     def bootstrap_owner(
         self,
         username: str,

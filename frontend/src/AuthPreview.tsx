@@ -26,6 +26,8 @@ type AuthSession = {
 const LOGIN_URL = '/api/auth/login'
 const ME_URL = '/api/auth/me'
 const LOGOUT_URL = '/api/auth/logout'
+const STATE_URL = '/api/auth/state'
+const BOOTSTRAP_URL = '/api/auth/bootstrap'
 
 const SESSION_KEY = 'personal-agent-auth-token'
 const REQUEST_TIMEOUT_MS = 20000
@@ -177,11 +179,49 @@ export default function AuthPreview() {
   const [loggingOut, setLoggingOut] = useState(false)
   const [logoutError, setLogoutError] = useState('')
 
+  // 首次运行：用户库为空时，登录页直接变成「创建站长账号」
+  const [registrationOpen, setRegistrationOpen] = useState(false)
+  const [confirmPassword, setConfirmPassword] = useState('')
+
   const loginLocked = useRef(false)
   const logoutLocked = useRef(false)
 
   const loginRequestRef =
     useRef<AbortController | null>(null)
+
+
+  // ==========================================
+  // 启动时检测「是否已有账号」：空库 → 首次初始化
+  // ==========================================
+
+  useEffect(() => {
+    let active = true
+
+    fetch(STATE_URL, {
+      headers: { Accept: 'application/json' },
+    })
+      .then((response) =>
+        response.ok ? response.json() : null,
+      )
+      .then((data: unknown) => {
+        if (!active || typeof data !== 'object' || data === null) {
+          return
+        }
+
+        const payload = data as Record<string, unknown>
+
+        if (payload.registration_open === true) {
+          setRegistrationOpen(true)
+        }
+      })
+      .catch(() => {
+        // 状态接口不可用时按普通登录页处理
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
 
   // ==========================================
@@ -421,6 +461,97 @@ export default function AuthPreview() {
 
 
   // ==========================================
+  // 首次运行：创建站长账号
+  // ==========================================
+
+  async function handleBootstrap(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault()
+
+    if (loginLocked.current) {
+      return
+    }
+
+    const cleanedUsername = username.trim().toLowerCase()
+
+    if (!cleanedUsername) {
+      setError('请输入用户名')
+      return
+    }
+
+    if (password.length < 12) {
+      setError('密码至少 12 个字符')
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError('两次输入的密码不一致')
+      return
+    }
+
+    loginLocked.current = true
+    setSending(true)
+    setError('')
+
+    try {
+      const response = await fetch(BOOTSTRAP_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          username: cleanedUsername,
+          password,
+        }),
+      })
+
+      if (!response.ok) {
+        if (response.status === 409) {
+          setRegistrationOpen(false)
+          setError('账号已经创建过了，请直接登录')
+        } else if (response.status === 400) {
+          const detail = await response.json().catch(() => null)
+          const message =
+            detail && typeof detail.detail === 'string'
+              ? detail.detail
+              : '密码不符合要求'
+
+          setError(message)
+        } else if (response.status === 429) {
+          setError('尝试次数过多，请稍后再试')
+        } else {
+          setError('初始化失败，请稍后重试')
+        }
+
+        return
+      }
+
+      const result: unknown = await response.json()
+      const validSession = parseLoginSession(result)
+
+      if (!validSession || !saveToken(validSession.token)) {
+        setError('服务器返回的数据格式不正确')
+        return
+      }
+
+      setPassword('')
+      setConfirmPassword('')
+      setSession(validSession)
+      replacePath('/')
+
+    } catch {
+      setError('无法连接服务器，请检查后端是否在运行')
+
+    } finally {
+      loginLocked.current = false
+      setSending(false)
+    }
+  }
+
+
+  // ==========================================
   // 退出登录
   // ==========================================
 
@@ -607,13 +738,17 @@ export default function AuthPreview() {
             </div>
 
             <div className="pa-auth-eyebrow">
-              WELCOME BACK
+              {registrationOpen ? 'FIRST RUN' : 'WELCOME BACK'}
             </div>
 
-            <h2>欢迎回来</h2>
+            <h2>
+              {registrationOpen ? '创建站长账号' : '欢迎回来'}
+            </h2>
 
             <p className="pa-auth-subtitle">
-              登录你的 Personal Agent 工作空间
+              {registrationOpen
+                ? '这是第一次启动。创建站长账号后即可进入工作空间。'
+                : '登录你的 Personal Agent 工作空间'}
             </p>
 
 
@@ -637,7 +772,7 @@ export default function AuthPreview() {
 
             <form
               className="pa-auth-form"
-              onSubmit={handleLogin}
+              onSubmit={registrationOpen ? handleBootstrap : handleLogin}
               noValidate
             >
 
@@ -674,7 +809,11 @@ export default function AuthPreview() {
                   id="pa-login-password"
                   name="password"
                   type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
+                  autoComplete={
+                    registrationOpen
+                      ? 'new-password'
+                      : 'current-password'
+                  }
                   spellCheck={false}
                   autoCapitalize="none"
                   placeholder="请输入密码"
@@ -707,6 +846,35 @@ export default function AuthPreview() {
               </p>
 
 
+              {registrationOpen && (
+                <>
+                  <div className="pa-auth-password-label">
+                    <label htmlFor="pa-login-password-confirm">
+                      确认密码
+                    </label>
+                  </div>
+
+                  <div className="pa-auth-password-field">
+                    <input
+                      id="pa-login-password-confirm"
+                      name="password-confirm"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      spellCheck={false}
+                      autoCapitalize="none"
+                      placeholder="再输入一次（至少 12 个字符）"
+                      value={confirmPassword}
+                      disabled={sending}
+                      onChange={(event) => {
+                        setConfirmPassword(event.target.value)
+                        setError('')
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+
+
               {error && (
                 <div
                   className="pa-auth-error"
@@ -725,8 +893,12 @@ export default function AuthPreview() {
                 {sending ? (
                   <>
                     <span className="pa-auth-spinner" />
-                    正在验证身份…
+                    {registrationOpen
+                      ? '正在创建账号…'
+                      : '正在验证身份…'}
                   </>
+                ) : registrationOpen ? (
+                  '创建并进入工作空间 →'
                 ) : (
                   '登录工作空间 →'
                 )}
@@ -737,7 +909,9 @@ export default function AuthPreview() {
 
             <div className="pa-auth-note">
               <span aria-hidden="true">◇</span>
-              邀请制访问 · 安全身份验证
+              {registrationOpen
+                ? '首次运行 · 站长账号只能创建一次'
+                : '邀请制访问 · 安全身份验证'}
             </div>
 
             <div className="pa-auth-preview-note">

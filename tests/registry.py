@@ -525,6 +525,16 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
+    # L2：首次运行 HTTP 建站长（空库才允许，建完直接登录）
+    "integration/test_auth_bootstrap.py": TestSchema(
+        layer="integration",
+        domain="auth",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
+
     # L2：管理员告警落库
     "test_admin_alerts.py": TestSchema(
         layer="integration",

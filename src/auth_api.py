@@ -346,6 +346,93 @@ def login(
 
 
 # ======================================
+# GET /auth/state —— 前端据此决定显示「登录」还是「首次初始化」
+# ======================================
+
+class BootstrapRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=1024)
+
+
+@router.get("/state")
+def auth_state(
+    response: Response,
+    store: AuthStore = Depends(get_auth_store),
+):
+    response.headers["Cache-Control"] = "no-store"
+
+    initialized = store.has_users()
+
+    return {
+        "initialized": initialized,
+        "registration_open": not initialized,
+    }
+
+
+# ======================================
+# POST /auth/bootstrap —— 空库时创建站长并直接登录
+# ======================================
+
+@router.post("/bootstrap", status_code=201)
+def bootstrap(
+    request: BootstrapRequest,
+    http_request: Request,
+    response: Response,
+    store: AuthStore = Depends(get_auth_store),
+):
+    response.headers["Cache-Control"] = "no-store"
+
+    if store.has_users():
+        raise HTTPException(
+            status_code=409,
+            detail="已经初始化过了，请直接登录",
+        )
+
+    ip_address = (
+        http_request.client.host
+        if http_request.client
+        else "unknown"
+    )
+
+    _login_limit_check(
+        store.db_path,
+        request.username,
+        ip_address,
+    )
+
+    try:
+        store.bootstrap_owner(
+            request.username,
+            request.password,
+        )
+
+    except (AuthError, AuthForbidden) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from None
+
+    token = store.login(
+        request.username,
+        request.password,
+    )
+
+    user = store.session_user(token)
+
+    if user is None:
+        raise HTTPException(
+            status_code=500,
+            detail="初始化成功，但登录状态创建失败",
+        )
+
+    return {
+        "token": token,
+        "token_type": "bearer",
+        "user": user,
+    }
+
+
+# ======================================
 # GET /auth/me
 # ======================================
 
