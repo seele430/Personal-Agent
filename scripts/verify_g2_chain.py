@@ -277,6 +277,11 @@ def main() -> int:
                     encoding="utf-8",
                 )
 
+                # stdout 理论上一定是 str；但有一次真实运行里拿到了 None
+                # （demo 窗口 + 录屏占资源时偶发），演示脚本不该因此崩。
+                trace_stdout = trace.stdout or ""
+                trace_lines = len(trace_stdout.splitlines())
+
                 report = {
                     "status": "PASS",
                     "http_status": status,
@@ -303,7 +308,7 @@ def main() -> int:
                         if event["event_type"] == "exec_started"
                     ],
                     "trace_exit_code": trace.returncode,
-                    "trace_lines": len(trace.stdout.splitlines()),
+                    "trace_lines": trace_lines,
                 }
 
                 assert report["http_status"] == 200, report
@@ -332,7 +337,7 @@ def main() -> int:
                 )
                 print(json.dumps(report, ensure_ascii=False, indent=2))
                 print()
-                print(trace.stdout)
+                print(trace_stdout)
                 return 0
 
             finally:
