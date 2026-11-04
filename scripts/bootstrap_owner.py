@@ -1,0 +1,70 @@
+r"""首次运行：创建站长账号。
+
+产品目前没有注册入口（`bootstrap_owner` 只允许在空用户库上、从本地终端执行），
+所以首次使用需要跑一次这个脚本。密码要求 12—1024 字节。
+
+用法：
+
+    $env:PERSONAL_AGENT_DATA_DIR = "$env:TEMP\pa-demo"   # 与启动服务时一致
+    .\\venv\\Scripts\\python.exe scripts\\bootstrap_owner.py --username seele
+
+不带 --password 时会用隐藏输入提示你输入两次。
+"""
+
+from __future__ import annotations
+
+import argparse
+import getpass
+import sys
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="创建站长账号（空用户库）")
+    parser.add_argument("--username", required=True, help="3—32 位，小写字母开头")
+    parser.add_argument("--password", default=None, help="不传则用隐藏输入")
+    parser.add_argument(
+        "--data-dir",
+        default=None,
+        help="数据目录；默认读 PERSONAL_AGENT_DATA_DIR，再默认项目根",
+    )
+    args = parser.parse_args()
+
+    from src import config
+
+    if args.data_dir:
+        config.paths = config.build_paths(args.data_dir)
+
+    from src.core.auth_store import AuthError, AuthStore
+
+    password = args.password
+
+    if password is None:
+        password = getpass.getpass("password (12+ bytes): ")
+        confirm = getpass.getpass("repeat: ")
+
+        if password != confirm:
+            print("两次输入不一致", file=sys.stderr)
+            return 2
+
+    store = AuthStore(config.paths.auth_users_db)
+    store.init_db()
+
+    try:
+        user = store.bootstrap_owner(args.username, password)
+    except AuthError as exc:
+        print(f"创建失败：{exc}", file=sys.stderr)
+        return 1
+
+    print(f"created owner {user['username']} in {config.paths.auth_users_db}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
