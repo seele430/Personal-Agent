@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
 import sys
 
 from pathlib import Path
@@ -29,6 +30,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="创建站长账号（空用户库）")
     parser.add_argument("--username", required=True, help="3—32 位，小写字母开头")
     parser.add_argument("--password", default=None, help="不传则用隐藏输入")
+    parser.add_argument(
+        "--password-env",
+        default=None,
+        help="从该环境变量读密码（推荐：避免出现在命令行历史里）",
+    )
     parser.add_argument(
         "--data-dir",
         default=None,
@@ -45,13 +51,26 @@ def main() -> int:
 
     password = args.password
 
-    if password is None:
-        password = getpass.getpass("password (12+ bytes): ")
-        confirm = getpass.getpass("repeat: ")
+    if args.password_env:
+        password = os.environ.get(args.password_env, "")
 
-        if password != confirm:
-            print("两次输入不一致", file=sys.stderr)
+        if not password:
+            print(f"环境变量 {args.password_env} 为空", file=sys.stderr)
             return 2
+
+    if password is None:
+        # VS Code 的集成终端没有可用的控制台句柄，getpass 会直接卡住；
+        # 非 tty 时退化成明文输入（并提示），保证不会挂死。
+        if not sys.stdin.isatty():
+            print("(非交互终端：密码将明文回显)", file=sys.stderr)
+            password = input("password (12+ bytes): ")
+        else:
+            password = getpass.getpass("password (12+ bytes): ")
+            confirm = getpass.getpass("repeat: ")
+
+            if password != confirm:
+                print("两次输入不一致", file=sys.stderr)
+                return 2
 
     store = AuthStore(config.paths.auth_users_db)
     store.init_db()
