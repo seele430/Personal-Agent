@@ -171,3 +171,24 @@
 - 踩的两个坑（都记下来）：① 把新用例贴到文件末尾时**贴进了 `RateLimiterUnitTest` 类里** —— 那几条用例没有 `isolate_paths`，直接往真实 `platform.db` 写了 2 行、删了 1 行。测试隔离的意义就在这；已把用例移回 `AuditTest` 并清掉真实库里的测试残留。② `with log.connect() as conn:` **不等于关闭连接**（sqlite3 的上下文管理器只管事务），Windows 上会锁住临时库，teardown 报 `WinError 32`；改成 `closing(...)`。
 - 遗留限制：限流仍是进程内的；审计仍不记命令正文；保留期清理只在启动时跑一次。
 - 明天第一件事：D30 有界队列 —— 队列满 429 `QUEUE_FULL`，queued 请求可取消。
+## D30 — 2026-11-04
+
+- 今天做了什么：实现有界执行队列。新增 `src/platform/exec_queue.py`：全局活跃上限 `PERSONAL_AGENT_PLATFORM_MAX_ACTIVE_EXECS`（默认 4）+ 等待队列 `PERSONAL_AGENT_PLATFORM_QUEUE_SIZE`（默认 16）；`create_exec` 先预检 `accepting()`，满则 429 `QUEUE_FULL` 且**不创建 exec 记录**，再 `submit()`（started / queued / full）。活跃名额释放（worker finally → `queue.finish()`）自动放行队首。排队中的 exec 可以 cancel：摘出队列 + 取消 token + 直接落 `cancelled`（它从未起过进程）。
+- 验收与卡点：`tests/integration/test_platform_queue.py` **5 个用例全绿**（队列满 429 且不新增 exec、排队项在名额释放后自动启动并成功、排队项可取消且不产生输出、取消排队项后名额可复用、队列单元测试的 submit/finish/cancel 与放行顺序）。平台相关 5 个文件一起跑 38 个用例也全绿。全量 **82 文件 / 741 用例 PASS，248.47 秒**，证据见 `docs/evidence/d30-queue.txt`、`docs/evidence/d30-backend-tests.txt`。
+- 修的一个真竞态：`queued` 分支取消时只摘队列、没取消 token；如果 worker 恰好处在「已出队、还没置 running」的窗口，它会带着未取消的 token 跑满整条命令（审计用例连续两次 30 秒超时暴露了它）。修法：queued 分支同时调用 `active_execs.cancel(exec_id)`，让刚出队的 worker 立刻看到取消。修后连跑 6 次稳定。
+- 遗留限制：① 队列和并发都是**进程内**的，多 worker 各算各的；② 队列不跨重启，重启时 queued 的 exec 由 D22 对账统一落 `failed / INTERRUPTED_BY_RESTART`；③ 没有优先级、没有公平性保证（FIFO 而已）；④ 没有队列深度指标暴露（只有 `GET /v1/nodes` 和日志能间接看）；⑤ 429 没有 `Retry-After`（队列满时给不出准确等待时间）。
+- 明天第一件事：D31 队列可观测性 / 背压指标，或回到 D40 演示收尾。
+## D30.1 — 2026-11-04
+
+- 今天做了什么：给队列加可观测性。新增 `GET /v1/queue`，返回 `{active, queued, max_active, max_queued}`（单进程视角）；429 `QUEUE_FULL` 现在带 `Retry-After`（`PERSONAL_AGENT_PLATFORM_QUEUE_RETRY_AFTER`，默认 5 秒），并在文档里注明这**是估计值**，不是基于真实 exec 时长的计算。
+- 验收与卡点：`tests/integration/test_platform_queue.py` 从 5 个扩到 **7 个全绿**（新增：429 带 `Retry-After: 5`、`/v1/queue` 深度与实际一致 active=1/queued=1）。全量 **82 文件 / 743 用例 PASS，208.86 秒**，证据见 `docs/evidence/d30-queue.txt`、`docs/evidence/d30-1-backend-tests.txt`。
+- 过程中的小坑：连跑整个文件时偶发 `WinError 32`（被杀的 sleep 子进程句柄释放有延迟，撞上临时目录清理）。只影响清理、不影响断言，用例的 `TemporaryDirectory` 加了 `ignore_cleanup_errors=True`，连跑 5 次稳定。
+- 遗留限制：① `/v1/queue` 只反映当前进程，多 worker 需各自查询；② `Retry-After` 是固定估计值，exec 时长差异大时会偏乐观或偏保守；③ 队列深度没有历史曲线 / 指标导出；④ 没有等待超时（排队中的 exec 可以一直等，直到被取消或平台重启）。
+- 明天第一件事：给排队加等待上限（`queue_max_wait_seconds`，超时落 `timed_out`），否则 D30 的「有界」只界了数量、没界时间。
+## D30.2 — 2026-11-04
+
+- 今天做了什么：给排队加时间上限。`PERSONAL_AGENT_PLATFORM_QUEUE_MAX_WAIT`（默认 60 秒，`0` = 不限），到点仍未出队的 exec 落 `timed_out`（`error_code=QUEUE_TIMEOUT`、`result_code=EXEC_TIMED_OUT`），并写一条 `exec.timeout` 审计；看门狗线程 `PERSONAL_AGENT_PLATFORM_QUEUE_SWEEP`（默认 5 秒）周期扫描；`ExecQueue.finish()` 出队时也会再检查一次，跳过已超期的队首继续找下一个，避免看门狗两跳之间的空档。
+- 验收与卡点：`tests/integration/test_platform_queue.py` 扩到 **9 个用例全绿**（新增：排队超时落 `timed_out` + `exec.timeout` 审计、`sweep()` 批量过期且保留未过期项）。全量 **82 文件 / 745 用例 PASS，203.96 秒**，证据见 `docs/evidence/d30-2-queue-timeout.txt`、`docs/evidence/d30-2-backend-tests.txt`。
+- 过程中的小发现：`_exec_body` 不暴露 `error_code`（只在库里），测试改成直接读 `ExecStore().get(...)`。这不是 bug，但说明 API 面与存储面的字段并不完全同步 —— 排查时别只看 API 响应。
+- 遗留限制：① 等待计时是进程内单调时钟，跨重启失效（重启后 queued 由 D22 对账统一落 `failed`）；② 超时判定精度受 `SWEEP` 间隔影响（默认 5 秒）；③ `Retry-After` 仍是固定估计值；④ 没有「排队中」的独立指标时间序列。
+- 明天第一件事：把 D30 系列合进 main，或回到 D40 演示口径。

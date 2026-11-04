@@ -25,7 +25,7 @@ from src.core.run_control import CancellationToken
 from src.core.run_store import RunStore
 from src.platform.exec_service import Tier1Executor
 from src.tools.sandbox_tools import MAX_READ_BYTES
-from tests.helper import isolate_paths
+from tests.helper import WINDOWS, isolate_paths
 
 
 def chunk(*, text=None, finish=None, tool_calls=None):
@@ -155,13 +155,16 @@ class SandboxToolsTest(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_traversal_and_absolute_paths_are_rejected(self):
-        cases = (
+        cases = [
             "../outside.txt",
             "notes/../../outside.txt",
-            "C:\\Windows\\win.ini",
             "/etc/passwd",
-            "\\\\server\\share\\x.txt",
-        )
+        ]
+
+        # 盘符路径和 UNC 只有 Windows 才认定为绝对路径；
+        # 在 POSIX 上它们是普通文件名，会先撞「文件不存在」而不是「路径非法」。
+        if WINDOWS:
+            cases += ["C:\\Windows\\win.ini", "\\\\server\\share\\x.txt"]
 
         for raw in cases:
             with self.subTest(path=raw):

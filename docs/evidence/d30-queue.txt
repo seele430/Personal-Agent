@@ -1,0 +1,26 @@
+# D30.1 队列可观测性测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_platform_queue -v
+> 时间：2026-11-04T11:27:57.1943575+08:00
+
+test_queue_endpoint_reports_depth (tests.integration.test_platform_queue.ExecQueueApiTest.test_queue_endpoint_reports_depth) ... 2026-11-04 11:28:00,271 | INFO | personal_agent.chat | Chat request storage ready
+PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用
+ok
+test_queue_full_includes_retry_after (tests.integration.test_platform_queue.ExecQueueApiTest.test_queue_full_includes_retry_after) ... 2026-11-04 11:28:00,624 | INFO | personal_agent.chat | Chat request storage ready
+PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用
+ok
+test_queue_full_returns_429_without_creating_exec (tests.integration.test_platform_queue.ExecQueueApiTest.test_queue_full_returns_429_without_creating_exec) ... 2026-11-04 11:28:01,193 | INFO | personal_agent.chat | Chat request storage ready
+PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用
+ok
+test_queued_exec_can_be_cancelled (tests.integration.test_platform_queue.ExecQueueApiTest.test_queued_exec_can_be_cancelled) ... 2026-11-04 11:28:01,785 | INFO | personal_agent.chat | Chat request storage ready
+PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用
+ok
+test_queued_exec_starts_after_slot_frees (tests.integration.test_platform_queue.ExecQueueApiTest.test_queued_exec_starts_after_slot_frees) ... 2026-11-04 11:28:02,200 | INFO | personal_agent.chat | Chat request storage ready
+PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用
+ok
+test_finish_releases_next_queued (tests.integration.test_platform_queue.ExecQueueUnitTest.test_finish_releases_next_queued) ... ok
+test_submit_finish_and_cancel (tests.integration.test_platform_queue.ExecQueueUnitTest.test_submit_finish_and_cancel) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 4.748s
+
+OK

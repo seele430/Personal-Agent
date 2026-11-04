@@ -246,6 +246,25 @@ failed → reclaimed
 > `since`（ISO 8601）过滤，未知事件或非法时间返回 400 `INVALID_ARGUMENT`；
 > 启动时按 `PERSONAL_AGENT_AUDIT_RETENTION_DAYS`（默认 30，`0` = 永久保留）
 > 清理过期记录。
+>
+> D30（2026-11-04）：有界执行队列已实现。全局并发上限
+> `PERSONAL_AGENT_PLATFORM_MAX_ACTIVE_EXECS`（默认 4）、等待队列
+> `PERSONAL_AGENT_PLATFORM_QUEUE_SIZE`（默认 16）；两者都满时返回
+> 429 `QUEUE_FULL`，且**不创建 exec 记录**。排队中的 exec 可以通过 cancel
+> 直接落 `cancelled`（它从未起过进程）；活跃名额释放后自动放行队首。
+> 队列与并发都是进程内的，不是全局调度。
+>
+> D30.1（2026-11-04）：`GET /v1/queue` 返回
+> `{active, queued, max_active, max_queued}`（**单进程视角**，多 worker 各报
+> 各的）；429 `QUEUE_FULL` 带 `Retry-After`（`PERSONAL_AGENT_PLATFORM_QUEUE_RETRY_AFTER`
+> 默认 5 秒）。这是**估计值**，不是精确等待时间 —— 平台没有真实的 exec 时长统计。
+>
+> D30.2（2026-11-04）：排队也**有时间上限**了。
+> `PERSONAL_AGENT_PLATFORM_QUEUE_MAX_WAIT`（默认 60 秒，`0` = 不限）到点仍未
+> 出队的 exec 落 `timed_out`（`error_code=QUEUE_TIMEOUT`、
+> `result_code=EXEC_TIMED_OUT`），并写一条 `exec.timeout` 审计。看门狗线程
+> `PERSONAL_AGENT_PLATFORM_QUEUE_SWEEP`（默认 5 秒）周期扫描；出队时也会再检查
+> 一次，避免看门狗两跳之间的空档。
 
 ## 6. 稳定错误码
 
