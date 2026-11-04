@@ -188,6 +188,15 @@ failed → reclaimed
 - 无可用节点返回 429 `NO_READY_NODE`。D30 前不隐式无限排队；D30 增加有界队列后，队列满返回 429 `QUEUE_FULL`，queued 请求仍须可取消。
 - 该策略不声称感知真实 CPU / 内存，也不是真实多机调度。
 
+> D19（2026-11-04）：cordon / drain / remove 已实现
+> （`POST /v1/nodes/{node_id}/cordon|drain|remove`）。节点视图新增
+> `cordoned` / `draining` / `removed` / `accepting` / `active_sandboxes`；
+> `accepting=false` 时 `POST /v1/sandboxes` 返回 429 `NO_READY_NODE`。
+> `remove` 必须满足「已 drain + 该节点未回收沙箱数为 0」，否则 409
+> `INVALID_STATE_TRANSITION`（`retryable=true`），且可重试。cordon / drain
+> 都不杀存量 exec（有真实进程测试）。仍缺：least-loaded 调度、全局/节点容量
+> 原子占用（D20/D21）。
+
 ## 6. 稳定错误码
 
 | HTTP | code | 含义与重试规则 |

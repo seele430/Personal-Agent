@@ -111,6 +111,10 @@ def init_platform_schema(conn: sqlite3.Connection) -> None:
     if "reclaim_reason" not in columns:
         conn.execute("ALTER TABLE agent_sandboxes ADD COLUMN reclaim_reason TEXT")
 
+    # D19：沙箱归属节点（cordon / drain 需要按节点统计存量）。旧库补列。
+    if "node_id" not in columns:
+        conn.execute("ALTER TABLE agent_sandboxes ADD COLUMN node_id TEXT")
+
 
 class SandboxService:
     def __init__(
@@ -142,6 +146,7 @@ class SandboxService:
         tier: str = DEFAULT_TIER,
         workspace_id: str | None = None,
         ttl_seconds: int = DEFAULT_TTL_SECONDS,
+        node_id: str | None = None,
     ) -> dict[str, Any]:
         """幂等创建沙箱；返回的记录里 ``created`` 表示本次是否真的新建。"""
 
@@ -180,6 +185,7 @@ class SandboxService:
                     tier=tier,
                     workspace_id=workspace_id,
                     ttl_seconds=ttl_seconds,
+                    node_id=node_id,
                 )
             except sqlite3.IntegrityError:
                 # 并发插入撞唯一约束：说明别人刚建好，重读一次即可。
@@ -196,6 +202,7 @@ class SandboxService:
         tier: str,
         workspace_id: str,
         ttl_seconds: int,
+        node_id: str | None,
     ) -> dict[str, Any]:
         with closing(self.connect()) as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -228,8 +235,8 @@ class SandboxService:
                     """
                     INSERT INTO agent_sandboxes(
                         id, workspace_id, tier, state, ttl_seconds,
-                        created_at, expires_at
-                    ) VALUES (?, ?, ?, 'created', ?, ?, ?)
+                        created_at, expires_at, node_id
+                    ) VALUES (?, ?, ?, 'created', ?, ?, ?, ?)
                     """,
                     (
                         sandbox_id,
@@ -238,6 +245,7 @@ class SandboxService:
                         ttl_seconds,
                         created_at.isoformat(),
                         expires_at.isoformat(),
+                        node_id,
                     ),
                 )
                 conn.execute(
@@ -267,6 +275,7 @@ class SandboxService:
             "created_at": created_at.isoformat(),
             "expires_at": expires_at.isoformat(),
             "reclaimed_at": None,
+            "node_id": node_id,
             "workspace": str(workspace),
         }
         sandbox["created"] = True
@@ -317,6 +326,20 @@ class SandboxService:
         shutil.rmtree(self.root / sandbox_id, ignore_errors=True)
 
         return self.get(sandbox_id)
+
+    def count_active(self, node_id: str) -> int:
+        """某节点上还没回收的沙箱数（drain / remove 判断用）。"""
+
+        with closing(self.connect()) as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) FROM agent_sandboxes
+                WHERE state = 'created' AND node_id = ?
+                """,
+                (node_id,),
+            ).fetchone()
+
+        return int(row[0])
 
     def list_expired(self, now: datetime | None = None) -> list[dict[str, Any]]:
         """还没回收但已经过期的沙箱。"""

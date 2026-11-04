@@ -21,6 +21,8 @@ from pydantic import BaseModel
 from src.core.run_control import CancellationToken
 from src.platform import active_execs
 from src.platform.node_registry import (
+    InvalidNodeState,
+    NodeBusy,
     NodeNotFound,
     NodeRegistry,
     StaleGeneration,
@@ -109,7 +111,7 @@ def _sandbox_body(sandbox: dict[str, Any]) -> dict[str, Any]:
     return {
         "sandbox_id": sandbox["id"],
         "state": sandbox["state"],
-        "node_id": _default_node_id(),
+        "node_id": sandbox.get("node_id") or _default_node_id(),
         "workspace_id": sandbox["workspace_id"],
         "created_at": sandbox["created_at"],
         "expires_at": sandbox["expires_at"],
@@ -243,7 +245,9 @@ def _run_exec(
 # 节点（D17）
 # ==========================================
 
-def _node_body(row: dict[str, Any]) -> dict[str, Any]:
+def _node_body(
+    row: dict[str, Any], *, active_sandboxes: int | None = None
+) -> dict[str, Any]:
     return {
         "node_id": row["node_id"],
         "generation": row["generation"],
@@ -258,7 +262,16 @@ def _node_body(row: dict[str, Any]) -> dict[str, Any]:
         "lease_expires_at": row.get("lease_expires_at"),
         "seconds_since_heartbeat": row.get("seconds_since_heartbeat"),
         "expired": row.get("expired", False),
+        "cordoned": row.get("cordoned", False),
+        "draining": row.get("draining", False),
+        "removed": row.get("removed", False),
+        "accepting": row.get("accepting", False),
+        "active_sandboxes": active_sandboxes,
     }
+
+
+def _active_sandboxes(node_id: str) -> int:
+    return SandboxService().count_active(node_id)
 
 
 @router.post("/nodes", status_code=201)
@@ -278,7 +291,12 @@ def register_node(payload: RegisterNodeRequest):
 @router.get("/nodes")
 def list_nodes():
     rows = NodeRegistry().list_nodes()
-    return {"nodes": [_node_body(row) for row in rows]}
+    return {
+        "nodes": [
+            _node_body(row, active_sandboxes=_active_sandboxes(row["node_id"]))
+            for row in rows
+        ]
+    }
 
 
 @router.post("/nodes/{node_id}/heartbeat", status_code=202)
@@ -291,8 +309,75 @@ def heartbeat(node_id: str, payload: HeartbeatRequest):
         return _error(404, "NODE_NOT_FOUND", "节点不存在")
     except StaleGeneration as exc:
         return _error(409, "NODE_GENERATION_STALE", str(exc))
+    except InvalidNodeState as exc:
+        return _error(409, "INVALID_STATE_TRANSITION", str(exc))
 
-    return JSONResponse(status_code=202, content=_node_body(row))
+    return JSONResponse(
+        status_code=202,
+        content=_node_body(row, active_sandboxes=_active_sandboxes(node_id)),
+    )
+
+
+# ==========================================
+# 节点运维：cordon / drain / remove（D19）
+# ==========================================
+
+def _node_ops_error(exc: PlatformError):
+    if isinstance(exc, NodeNotFound):
+        return _error(404, "NODE_NOT_FOUND", str(exc))
+
+    return _error(exc.http_status, exc.code, str(exc))
+
+
+@router.post("/nodes/{node_id}/cordon", status_code=202)
+def cordon_node(node_id: str):
+    try:
+        row = NodeRegistry().cordon(node_id)
+    except PlatformError as exc:
+        return _node_ops_error(exc)
+
+    return JSONResponse(
+        status_code=202,
+        content=_node_body(row, active_sandboxes=_active_sandboxes(node_id)),
+    )
+
+
+@router.post("/nodes/{node_id}/drain", status_code=202)
+def drain_node(node_id: str):
+    try:
+        row = NodeRegistry().drain(node_id)
+    except PlatformError as exc:
+        return _node_ops_error(exc)
+
+    return JSONResponse(
+        status_code=202,
+        content=_node_body(row, active_sandboxes=_active_sandboxes(node_id)),
+    )
+
+
+@router.post("/nodes/{node_id}/remove")
+def remove_node(node_id: str):
+    try:
+        row = NodeRegistry().remove(node_id)
+    except NodeBusy as exc:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": {
+                    "code": exc.code,
+                    "message": str(exc),
+                    "retryable": True,
+                    "request_id": None,
+                }
+            },
+        )
+    except PlatformError as exc:
+        return _node_ops_error(exc)
+
+    return JSONResponse(
+        status_code=200,
+        content=_node_body(row, active_sandboxes=_active_sandboxes(node_id)),
+    )
 
 
 # ==========================================
@@ -307,11 +392,22 @@ def create_sandbox(
     ),
 ):
     try:
+        node = NodeRegistry().ensure_default_node()
+
+        if not node["accepting"]:
+            return _error(
+                429,
+                "NO_READY_NODE",
+                "没有可接收新沙箱的节点（cordon / drain / 租约过期）",
+                retryable=True,
+            )
+
         sandbox = SandboxService().create(
             idempotency_key=idempotency_key or "",
             tier=payload.tier,
             workspace_id=payload.workspace_id,
             ttl_seconds=payload.ttl_seconds,
+            node_id=node["node_id"],
         )
     except PlatformError as exc:
         return _error(exc.http_status, exc.code, str(exc))

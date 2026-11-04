@@ -114,3 +114,9 @@
 - 验收与卡点：`tests/integration/test_platform_lease.py` **7 个用例全绿**（间隔 × 3 的租约参数、29s 仍 ready / 31s not_ready、心跳续约、旧代际不能复活、非法间隔 400、API 真实时钟 1 秒周期等 3.4 秒后 not_ready、心跳恢复 ready），证据见 `docs/evidence/d18-lease.txt`；全量 **73 文件 / 679 用例 PASS，298.91 秒**（D17 是 72 / 672、187.42 秒；这次慢在整机负载，用例数与文件数都是净增），证据见 `docs/evidence\d18-backend-tests.txt`。
 - 遗留限制：① 过期只影响「状态展示」，还没有调度器消费这个状态（D20/D23）；② 没有 cordon / drain（D19）；③ 节点 generation 只保留当前值，历史代际不留痕；④ `/v1/nodes` 仍无认证；⑤ 租约判定用本机时钟，没有做时钟漂移处理。
 - 明天第一件事：D19 cordon / drain —— 摘流不杀存量、drain 期间不接新活、drain 完成才允许 remove。
+## D19 — 2026-11-04
+
+- 今天做了什么：实现 cordon / drain / remove。`agent_nodes` 增加 `cordoned_at` / `draining_at` / `removed_at`（旧库补列），`agent_sandboxes` 增加 `node_id`（建沙箱时写入默认节点，旧库补列）；节点视图新增 `cordoned` / `draining` / `removed` / `accepting` / `active_sandboxes`。`POST /v1/sandboxes` 在默认节点 `accepting=false` 时返回 429 `NO_READY_NODE`；`remove` 要求「已 drain + 该节点未回收沙箱数为 0」，否则 409 `INVALID_STATE_TRANSITION`（`retryable=true`）；已移除节点拒绝心跳和再次 cordon / drain。
+- 验收与卡点：`tests/integration/test_platform_node_ops.py` **7 个用例全绿**（cordon 阻断新沙箱但租约仍 ready、cordon 幂等、cordon 不杀运行中的 exec（真实子进程跑到 succeeded）、remove 必须先 drain、drain 后仍有沙箱时 remove 409 且可重试、回收后 remove 200、已移除节点拒绝心跳/运维、`active_sandboxes` 计数），证据见 `docs/evidence/d19-node-ops.txt`；全量 **74 文件 / 686 用例 PASS，187.92 秒**（D18 基线 73 / 679，298.91 秒 —— 上一轮慢在整机负载，这次回到正常水平），证据见 `docs/evidence/d19-backend-tests.txt`。
+- 遗留限制：① 还没有 least-loaded 调度与容量原子占用（D20/D21），单机只有一个默认节点；② 没有 uncordon，摘流只能靠重新注册；③ remove 不做进程清理，只保证「无未回收沙箱」；④ `capacity` 仍未参与准入判断；⑤ `agent_sandboxes.node_id` 只有新行有值，D18 之前的历史行是 NULL，计数时不计入（回填留给 D20 一起做）。
+- 明天第一件事：D20 沙箱状态机（created → running ↔ idle → reclaimed/failed），非法迁移要有测试，并顺手回填历史行的 node_id。

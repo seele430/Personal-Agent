@@ -326,6 +326,16 @@ TEST_SCHEMAS = {
         risk="low",
     ),
 
+    # L2：D19 cordon / drain / remove（摘流不杀存量、drain 完才能下线）
+    "integration/test_platform_node_ops.py": TestSchema(
+        layer="integration",
+        domain="platform_nodes",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",

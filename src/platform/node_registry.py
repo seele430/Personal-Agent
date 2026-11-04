@@ -48,6 +48,18 @@ class StaleGeneration(PlatformError):
     http_status = 409
 
 
+class NodeBusy(PlatformError):
+    """drain 还没完成就要求 remove。"""
+
+    code = "INVALID_STATE_TRANSITION"
+    http_status = 409
+
+
+class InvalidNodeState(PlatformError):
+    code = "INVALID_STATE_TRANSITION"
+    http_status = 409
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -76,6 +88,11 @@ def init_node_schema(conn: sqlite3.Connection) -> None:
             ADD COLUMN heartbeat_interval_seconds INTEGER NOT NULL DEFAULT 10
             """
         )
+
+    # D19：cordon / drain / remove 的时间戳。旧库补列，幂等。
+    for column in ("cordoned_at", "draining_at", "removed_at"):
+        if column not in columns:
+            conn.execute(f"ALTER TABLE agent_nodes ADD COLUMN {column} TEXT")
 
 
 class NodeRegistry:
@@ -196,6 +213,9 @@ class NodeRegistry:
                 if row is None:
                     raise NodeNotFound(node_id)
 
+                if row["removed_at"] is not None:
+                    raise InvalidNodeState(f"节点 {node_id} 已移除")
+
                 if int(generation) != int(row["generation"]):
                     # 旧代际的心跳不能复活节点，也不能续新实例的租约。
                     raise StaleGeneration(
@@ -261,7 +281,101 @@ class NodeRegistry:
             max(0.0, (moment - last).total_seconds()), 3
         )
         view["expired"] = moment >= deadline
+
+        # D19：cordon / drain / remove。accepting 是「能不能接新沙箱」的唯一判定。
+        view["cordoned"] = row["cordoned_at"] is not None
+        view["draining"] = row["draining_at"] is not None
+        view["removed"] = row["removed_at"] is not None
+        view["accepting"] = (
+            not view["expired"]
+            and not view["cordoned"]
+            and not view["draining"]
+            and not view["removed"]
+        )
         return view
+
+    # ------------------------------------------------------------------
+    # cordon / drain / remove（D19）
+    # ------------------------------------------------------------------
+
+    def cordon(self, node_id: str, *, now: datetime | None = None) -> dict[str, Any]:
+        """摘流：不再接新沙箱，存量 exec 照常跑。"""
+
+        return self._mark(node_id, "cordoned_at", "cordoned", now)
+
+    def drain(self, node_id: str, *, now: datetime | None = None) -> dict[str, Any]:
+        """排水：不接新沙箱，等存量沙箱回收后才允许 remove。"""
+
+        return self._mark(node_id, "draining_at", "draining", now)
+
+    def _mark(
+        self,
+        node_id: str,
+        column: str,
+        action: str,
+        now: datetime | None,
+    ) -> dict[str, Any]:
+        moment = (now or datetime.now(timezone.utc)).isoformat()
+
+        with closing(self.connect()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+
+            try:
+                row = conn.execute(
+                    "SELECT * FROM agent_nodes WHERE node_id = ?", (node_id,)
+                ).fetchone()
+
+                if row is None:
+                    raise NodeNotFound(node_id)
+
+                if row["removed_at"] is not None:
+                    raise InvalidNodeState(f"节点 {node_id} 已移除，不能再 {action}")
+
+                # 幂等：重复 cordon / drain 保留第一次的时间戳。
+                conn.execute(
+                    f"""
+                    UPDATE agent_nodes
+                    SET {column} = COALESCE({column}, ?)
+                    WHERE node_id = ?
+                    """,
+                    (moment, node_id),
+                )
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+
+        return self.get(node_id, now=now)
+
+    def remove(
+        self, node_id: str, *, now: datetime | None = None
+    ) -> dict[str, Any]:
+        """下线节点：必须先 drain，且该节点上没有未回收沙箱。"""
+
+        from src.platform.sandbox_service import SandboxService
+
+        current = self.get(node_id, now=now)
+
+        if current["removed"]:
+            return current  # 幂等
+
+        if not current["draining"]:
+            raise InvalidNodeState("remove 之前必须先 drain")
+
+        active = SandboxService().count_active(node_id)
+
+        if active > 0:
+            raise NodeBusy(f"节点 {node_id} 上还有 {active} 个未回收沙箱")
+
+        moment = (now or datetime.now(timezone.utc)).isoformat()
+
+        with closing(self.connect()) as conn, conn:
+            conn.execute(
+                "UPDATE agent_nodes SET removed_at = ? WHERE node_id = ?",
+                (moment, node_id),
+            )
+
+        return self.get(node_id, now=now)
 
     def ensure_default_node(
         self, *, now: datetime | None = None
