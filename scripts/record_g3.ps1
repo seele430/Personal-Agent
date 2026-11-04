@@ -100,8 +100,8 @@ public class G3Win32 {
 "@
 
     Write-Host ""
-    Write-Host "请把 'G3 Demo' 窗口点到最前面（它可能被 VS Code 挡着）。" -ForegroundColor Yellow
-    Write-Host "脚本最多等 3 分钟，检测到它在前台后自动开始录制。" -ForegroundColor Yellow
+    Write-Host "Click the 'G3 Demo' window to bring it to the front." -ForegroundColor Yellow
+    Write-Host "Recording starts automatically once it is in front (waits up to 3 minutes)." -ForegroundColor Yellow
     Write-Host ""
 
     $hwnd = [IntPtr]::Zero
