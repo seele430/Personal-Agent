@@ -26,6 +26,7 @@ from src.notifications_api import router as notification_router
 from src.platform_api import router as platform_router
 from src.platform.audit import AuditLog, audit_retention_days
 from src.platform.rate_limit import get_limiter
+from src.platform.exec_queue import start_watchdog, stop_watchdog
 from src.platform.reaper import start_reaper, stop_reaper
 from src.platform.reconcile import reconcile_startup
 from src.reminder_api import router as reminder_router
@@ -81,9 +82,13 @@ async def lifespan(_app: FastAPI):
     # D16：平台 TTL 回收线程；测试环境用 PERSONAL_AGENT_PLATFORM_REAPER=0 关闭。
     start_reaper()
 
+    # D30.2：排队超时看门狗（等太久的 queued exec 落 timed_out）。
+    start_watchdog()
+
     try:
         yield
     finally:
+        stop_watchdog()
         stop_reaper()
 
 

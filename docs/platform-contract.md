@@ -258,6 +258,13 @@ failed → reclaimed
 > `{active, queued, max_active, max_queued}`（**单进程视角**，多 worker 各报
 > 各的）；429 `QUEUE_FULL` 带 `Retry-After`（`PERSONAL_AGENT_PLATFORM_QUEUE_RETRY_AFTER`
 > 默认 5 秒）。这是**估计值**，不是精确等待时间 —— 平台没有真实的 exec 时长统计。
+>
+> D30.2（2026-11-04）：排队也**有时间上限**了。
+> `PERSONAL_AGENT_PLATFORM_QUEUE_MAX_WAIT`（默认 60 秒，`0` = 不限）到点仍未
+> 出队的 exec 落 `timed_out`（`error_code=QUEUE_TIMEOUT`、
+> `result_code=EXEC_TIMED_OUT`），并写一条 `exec.timeout` 审计。看门狗线程
+> `PERSONAL_AGENT_PLATFORM_QUEUE_SWEEP`（默认 5 秒）周期扫描；出队时也会再检查
+> 一次，避免看门狗两跳之间的空档。
 
 ## 6. 稳定错误码
 

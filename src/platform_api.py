@@ -326,8 +326,45 @@ def _exec_queue():
 
     if queue._start is None:  # noqa: SLF001 - 单例只需要装一次启动器
         queue.start_with(_spawn_exec)
+        queue.expire_with(_expire_queued)
 
     return queue
+
+
+def _expire_queued(item) -> None:
+    """排队等太久的 exec：落 timed_out，不启动进程。"""
+
+    store = ExecStore()
+
+    try:
+        row = store.get(item.exec_id)
+    except KeyError:
+        return
+
+    if row["state"] != "queued":
+        return
+
+    store.finish(
+        item.exec_id,
+        state=EXEC_TIMED_OUT,
+        exit_code=None,
+        stdout="",
+        stderr="排队等待超时",
+        truncated=False,
+        error_code="QUEUE_TIMEOUT",
+        result_code="EXEC_TIMED_OUT",
+    )
+
+    try:
+        AuditLog().record(
+            "exec.timeout",
+            outcome="timed_out",
+            code="QUEUE_TIMEOUT",
+            sandbox_id=item.sandbox_id,
+            exec_id=item.exec_id,
+        )
+    except Exception:  # noqa: BLE001 - 审计是旁路
+        logger.exception("审计写入失败 event=exec.timeout")
 
 
 # ==========================================

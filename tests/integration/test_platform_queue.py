@@ -172,7 +172,71 @@ class ExecQueueApiTest(unittest.TestCase):
         wait_for_exec_worker(first)
 
 
+    def test_queued_exec_times_out_after_max_wait(self):
+        from src.platform.audit import AuditLog
+
+        with patch.dict(
+            "os.environ",
+            {
+                "PERSONAL_AGENT_PLATFORM_QUEUE_MAX_WAIT": "1",
+                "PERSONAL_AGENT_PLATFORM_QUEUE_SWEEP": "0.2",
+            },
+        ):
+            exec_queue.reset_queue()
+
+            self.submit(SLEEP)  # 占住唯一的活跃名额
+            queued = self.submit(SLEEP).json()["exec_id"]
+
+            deadline = time.monotonic() + 15
+            body = {}
+
+            while time.monotonic() < deadline:
+                body = self.client.get(f"/v1/exec/{queued}").json()
+                if body["state"] == "timed_out":
+                    break
+                time.sleep(0.05)
+
+        self.assertEqual(body["state"], "timed_out", body)
+        self.assertEqual(body["result_code"], "EXEC_TIMED_OUT")
+        self.assertEqual(body["stdout"], "")
+        self.assertEqual(
+            ExecStore().get(queued)["error_code"], "QUEUE_TIMEOUT"
+        )
+
+        events = [item["event"] for item in AuditLog().list(limit=20)]
+        self.assertIn("exec.timeout", events)
+
+
 class ExecQueueUnitTest(unittest.TestCase):
+    def test_sweep_expires_waiting_items(self):
+        expired: list[str] = []
+        queue = exec_queue.ExecQueue(
+            max_active=1, max_queued=2, max_wait_seconds=10
+        )
+        queue.start_with(lambda item: None)
+        queue.expire_with(lambda item: expired.append(item.exec_id))
+
+        def item(name):
+            return exec_queue.QueuedExec(
+                exec_id=name,
+                sandbox_id="sbx_" + "0" * 32,
+                argv=["x"],
+                timeout_ms=1000,
+                max_output_bytes=100,
+                enqueued_at=100.0,
+            )
+
+        queue.submit(item("a"))
+        queue.submit(item("b"))
+        queue.submit(item("c"))
+
+        self.assertEqual(queue.sweep(now=105.0), [])
+        gone = queue.sweep(now=111.0)
+
+        self.assertEqual([entry.exec_id for entry in gone], ["b", "c"])
+        self.assertEqual(expired, ["b", "c"])
+        self.assertEqual(queue.snapshot()["queued"], 0)
+
     def test_submit_finish_and_cancel(self):
         started: list[str] = []
         queue = exec_queue.ExecQueue(max_active=1, max_queued=1)
@@ -219,12 +283,11 @@ class ExecQueueUnitTest(unittest.TestCase):
         queue.finish()
 
         self.assertEqual(started, ["a", "b"])
-        self.assertEqual(queue.snapshot(), {
-            "active": 1,
-            "queued": 1,
-            "max_active": 1,
-            "max_queued": 2,
-        })
+        snapshot = queue.snapshot()
+        self.assertEqual(snapshot["active"], 1)
+        self.assertEqual(snapshot["queued"], 1)
+        self.assertEqual(snapshot["max_active"], 1)
+        self.assertEqual(snapshot["max_queued"], 2)
 
 
 if __name__ == "__main__":

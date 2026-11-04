@@ -185,3 +185,10 @@
 - 过程中的小坑：连跑整个文件时偶发 `WinError 32`（被杀的 sleep 子进程句柄释放有延迟，撞上临时目录清理）。只影响清理、不影响断言，用例的 `TemporaryDirectory` 加了 `ignore_cleanup_errors=True`，连跑 5 次稳定。
 - 遗留限制：① `/v1/queue` 只反映当前进程，多 worker 需各自查询；② `Retry-After` 是固定估计值，exec 时长差异大时会偏乐观或偏保守；③ 队列深度没有历史曲线 / 指标导出；④ 没有等待超时（排队中的 exec 可以一直等，直到被取消或平台重启）。
 - 明天第一件事：给排队加等待上限（`queue_max_wait_seconds`，超时落 `timed_out`），否则 D30 的「有界」只界了数量、没界时间。
+## D30.2 — 2026-11-04
+
+- 今天做了什么：给排队加时间上限。`PERSONAL_AGENT_PLATFORM_QUEUE_MAX_WAIT`（默认 60 秒，`0` = 不限），到点仍未出队的 exec 落 `timed_out`（`error_code=QUEUE_TIMEOUT`、`result_code=EXEC_TIMED_OUT`），并写一条 `exec.timeout` 审计；看门狗线程 `PERSONAL_AGENT_PLATFORM_QUEUE_SWEEP`（默认 5 秒）周期扫描；`ExecQueue.finish()` 出队时也会再检查一次，跳过已超期的队首继续找下一个，避免看门狗两跳之间的空档。
+- 验收与卡点：`tests/integration/test_platform_queue.py` 扩到 **9 个用例全绿**（新增：排队超时落 `timed_out` + `exec.timeout` 审计、`sweep()` 批量过期且保留未过期项）。全量 **82 文件 / 745 用例 PASS，203.96 秒**，证据见 `docs/evidence/d30-2-queue-timeout.txt`、`docs/evidence/d30-2-backend-tests.txt`。
+- 过程中的小发现：`_exec_body` 不暴露 `error_code`（只在库里），测试改成直接读 `ExecStore().get(...)`。这不是 bug，但说明 API 面与存储面的字段并不完全同步 —— 排查时别只看 API 响应。
+- 遗留限制：① 等待计时是进程内单调时钟，跨重启失效（重启后 queued 由 D22 对账统一落 `failed`）；② 超时判定精度受 `SWEEP` 间隔影响（默认 5 秒）；③ `Retry-After` 仍是固定估计值；④ 没有「排队中」的独立指标时间序列。
+- 明天第一件事：把 D30 系列合进 main，或回到 D40 演示口径。

@@ -26,6 +26,7 @@ EVENTS = frozenset(
         "sandbox.destroy",
         "exec.create",
         "exec.cancel",
+        "exec.timeout",
         "auth.denied",
         "rate_limited",
     }
