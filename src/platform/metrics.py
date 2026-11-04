@@ -25,6 +25,24 @@ from src import config
 
 TEXT_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 
+# 已知状态：即使计数为 0 也要出样本，否则仪表盘会在空库时断线。
+EXEC_STATES = (
+    "queued",
+    "running",
+    "succeeded",
+    "failed",
+    "cancelled",
+    "timed_out",
+)
+
+SANDBOX_STATES = (
+    "created",
+    "running",
+    "idle",
+    "failed",
+    "reclaimed",
+)
+
 
 def _query(db_path, sql: str, parameters: Iterable = ()) -> list[tuple]:
     try:
@@ -117,9 +135,10 @@ def render() -> str:
         "counter",
         "Exec 总数，按终态分组",
     )
-    for state, count in sorted(data["exec_states"].items()):
+    for state in EXEC_STATES:
         lines.append(
-            f'personal_agent_execs_total{{status="{_escape(state)}"}} {int(count)}'
+            f'personal_agent_execs_total{{status="{state}"}} '
+            f"{int(data['exec_states'].get(state, 0))}"
         )
 
     family(
@@ -158,9 +177,10 @@ def render() -> str:
         "gauge",
         "沙箱数量，按状态分组",
     )
-    for state, count in sorted(data["sandbox_states"].items()):
+    for state in SANDBOX_STATES:
         lines.append(
-            f'personal_agent_sandboxes{{state="{_escape(state)}"}} {int(count)}'
+            f'personal_agent_sandboxes{{state="{state}"}} '
+            f"{int(data['sandbox_states'].get(state, 0))}"
         )
 
     family(
