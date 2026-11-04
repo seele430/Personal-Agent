@@ -1,6 +1,9 @@
 # G3 screen recording: records ONLY the window titled "G3 Demo".
 # Usage: powershell -ExecutionPolicy Bypass -File scripts\record_g3.ps1
 # Output: docs\evidence\g3-demo.mp4
+#
+# ASCII only on purpose: PowerShell 5.1 reads a BOM-less UTF-8 script as the
+# system code page, which corrupts non-ASCII text and can even break parsing.
 
 $ErrorActionPreference = "Stop"
 
@@ -15,9 +18,9 @@ if (-not (Test-Path $python)) {
     throw "venv not found: $python"
 }
 
-# The demo window is started from a bootstrap file in TEMP (no spaces in that
-# path), because Start-Process -ArgumentList mangles quoted paths containing
-# spaces -- the project path has a space in it.
+# The demo runs from a bootstrap file in TEMP (that path has no spaces).
+# Start-Process -ArgumentList mangles quoted paths containing spaces, and the
+# project path "C:\Users\123\Personal Agent" has one.
 $bootstrap = Join-Path $env:TEMP "g3-demo-run.ps1"
 
 $script = @"
@@ -55,18 +58,18 @@ try {
     }
 
     if (-not $focused) {
-        Write-Warning "Cannot focus window '$title' (pid $($window.Id)); recording anyway. If the video looks wrong, bring the window to the front and rerun."
+        Write-Warning "Cannot focus window '$title' (pid $($window.Id)); recording anyway. Click the window if the video looks wrong."
     }
 
     Start-Sleep -Milliseconds 800
 
     Write-Host "Recording $seconds seconds..." -ForegroundColor Cyan
 
-    # h264 要求宽高都是偶数；抓到的窗口尺寸可能是奇数（如 1481x761），
-    # 所以统一向下取偶，再编码。
-    & ffmpeg -y -loglevel error -f gdigrab -framerate 12 -i "title=$title" `
-        -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" `
-        -t $seconds -pix_fmt yuv420p -movflags +faststart $output
+    # Keep this on ONE line: a trailing backtick continuation is fragile and
+    # has already been mis-parsed once (the -vf flag became a separate command).
+    # The scale filter rounds width/height down to even numbers because h264
+    # rejects odd dimensions (captured window was 1481x761).
+    & ffmpeg -y -loglevel error -f gdigrab -framerate 12 -i "title=$title" -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -t $seconds -pix_fmt yuv420p -movflags +faststart $output
 
     if ($LASTEXITCODE -ne 0) {
         throw "ffmpeg failed (exit=$LASTEXITCODE)"
