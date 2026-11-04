@@ -13,7 +13,7 @@ import hmac
 import logging
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from src import api as legacy_chat
@@ -341,16 +341,15 @@ async def _strip_api_prefix(request, call_next):
         stripped = path[4:]
         request.scope["path"] = stripped
         request.scope["raw_path"] = stripped.encode("utf-8")
+        # SPA 回退不能吞掉 /api/*：标记一下，让兜底路由继续返回 404。
+        request.scope["_was_api_prefix"] = True
 
     response = await call_next(request)
-    # A POST to an unknown /api route must not fall through to StaticFiles,
-    # which otherwise turns the expected API 404 into a static-file 405.
+    # 未知 /api 路径（含方法不匹配）统一 404，不要落到前端回退去变成 405/页面。
     if is_api and response.status_code == 405:
         from fastapi.responses import JSONResponse
-        from starlette.staticfiles import StaticFiles
 
-        if isinstance(request.scope.get("endpoint"), StaticFiles):
-            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
     return response
 
 
@@ -386,9 +385,33 @@ def _mount_frontend() -> None:
         )
 
     if os.path.isdir(dist):
-        app.mount(
-            "/", StaticFiles(directory=dist, html=True), name="frontend"
-        )
+        from fastapi.responses import FileResponse
+
+        index = os.path.join(dist, "index.html")
+        assets = os.path.join(dist, "assets")
+
+        if os.path.isdir(assets):
+            app.mount(
+                "/assets",
+                StaticFiles(directory=assets),
+                name="assets",
+            )
+
+        # SPA 回退：/login、/chat 这类前端路由刷新时也必须拿到 index.html，
+        # 否则直接 404（StaticFiles 只服务真实存在的文件）。
+        # /api/* 是接口命名空间：剥离前缀后仍返回 404，不能回退到页面。
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def spa_fallback(full_path: str, request: Request):
+            if request.scope.get("_was_api_prefix"):
+                raise HTTPException(status_code=404)
+
+            if full_path.startswith(("api/", "auth/", "v1/", "assets/")):
+                raise HTTPException(status_code=404)
+
+            if not os.path.isfile(index):
+                raise HTTPException(status_code=404)
+
+            return FileResponse(index)
 
 
 _mount_frontend()
