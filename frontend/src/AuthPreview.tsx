@@ -137,6 +137,18 @@ function clearSavedToken(): void {
 }
 
 
+// 浏览器自动填充不会触发 onChange，state 可能是旧的；
+// 提交时直接读表单元素的值，避免「明明一样却提示不一致」。
+function readFieldValue(
+  form: HTMLFormElement,
+  name: string,
+): string {
+  const element = form.elements.namedItem(name)
+
+  return element instanceof HTMLInputElement ? element.value : ''
+}
+
+
 function replacePath(path: '/login' | '/'): void {
   if (window.location.pathname !== path) {
     window.history.replaceState(null, '', path)
@@ -371,6 +383,9 @@ export default function AuthPreview() {
       return
     }
 
+    const form = event.currentTarget
+    const typedPassword = readFieldValue(form, 'password')
+
     const cleanedUsername = username.trim().toLowerCase()
 
     if (!cleanedUsername) {
@@ -378,7 +393,7 @@ export default function AuthPreview() {
       return
     }
 
-    if (!password) {
+    if (!typedPassword) {
       setError('请输入密码')
       return
     }
@@ -406,7 +421,7 @@ export default function AuthPreview() {
         signal: controller.signal,
         body: JSON.stringify({
           username: cleanedUsername,
-          password,
+          password: typedPassword,
         }),
       })
 
@@ -478,6 +493,10 @@ export default function AuthPreview() {
       return
     }
 
+    const form = event.currentTarget
+    const typedPassword = readFieldValue(form, 'password')
+    const typedConfirm = readFieldValue(form, 'password-confirm')
+
     const cleanedUsername = username.trim().toLowerCase()
 
     if (!cleanedUsername) {
@@ -485,13 +504,17 @@ export default function AuthPreview() {
       return
     }
 
-    if (password.length < 12) {
-      setError('密码至少 12 个字符')
+    if (typedPassword.length < 12) {
+      setError(
+        `密码至少 12 个字符（当前 ${typedPassword.length} 个）`,
+      )
       return
     }
 
-    if (password !== confirmPassword) {
-      setError('两次输入的密码不一致')
+    if (typedPassword !== typedConfirm) {
+      setError(
+        `两次输入的密码不一致（${typedPassword.length} / ${typedConfirm.length} 个字符）`,
+      )
       return
     }
 
@@ -508,7 +531,7 @@ export default function AuthPreview() {
         },
         body: JSON.stringify({
           username: cleanedUsername,
-          password,
+          password: typedPassword,
         }),
       })
 
@@ -569,6 +592,10 @@ export default function AuthPreview() {
       return
     }
 
+    const form = event.currentTarget
+    const typedPassword = readFieldValue(form, 'password')
+    const typedConfirm = readFieldValue(form, 'password-confirm')
+
     const cleanedUsername = username.trim().toLowerCase()
 
     if (!cleanedUsername) {
@@ -576,13 +603,17 @@ export default function AuthPreview() {
       return
     }
 
-    if (password.length < 12) {
-      setError('密码至少 12 个字符')
+    if (typedPassword.length < 12) {
+      setError(
+        `密码至少 12 个字符（当前 ${typedPassword.length} 个）`,
+      )
       return
     }
 
-    if (password !== confirmPassword) {
-      setError('两次输入的密码不一致')
+    if (typedPassword !== typedConfirm) {
+      setError(
+        `两次输入的密码不一致（${typedPassword.length} / ${typedConfirm.length} 个字符）`,
+      )
       return
     }
 
@@ -600,7 +631,7 @@ export default function AuthPreview() {
         },
         body: JSON.stringify({
           username: cleanedUsername,
-          password,
+          password: typedPassword,
         }),
       })
 
