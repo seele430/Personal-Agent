@@ -22,13 +22,24 @@ if (-not (Test-Path $python)) {
 # Start-Process -ArgumentList mangles quoted paths containing spaces, and the
 # project path "C:\Users\123\Personal Agent" has one.
 $bootstrap = Join-Path $env:TEMP "g3-demo-run.ps1"
+$goFile = Join-Path $env:TEMP "g3-demo-go.flag"
 
+Remove-Item $goFile -Force -ErrorAction SilentlyContinue
+
+# The demo must NOT start before recording does: otherwise the 3 stages finish
+# while the script is still waiting for the window to reach the foreground, and
+# the video only shows the final prompt. The window waits for this flag.
 $script = @"
 `$Host.UI.RawUI.WindowTitle = '$title'
 Set-Location '$root'
+Write-Host '等待录制开始...（点一下这个窗口，脚本会自动开始）' -ForegroundColor Yellow
+`$deadline = (Get-Date).AddSeconds(300)
+while (-not (Test-Path '$goFile') -and (Get-Date) -lt `$deadline) {
+    Start-Sleep -Milliseconds 200
+}
 `$env:PYTHONIOENCODING = 'utf-8'
 & '$python' 'scripts\demo_g3.py'
-Start-Sleep -Seconds 6
+Start-Sleep -Seconds 5
 "@
 
 [IO.File]::WriteAllText(
@@ -124,7 +135,10 @@ public class G3Win32 {
             "Click the '$title' window, then run again.")
     }
 
-    Start-Sleep -Milliseconds 800
+    # Window is up front and the demo is still waiting: release it and start
+    # recording almost simultaneously, so the video covers all three stages.
+    New-Item -ItemType File -Path $goFile -Force | Out-Null
+    Start-Sleep -Milliseconds 500
 
     Write-Host "Recording $seconds seconds..." -ForegroundColor Cyan
 
@@ -142,6 +156,8 @@ public class G3Win32 {
     Write-Host ("Done: {0} ({1:N2} MB)" -f $output, $size) -ForegroundColor Green
 }
 finally {
+    Remove-Item $goFile -Force -ErrorAction SilentlyContinue
+
     if ($window -and -not $window.HasExited) {
         taskkill /F /T /PID $window.Id | Out-Null
     }
