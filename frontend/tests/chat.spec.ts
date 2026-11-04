@@ -113,8 +113,8 @@ test.describe("Personal Agent Chat", () => {
   });
 
 
-  // 2. 连续点击防重复发送
-  test("连续点击不会重复发送请求", async ({ page }) => {
+  // 2. 连续提交防重复发送
+  test("连续提交不会重复发送请求", async ({ page }) => {
     const unexpected = await setupPage(page);
 
     let requestCount = 0;
@@ -127,23 +127,31 @@ test.describe("Personal Agent Chat", () => {
 
     await openAuthenticatedChat(page);
 
-    await sendMessage(page, "测试重复发送");
+    const textbox = page.getByRole("textbox", { name: "输入聊天消息" });
+
+    await textbox.fill("测试重复发送");
+
+    // 同一个 tick 里连续提交两次：React 还没来得及重渲染，
+    // 因此拦下第二次的只能是发送锁本身，不是界面上的 disabled。
+    await page.locator("form.input-box").evaluate((form) => {
+      const element = form as HTMLFormElement;
+
+      element.requestSubmit();
+      element.requestSubmit();
+    });
 
     await expect.poll(() => requestCount).toBe(1);
 
-    const sendButton = page.getByRole("button", { name: "发送中…" });
+    // 发送中的界面保证：输入框禁用，发送按钮换成「停止生成」。
+    await expect(textbox).toBeDisabled();
 
-    await expect(sendButton).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "发送 ↑" }),
+    ).toHaveCount(0);
 
-    const box = await sendButton.boundingBox();
-
-    if (!box) {
-      throw new Error("发送按钮不存在");
-    }
-
-    for (let index = 0; index < 5; index++) {
-      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    }
+    await expect(
+      page.getByRole("button", { name: "停止生成" }),
+    ).toBeVisible();
 
     await page.waitForTimeout(200);
 
@@ -180,11 +188,15 @@ test.describe("Personal Agent Chat", () => {
     await sendMessage(page, "测试慢响应");
 
     await expect(page.getByRole("status")).toContainText(
-      "助手正在处理，请稍候…",
+      "助手正在生成，按 Esc 停止…",
     );
 
     await expect(
-      page.getByRole("button", { name: "发送中…" }),
+      page.getByRole("button", { name: "停止生成" }),
+    ).toBeVisible();
+
+    await expect(
+      page.getByRole("textbox", { name: "输入聊天消息" }),
     ).toBeDisabled();
 
     await expect(page.getByText("慢响应测试完成")).toBeVisible();
