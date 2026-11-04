@@ -201,3 +201,12 @@
 - **压测顺手抓到一个真 bug**：`node_local` 的租约没人续 —— 平台只在自己第一次 create 时注册节点，30 秒后租约过期 `accepting=false`，之后所有 create 都 429 `NO_READY_NODE`。修法：`ensure_default_node()` 在节点存在且未 removed 时**顺手续租**（代际不变）；removed 的节点不复活。新增 `test_default_node_renewal.py` 三条用例（含「把 last_heartbeat 拨回 5 分钟前再 create」的复现路径）。
 - 压测还暴露一个测量陷阱：客户端每条 exec 要轮询 `GET /v1/exec` 十几次，默认限流 600/min 会被轮询吃光（4 RPS 就 `RATE_LIMITED`）。压测脚本把限流调高、只测执行容量，并在 SATURATION.md 里写清口径。
 - 验收：`test_platform_metrics.py` 6 条、`test_default_node_renewal.py` 3 条全绿；全量 **84 文件 / 754 用例 PASS，198.34 秒**（D30.2 基线 82 / 745）。证据：`docs/evidence/d25-metrics-logs.txt`、`d30-node-renewal.txt`、`d31-backend-tests.txt`、`docs/bench/SATURATION.md`、`docs/SLO.md`。
+## D37–D40 — 2026-11-04
+
+- D37 告警闭环：新增 `src/platform/alerts.py`，三条规则（`QUEUE_BACKLOG` / `NODE_NOT_READY` / `SANDBOX_FAILED`），`apply()` 对节点执行 cordon + drain（幂等）并写 `alert.fired` 审计；3 条用例全绿。
+- D38 故障注入：`scripts/fault_injection.py` 做三组实验并留档（队列塞满 429、节点停心跳 → `not_ready`、节点被摘除 → create 429 `NO_READY_NODE`），证据 `docs/evidence/d38-fault-injection.json`。
+- D39 runbook：`docs/RUNBOOK.md`，10 类故障的「怎么判断 / 怎么处置 / 怎么确认」。
+- D40 交付文档：`docs/architecture.md`（一张图 + 三个 trade-off）、`docs/postmortem.md`（默认节点租约 bug 的真实复盘）、`docs/resume.md`（200 字 + 60 字两版）、`docs/PLAN-STATUS.md`（计划对照与砍单理由）。
+- 砍单：D31–D36 不做了 —— 本机没有 Docker，也没有任何 C++ 工具链（docker / cl / g++ / clang++ / cmake 全缺）。计划第 5 节本来就把容器 tier 与 C++ SDK 列为可砍；没验证过的东西不写进交付。
+- 验收：`test_platform_alerts.py` 3 条全绿；全量 **85 文件 / 757 用例 PASS，203.60 秒**。证据：`d37-alerts.txt`、`d38-fault-injection.json/.txt`、`d40-backend-tests.txt`、`docs/PLAN-STATUS.md`。
+- 唯一还卡在门上的：**G3 的 60 秒录屏**（命令已冻结、一键可跑 19s/3 PASS）。录屏脚本 `scripts/record_g3.ps1` 在本机需要交互桌面，Agent 进程拉窗口拿不到焦点。

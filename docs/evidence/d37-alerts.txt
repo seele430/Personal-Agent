@@ -1,0 +1,12 @@
+# D37 告警闭环测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_platform_alerts -v
+> 时间：2026-11-04T12:12:52.1829533+08:00
+
+test_expired_node_fires_and_gets_cordoned (tests.integration.test_platform_alerts.AlertsTest.test_expired_node_fires_and_gets_cordoned) ... ok
+test_healthy_node_has_no_alerts (tests.integration.test_platform_alerts.AlertsTest.test_healthy_node_has_no_alerts) ... ok
+test_queue_backlog_threshold (tests.integration.test_platform_alerts.AlertsTest.test_queue_backlog_threshold) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.118s
+
+OK

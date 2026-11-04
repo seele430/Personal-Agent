@@ -426,6 +426,15 @@ TEST_SCHEMAS = {
         risk="low",
     ),
 
+    # L2：D37 告警闭环（阈值 → 驱逐 → 审计）
+    "integration/test_platform_alerts.py": TestSchema(
+        layer="integration",
+        domain="platform_alerts",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
     # L2：D30 压测暴露的默认节点续租回归
     "integration/test_default_node_renewal.py": TestSchema(
         layer="integration",

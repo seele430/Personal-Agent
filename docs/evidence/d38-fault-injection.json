@@ -1,0 +1,25 @@
+{
+  "status": "PASS",
+  "scenarios": [
+    {
+      "name": "队列塞满",
+      "first": "queued",
+      "second": "queued",
+      "third_http": 429,
+      "third_code": "QUEUE_FULL",
+      "retry_after": "5"
+    },
+    {
+      "name": "节点停心跳",
+      "generation": 1,
+      "state": "not_ready",
+      "expired": true,
+      "seconds_since_heartbeat": 600.007
+    },
+    {
+      "name": "节点被摘除",
+      "http": 429,
+      "code": "NO_READY_NODE"
+    }
+  ]
+}
