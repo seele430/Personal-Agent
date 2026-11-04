@@ -121,6 +121,7 @@ def _sandbox_body(sandbox: dict[str, Any]) -> dict[str, Any]:
         "ttl_seconds": sandbox["ttl_seconds"],
         "reclaimed_at": sandbox.get("reclaimed_at"),
         "reclaim_reason": sandbox.get("reclaim_reason"),
+        "tenant_id": sandbox.get("tenant_id"),
     }
 
 
@@ -407,6 +408,7 @@ def create_sandbox(
     idempotency_key: str | None = Header(
         default=None, alias="Idempotency-Key"
     ),
+    tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ):
     try:
         node = NodeRegistry().ensure_default_node()
@@ -425,9 +427,15 @@ def create_sandbox(
             workspace_id=payload.workspace_id,
             ttl_seconds=payload.ttl_seconds,
             node_id=node["node_id"],
+            tenant_id=tenant_id or "default",
         )
     except PlatformError as exc:
-        return _error(exc.http_status, exc.code, str(exc))
+        return _error(
+            exc.http_status,
+            exc.code,
+            str(exc),
+            retryable=bool(getattr(exc, "retryable", False)),
+        )
 
     return JSONResponse(status_code=201, content=_sandbox_body(sandbox))
 

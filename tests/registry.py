@@ -346,6 +346,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：D21 每租户并发配额与节点容量（429 CAPACITY_EXCEEDED）
+    "integration/test_sandbox_quota.py": TestSchema(
+        layer="integration",
+        domain="platform_quota",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",

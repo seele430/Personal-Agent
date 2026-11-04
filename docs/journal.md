@@ -126,3 +126,9 @@
 - 验收与卡点：`tests/integration/test_sandbox_state.py` **8 个用例全绿**（created→running→idle→reclaimed 全链、failed 只能回收、非法迁移 409、同状态幂等、reclaimed 拒绝 begin_exec、并发 exec 保持 running、API 中 exec 让沙箱 running 再回 idle、failed 拒绝 exec、旧库重建 + node_id 回填 + 可重复迁移），证据见 `docs/evidence/d20-sandbox-state.txt`；平台相关 5 个文件一起跑 40 个用例也全绿。全量 **75 文件 / 694 用例 PASS，212.02 秒**，证据见 `docs/evidence/d20-backend-tests.txt`。
 - 遗留限制：① 还没有调度器消费 running / idle（D23）；② 没有 per-tenant 配额与容量原子占用（D21）；③ `failed` 目前只能通过服务层手动标记，执行器崩溃不会自动置 failed（需要 D22 启动对账）；④ 迁移只覆盖 agent_sandboxes，platform_execs 没有历史包袱；⑤ `list_expired` 现在也覆盖 running / idle 沙箱，到期回收会先取消活动 exec（D16 已有测试覆盖）。
 - 明天第一件事：D21 每租户并发配额 —— 超额返回 429 `CAPACITY_EXCEEDED`，回收后释放名额。
+## D21 — 2026-11-04
+
+- 今天做了什么：实现每租户并发配额与节点容量准入。`agent_sandboxes` 增加 `tenant_id`（旧库补列，默认 `default`；`/v1` 可用 `X-Tenant-Id` 头覆盖）；`SandboxService.create` 在同一事务里先查「该租户未回收沙箱数 < 配额」再查「该节点未回收沙箱数 < capacity」，超限抛 `QuotaExceeded`（429 `CAPACITY_EXCEEDED`，`retryable=true`）并回滚；配额来自 `PERSONAL_AGENT_SANDBOX_QUOTA`（默认 8，上限 1000）。幂等重放先命中 key，不占新名额；回收后按 `state != 'reclaimed'` 自动释放。新增 `count_for_tenant()`。
+- 验收与卡点：`tests/integration/test_sandbox_quota.py` **6 个用例全绿**（配额 2 时第三个 429 且可重试、回收后放行、幂等重放不占名额、节点 capacity=1 时第二个 429、非法配额 env 回退默认值、10 线程并发只成功 2 个、两个租户互不影响），证据见 `docs/evidence/d21-quota.txt`；全量 **76 文件 / 700 用例 PASS，199.68 秒**，证据见 `docs/evidence/d21-backend-tests.txt`。
+- 遗留限制：① `/v1` 没有认证，`X-Tenant-Id` 由调用方自报，**不能当安全边界**（D21 只做配额机制）；② 没有 least-loaded 调度，单机只有一个默认节点；③ 配额算的是「未回收沙箱数」而不是「活动 exec 数」，两者在有 idle 沙箱时会不同；④ 只有租户级配额，没有项目级二级配额；⑤ 并发用例是 8 线程的功能验证，不是压测。
+- 明天第一件事：D22 启动对账 —— 重启后清理孤儿沙箱 / exec，并让执行器崩溃能落到 `failed`。

@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -67,6 +68,15 @@ class InvalidTransition(PlatformError):
     http_status = 409
 
 
+class QuotaExceeded(PlatformError):
+    code = "CAPACITY_EXCEEDED"
+    http_status = 429
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.retryable = True
+
+
 SANDBOX_CREATED = "created"
 SANDBOX_RUNNING = "running"
 SANDBOX_IDLE = "idle"
@@ -92,6 +102,12 @@ LEGAL_TRANSITIONS = {
 
 DEFAULT_NODE_PLACEHOLDER = "node_local"
 
+# D21：每租户并发沙箱上限；单机单用户时等价于全局上限。
+QUOTA_ENV = "PERSONAL_AGENT_SANDBOX_QUOTA"
+DEFAULT_QUOTA = 8
+MAX_QUOTA = 1000
+DEFAULT_TENANT = "default"
+
 _CREATE_SANDBOXES_SQL = """
 CREATE TABLE IF NOT EXISTS agent_sandboxes (
     id TEXT PRIMARY KEY,
@@ -105,9 +121,27 @@ CREATE TABLE IF NOT EXISTS agent_sandboxes (
     expires_at TEXT NOT NULL,
     reclaimed_at TEXT,
     reclaim_reason TEXT,
-    node_id TEXT
+    node_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT 'default'
 )
 """
+
+
+def sandbox_quota() -> int:
+    raw = os.getenv(QUOTA_ENV, "").strip()
+
+    if not raw:
+        return DEFAULT_QUOTA
+
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_QUOTA
+
+    if value < 1:
+        return DEFAULT_QUOTA
+
+    return min(value, MAX_QUOTA)
 
 
 def utc_now() -> str:
@@ -150,7 +184,19 @@ def _ensure_sandboxes_table(conn: sqlite3.Connection) -> None:
     sql = row[0] or ""
 
     if "'running'" in sql:
-        # 表结构已经是 D20 版本：只需要补历史数据。
+        # 表结构已经是 D20 版本：只需要补历史数据与新列。
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(agent_sandboxes)")
+        }
+
+        if "tenant_id" not in columns:
+            conn.execute(
+                """
+                ALTER TABLE agent_sandboxes
+                ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'
+                """
+            )
+
         conn.execute(
             """
             UPDATE agent_sandboxes SET node_id = ?
@@ -190,7 +236,8 @@ def _rebuild_sandboxes_for_states(conn: sqlite3.Connection) -> None:
                 expires_at TEXT NOT NULL,
                 reclaimed_at TEXT,
                 reclaim_reason TEXT,
-                node_id TEXT
+                node_id TEXT,
+                tenant_id TEXT NOT NULL DEFAULT 'default'
             )
             """
         )
@@ -207,12 +254,18 @@ def _rebuild_sandboxes_for_states(conn: sqlite3.Connection) -> None:
             if "node_id" in existing
             else "?"
         )
+        tenant_expr = (
+            "COALESCE(tenant_id, 'default')"
+            if "tenant_id" in existing
+            else "'default'"
+        )
 
         conn.execute(
             f"""
             INSERT INTO agent_sandboxes__d20(
                 id, workspace_id, tier, state, ttl_seconds,
-                created_at, expires_at, reclaimed_at, reclaim_reason, node_id
+                created_at, expires_at, reclaimed_at, reclaim_reason,
+                node_id, tenant_id
             )
             SELECT
                 id, workspace_id, tier,
@@ -221,7 +274,7 @@ def _rebuild_sandboxes_for_states(conn: sqlite3.Connection) -> None:
                     ELSE 'created'
                 END,
                 ttl_seconds, created_at, expires_at, reclaimed_at,
-                {reason_expr}, {node_expr}
+                {reason_expr}, {node_expr}, {tenant_expr}
             FROM agent_sandboxes
             """,
             (DEFAULT_NODE_PLACEHOLDER,),
@@ -269,6 +322,7 @@ class SandboxService:
         workspace_id: str | None = None,
         ttl_seconds: int = DEFAULT_TTL_SECONDS,
         node_id: str | None = None,
+        tenant_id: str = DEFAULT_TENANT,
     ) -> dict[str, Any]:
         """幂等创建沙箱；返回的记录里 ``created`` 表示本次是否真的新建。"""
 
@@ -308,6 +362,7 @@ class SandboxService:
                     workspace_id=workspace_id,
                     ttl_seconds=ttl_seconds,
                     node_id=node_id,
+                    tenant_id=tenant_id,
                 )
             except sqlite3.IntegrityError:
                 # 并发插入撞唯一约束：说明别人刚建好，重读一次即可。
@@ -325,6 +380,7 @@ class SandboxService:
         workspace_id: str,
         ttl_seconds: int,
         node_id: str | None,
+        tenant_id: str,
     ) -> dict[str, Any]:
         with closing(self.connect()) as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -346,6 +402,42 @@ class SandboxService:
                     conn.commit()
                     return sandbox
 
+                # D21：配额与容量在同一事务里检查，避免并发超分。
+                used = conn.execute(
+                    """
+                    SELECT COUNT(*) FROM agent_sandboxes
+                    WHERE tenant_id = ? AND state != 'reclaimed'
+                    """,
+                    (tenant_id,),
+                ).fetchone()[0]
+
+                if int(used) >= sandbox_quota():
+                    raise QuotaExceeded(
+                        f"租户 {tenant_id} 的沙箱并发额度已用完"
+                        f"（{used}/{sandbox_quota()}）"
+                    )
+
+                if node_id is not None:
+                    node = conn.execute(
+                        "SELECT capacity FROM agent_nodes WHERE node_id = ?",
+                        (node_id,),
+                    ).fetchone()
+
+                    if node is not None:
+                        on_node = conn.execute(
+                            """
+                            SELECT COUNT(*) FROM agent_sandboxes
+                            WHERE node_id = ? AND state != 'reclaimed'
+                            """,
+                            (node_id,),
+                        ).fetchone()[0]
+
+                        if int(on_node) >= int(node["capacity"]):
+                            raise QuotaExceeded(
+                                f"节点 {node_id} 容量已满"
+                                f"（{on_node}/{node['capacity']}）"
+                            )
+
                 sandbox_id = f"sbx_{uuid.uuid4().hex}"
                 workspace = self.root / sandbox_id / "workspace"
                 workspace.mkdir(parents=True, exist_ok=False)
@@ -357,8 +449,8 @@ class SandboxService:
                     """
                     INSERT INTO agent_sandboxes(
                         id, workspace_id, tier, state, ttl_seconds,
-                        created_at, expires_at, node_id
-                    ) VALUES (?, ?, ?, 'created', ?, ?, ?, ?)
+                        created_at, expires_at, node_id, tenant_id
+                    ) VALUES (?, ?, ?, 'created', ?, ?, ?, ?, ?)
                     """,
                     (
                         sandbox_id,
@@ -368,6 +460,7 @@ class SandboxService:
                         created_at.isoformat(),
                         expires_at.isoformat(),
                         node_id,
+                        tenant_id,
                     ),
                 )
                 conn.execute(
@@ -398,6 +491,7 @@ class SandboxService:
             "expires_at": expires_at.isoformat(),
             "reclaimed_at": None,
             "node_id": node_id,
+            "tenant_id": tenant_id,
             "workspace": str(workspace),
         }
         sandbox["created"] = True
@@ -410,6 +504,20 @@ class SandboxService:
     def get(self, sandbox_id: str) -> dict[str, Any]:
         with closing(self.connect()) as conn:
             return self._row(conn, sandbox_id)
+
+    def count_for_tenant(self, tenant_id: str = DEFAULT_TENANT) -> int:
+        """该租户尚未回收的沙箱数（配额与观测用）。"""
+
+        with closing(self.connect()) as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) FROM agent_sandboxes
+                WHERE tenant_id = ? AND state != 'reclaimed'
+                """,
+                (tenant_id,),
+            ).fetchone()
+
+        return int(row[0])
 
     def reclaim(self, sandbox_id: str, *, reason: str = "manual") -> dict[str, Any]:
         """回收工作区并把状态置为 reclaimed；重复调用幂等。

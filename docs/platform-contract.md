@@ -203,6 +203,14 @@ failed → reclaimed
 > `INVALID_STATE_TRANSITION`（`retryable=true`），且可重试。cordon / drain
 > 都不杀存量 exec（有真实进程测试）。仍缺：least-loaded 调度、全局/节点容量
 > 原子占用（D20/D21）。
+>
+> D21（2026-11-04）：配额与容量已实现。`agent_sandboxes` 增加 `tenant_id`
+> （默认 `default`，可用 `X-Tenant-Id` 头覆盖）；创建时在**同一事务**里检查
+> 「该租户未回收沙箱数 < `PERSONAL_AGENT_SANDBOX_QUOTA`（默认 8）」与
+> 「该节点未回收沙箱数 < 节点 `capacity`」，超限返回 429 `CAPACITY_EXCEEDED`
+> （`retryable=true`）。幂等重放不占新名额；回收后名额自动释放（按 `state !=
+> 'reclaimed'` 计数）。并发创建由 `BEGIN IMMEDIATE` 串行化，测试验证 10 并发
+> 只成功配额数个。仍缺：真实多租户身份（`/v1` 无认证）、least-loaded 调度。
 
 ## 6. 稳定错误码
 
