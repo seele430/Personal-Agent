@@ -38,7 +38,7 @@
 | D25 | `/metrics` | ✅（补） | `d25-metrics-logs.txt` |
 | D26 | JSONL + trace_id | ✅（补） | 同上 |
 | D27 | 压测脚本 | ✅ | `scripts/bench_platform.py` |
-| D28 | **G3**：3 命令 + 60s 视频 | ⚠️ 命令冻结，**视频缺** | `docs/G3.md` |
+| D28 | **G3**：3 命令 + 60s 视频 | ⚠️ 命令冻结；**视频延后到首次真实使用之后** | `docs/G3.md` |
 | D29 | 饱和曲线 | ✅ | `docs/bench/SATURATION.md` |
 | D30 | 背压 + 配置开关 + SLO 草案 | ✅ | `d30-*`、`docs/SLO.md` |
 | D31–D33 | 容器 tier / 镜像 / 隔离 | ✂️ 砍（无 Docker） | — |
@@ -61,6 +61,8 @@
 
 ## 还剩什么
 
-1. **G3 录屏**（唯一卡在门上的事）：`powershell -ExecutionPolicy Bypass -File scripts\record_g3.ps1`，约 35 秒。
-2. D28 的视频剪到 60 秒内。
+1. **首次真实使用**（先于录屏）：按 README/`scripts/run-dev.ps1` 把应用跑起来，自己用一遍，
+   记录硌手的地方 —— 演示视频应该在「用顺手之后」录，而不是在「脚本能跑」时录。
+2. **G3 录屏**（首次使用、修完问题之后再录）：`docs/G3.md` 里的 3 条命令已冻结，
+   `scripts/demo_g3.py` 实测 3/3 PASS（约 25 秒）。
 3. （可选）若换到有 Docker / C++ 的机器，再补 D31–D36。
