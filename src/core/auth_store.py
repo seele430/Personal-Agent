@@ -208,6 +208,56 @@ class AuthStore:
                 is not None
             )
 
+    def set_password(
+        self,
+        username: str,
+        password: str,
+    ) -> dict:
+        """重置密码：换新盐、更新哈希，并吊销该用户已有的会话。
+
+        本地版本没有邮箱找回，忘了密码只能从可信终端重置 —— 见
+        ``scripts/reset_password.py``。
+        """
+
+        username = self._username(username)
+
+        raw = self._password(password)
+
+        salt = secrets.token_bytes(16)
+
+        password_hash = self._hash_password(
+            raw,
+            salt,
+        )
+
+        with closing(self._connect()) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+
+            row = conn.execute(
+                "SELECT id FROM auth_users WHERE username = ?",
+                (username,),
+            ).fetchone()
+
+            if row is None:
+                raise AuthError("用户不存在")
+
+            conn.execute(
+                """
+                UPDATE auth_users
+                SET salt = ?, password_hash = ?
+                WHERE id = ?
+                """,
+                (salt, password_hash, row["id"]),
+            )
+
+            # 旧会话一并吊销：密码改了，之前发出去的 token 就不该再能用。
+            conn.execute(
+                "DELETE FROM auth_sessions WHERE user_id = ?",
+                (row["id"],),
+            )
+
+        return {"id": row["id"], "username": username}
+
     def bootstrap_owner(
         self,
         username: str,

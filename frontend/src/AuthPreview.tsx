@@ -28,6 +28,7 @@ const ME_URL = '/api/auth/me'
 const LOGOUT_URL = '/api/auth/logout'
 const STATE_URL = '/api/auth/state'
 const BOOTSTRAP_URL = '/api/auth/bootstrap'
+const RESET_URL = '/api/auth/reset-password'
 
 const SESSION_KEY = 'personal-agent-auth-token'
 const REQUEST_TIMEOUT_MS = 20000
@@ -182,6 +183,10 @@ export default function AuthPreview() {
   // 首次运行：用户库为空时，登录页直接变成「创建站长账号」
   const [registrationOpen, setRegistrationOpen] = useState(false)
   const [confirmPassword, setConfirmPassword] = useState('')
+
+  // 忘记密码：本机可用的自助重置
+  const [resetMode, setResetMode] = useState(false)
+  const [notice, setNotice] = useState('')
 
   const loginLocked = useRef(false)
   const logoutLocked = useRef(false)
@@ -552,6 +557,89 @@ export default function AuthPreview() {
 
 
   // ==========================================
+  // 忘记密码：本机自助重置
+  // ==========================================
+
+  async function handleReset(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault()
+
+    if (loginLocked.current) {
+      return
+    }
+
+    const cleanedUsername = username.trim().toLowerCase()
+
+    if (!cleanedUsername) {
+      setError('请输入用户名')
+      return
+    }
+
+    if (password.length < 12) {
+      setError('密码至少 12 个字符')
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError('两次输入的密码不一致')
+      return
+    }
+
+    loginLocked.current = true
+    setSending(true)
+    setError('')
+    setNotice('')
+
+    try {
+      const response = await fetch(RESET_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          username: cleanedUsername,
+          password,
+        }),
+      })
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          setError('忘记密码只能在运行服务的本机上操作')
+        } else if (response.status === 400) {
+          const detail = await response.json().catch(() => null)
+          const message =
+            detail && typeof detail.detail === 'string'
+              ? detail.detail
+              : '密码不符合要求'
+
+          setError(message)
+        } else if (response.status === 429) {
+          setError('尝试次数过多，请稍后再试')
+        } else {
+          setError('重置失败，请稍后重试')
+        }
+
+        return
+      }
+
+      setPassword('')
+      setConfirmPassword('')
+      setResetMode(false)
+      setNotice('密码已重置，请用新密码登录')
+
+    } catch {
+      setError('无法连接服务器，请检查后端是否在运行')
+
+    } finally {
+      loginLocked.current = false
+      setSending(false)
+    }
+  }
+
+
+  // ==========================================
   // 退出登录
   // ==========================================
 
@@ -738,17 +826,27 @@ export default function AuthPreview() {
             </div>
 
             <div className="pa-auth-eyebrow">
-              {registrationOpen ? 'FIRST RUN' : 'WELCOME BACK'}
+              {registrationOpen
+                ? 'FIRST RUN'
+                : resetMode
+                  ? 'RESET PASSWORD'
+                  : 'WELCOME BACK'}
             </div>
 
             <h2>
-              {registrationOpen ? '创建站长账号' : '欢迎回来'}
+              {registrationOpen
+                ? '创建站长账号'
+                : resetMode
+                  ? '重置密码'
+                  : '欢迎回来'}
             </h2>
 
             <p className="pa-auth-subtitle">
               {registrationOpen
                 ? '这是第一次启动。创建站长账号后即可进入工作空间。'
-                : '登录你的 Personal Agent 工作空间'}
+                : resetMode
+                  ? '忘记密码时，在这台机器上直接设置新密码。'
+                  : '登录你的 Personal Agent 工作空间'}
             </p>
 
 
@@ -772,7 +870,13 @@ export default function AuthPreview() {
 
             <form
               className="pa-auth-form"
-              onSubmit={registrationOpen ? handleBootstrap : handleLogin}
+              onSubmit={
+                resetMode
+                  ? handleReset
+                  : registrationOpen
+                    ? handleBootstrap
+                    : handleLogin
+              }
               noValidate
             >
 
@@ -846,7 +950,7 @@ export default function AuthPreview() {
               </p>
 
 
-              {registrationOpen && (
+              {(registrationOpen || resetMode) && (
                 <>
                   <div className="pa-auth-password-label">
                     <label htmlFor="pa-login-password-confirm">
@@ -895,10 +999,14 @@ export default function AuthPreview() {
                     <span className="pa-auth-spinner" />
                     {registrationOpen
                       ? '正在创建账号…'
-                      : '正在验证身份…'}
+                      : resetMode
+                        ? '正在重置…'
+                        : '正在验证身份…'}
                   </>
                 ) : registrationOpen ? (
                   '创建并进入工作空间 →'
+                ) : resetMode ? (
+                  '设置新密码 →'
                 ) : (
                   '登录工作空间 →'
                 )}
@@ -907,11 +1015,59 @@ export default function AuthPreview() {
             </form>
 
 
+            {notice && (
+              <div
+                role="status"
+                style={{
+                  marginTop: 12,
+                  color: '#1a7f37',
+                  fontSize: 13,
+                }}
+              >
+                {notice}
+              </div>
+            )}
+
+
+            {!registrationOpen && (
+              <div
+                className="pa-auth-note"
+                style={{ marginTop: 12 }}
+              >
+                <button
+                  type="button"
+                  className="pa-auth-link"
+                  disabled={sending}
+                  onClick={() => {
+                    setResetMode(!resetMode)
+                    setError('')
+                    setNotice('')
+                    setPassword('')
+                    setConfirmPassword('')
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    color: '#2b5c8a',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    textDecoration: 'underline',
+                  }}
+                >
+                  {resetMode ? '返回登录' : '忘记密码？'}
+                </button>
+              </div>
+            )}
+
+
             <div className="pa-auth-note">
               <span aria-hidden="true">◇</span>
               {registrationOpen
                 ? '首次运行 · 站长账号只能创建一次'
-                : '邀请制访问 · 安全身份验证'}
+                : resetMode
+                  ? '仅限本机 · 重置后旧会话立即失效'
+                  : '邀请制访问 · 安全身份验证'}
             </div>
 
             <div className="pa-auth-preview-note">

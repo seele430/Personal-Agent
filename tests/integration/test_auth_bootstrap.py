@@ -95,6 +95,72 @@ class TestAuthBootstrap(unittest.TestCase):
 
         self.assertEqual(login.status_code, 200, login.text)
 
+    def test_password_reset_revokes_old_sessions_and_password(self):
+        created = self.bootstrap()
+        token = created.json()["token"]
+
+        self.assertIsNotNone(self.store.session_user(token))
+
+        self.store.set_password("seele", "another-password-123")
+
+        # 旧 token 失效、旧密码登录失败
+        self.assertIsNone(self.store.session_user(token))
+
+        old_login = self.client.post(
+            "/auth/login",
+            json={"username": "seele", "password": PASSWORD},
+        )
+        self.assertEqual(old_login.status_code, 401, old_login.text)
+
+        new_login = self.client.post(
+            "/auth/login",
+            json={"username": "seele", "password": "another-password-123"},
+        )
+        self.assertEqual(new_login.status_code, 200, new_login.text)
+
+    def test_password_reset_rejects_short_password(self):
+        self.bootstrap()
+
+        with self.assertRaises(Exception):
+            self.store.set_password("seele", "short")
+
+    def test_web_reset_endpoint_works_from_loopback(self):
+        created = self.bootstrap()
+        token = created.json()["token"]
+
+        response = self.client.post(
+            "/auth/reset-password",
+            json={"username": "seele", "password": "webreset123456"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(self.store.session_user(token))
+
+        self.assertEqual(
+            self.client.post(
+                "/auth/login",
+                json={"username": "seele", "password": PASSWORD},
+            ).status_code,
+            401,
+        )
+        self.assertEqual(
+            self.client.post(
+                "/auth/login",
+                json={"username": "seele", "password": "webreset123456"},
+            ).status_code,
+            200,
+        )
+
+    def test_web_reset_rejects_unknown_user(self):
+        self.bootstrap()
+
+        response = self.client.post(
+            "/auth/reset-password",
+            json={"username": "nobody", "password": "webreset123456"},
+        )
+
+        self.assertEqual(response.status_code, 400, response.text)
+
 
 if __name__ == "__main__":
     unittest.main()

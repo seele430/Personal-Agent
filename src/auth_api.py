@@ -433,6 +433,65 @@ def bootstrap(
 
 
 # ======================================
+# POST /auth/reset-password —— 忘记密码（仅本机可用的自助重置）
+# ======================================
+
+LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+class ResetPasswordRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=1024)
+
+
+@router.post("/reset-password")
+def reset_password(
+    request: ResetPasswordRequest,
+    http_request: Request,
+    response: Response,
+    store: AuthStore = Depends(get_auth_store),
+):
+    """本地版本没有邮箱找回，只能从本机重置。
+
+    只接受回环地址：把服务暴露到非本机时，这个入口自动失效。
+    """
+
+    response.headers["Cache-Control"] = "no-store"
+
+    host = (
+        http_request.client.host
+        if http_request.client
+        else "unknown"
+    )
+
+    if host not in LOOPBACK_HOSTS:
+        raise HTTPException(
+            status_code=403,
+            detail="忘记密码只能在运行服务的本机上操作",
+        )
+
+    _login_limit_check(
+        store.db_path,
+        request.username,
+        host,
+    )
+
+    try:
+        store.set_password(
+            request.username,
+            request.password,
+        )
+
+    except (AuthError, AuthForbidden) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from None
+
+    return {"ok": True}
+
+
+# ======================================
 # GET /auth/me
 # ======================================
 
