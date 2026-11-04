@@ -72,3 +72,8 @@ Thumbs.db
 /frontend/frontend/
 evals/reminder/results/
 evals/knowledge/results/
+
+# D29 压测运行产物（只保留 CSV/JSON 与报告）
+docs/bench/data/
+docs/bench/sandboxes/
+docs/bench/bench-server.log

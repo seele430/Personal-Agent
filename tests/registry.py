@@ -416,6 +416,26 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：D25' 指标（Prometheus 文本 + 六类指标）与 D26' JSONL 日志
+    "integration/test_platform_metrics.py": TestSchema(
+        layer="integration",
+        domain="platform_metrics",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
+    # L2：D30 压测暴露的默认节点续租回归
+    "integration/test_default_node_renewal.py": TestSchema(
+        layer="integration",
+        domain="platform_nodes",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",

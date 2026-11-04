@@ -1,0 +1,14 @@
+# D30 默认节点续租回归
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_default_node_renewal -v
+> 时间：2026-11-04T12:03:58.0819582+08:00
+
+test_create_sandbox_after_lease_would_have_expired (tests.integration.test_default_node_renewal.DefaultNodeRenewalTest.test_create_sandbox_after_lease_would_have_expired) ... 2026-11-04 12:04:00,928 | INFO | personal_agent.chat | Chat request storage ready
+PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用
+ok
+test_ensure_default_node_renews_expired_lease (tests.integration.test_default_node_renewal.DefaultNodeRenewalTest.test_ensure_default_node_renews_expired_lease) ... ok
+test_removed_default_node_is_not_revived (tests.integration.test_default_node_renewal.DefaultNodeRenewalTest.test_removed_default_node_is_not_revived) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.288s
+
+OK

@@ -1,0 +1,71 @@
+[
+  {
+    "rps_target": 2,
+    "submitted": 20,
+    "elapsed_seconds": 9.77,
+    "achieved_rps": 2.05,
+    "ok": 20,
+    "rejected_429": 0,
+    "other": 0,
+    "p50_ms": 297.0,
+    "p95_ms": 344.0,
+    "p99_ms": 344.0,
+    "max_ms": 344.0,
+    "queue_peak": 0,
+    "codes": {
+      "202": 20
+    }
+  },
+  {
+    "rps_target": 4,
+    "submitted": 40,
+    "elapsed_seconds": 10.03,
+    "achieved_rps": 3.99,
+    "ok": 40,
+    "rejected_429": 0,
+    "other": 0,
+    "p50_ms": 328.0,
+    "p95_ms": 359.0,
+    "p99_ms": 484.0,
+    "max_ms": 484.0,
+    "queue_peak": 0,
+    "codes": {
+      "202": 40
+    }
+  },
+  {
+    "rps_target": 8,
+    "submitted": 80,
+    "elapsed_seconds": 10.3,
+    "achieved_rps": 7.77,
+    "ok": 80,
+    "rejected_429": 0,
+    "other": 0,
+    "p50_ms": 390.0,
+    "p95_ms": 531.0,
+    "p99_ms": 531.0,
+    "max_ms": 656.0,
+    "queue_peak": 0,
+    "codes": {
+      "202": 80
+    }
+  },
+  {
+    "rps_target": 12,
+    "submitted": 120,
+    "elapsed_seconds": 13.81,
+    "achieved_rps": 7.96,
+    "ok": 110,
+    "rejected_429": 0,
+    "other": 10,
+    "p50_ms": 2422.0,
+    "p95_ms": 3594.0,
+    "p99_ms": 4078.0,
+    "max_ms": 4094.0,
+    "queue_peak": 16,
+    "codes": {
+      "202": 110,
+      "QUEUE_FULL": 10
+    }
+  }
+]

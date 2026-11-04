@@ -380,9 +380,24 @@ class NodeRegistry:
     def ensure_default_node(
         self, *, now: datetime | None = None
     ) -> dict[str, Any]:
-        """单机部署的默认节点；不存在才注册，存在则原样返回（不提高代际）。"""
+        """单机部署的默认节点。
+
+        不存在就注册；存在则**顺手续租**（代际不变）。
+
+        D30 压测暴露过一个真问题：`node_local` 是平台自己的节点，但之前只有
+        创建时才登记一次，30 秒后租约过期、`accepting=false`，之后所有 create
+        都 429 `NO_READY_NODE`。平台进程还活着就等于节点活着，所以这里续租。
+        removed 的节点不复活 —— 那是运维的显式决定。
+        """
 
         try:
-            return self.get(DEFAULT_NODE_ID, now=now)
+            node = self.get(DEFAULT_NODE_ID, now=now)
         except NodeNotFound:
             return self.register(node_id=DEFAULT_NODE_ID, now=now)
+
+        if node["removed"]:
+            return node
+
+        return self.heartbeat(
+            DEFAULT_NODE_ID, generation=node["generation"], now=now
+        )

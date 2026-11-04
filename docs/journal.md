@@ -192,3 +192,12 @@
 - 过程中的小发现：`_exec_body` 不暴露 `error_code`（只在库里），测试改成直接读 `ExecStore().get(...)`。这不是 bug，但说明 API 面与存储面的字段并不完全同步 —— 排查时别只看 API 响应。
 - 遗留限制：① 等待计时是进程内单调时钟，跨重启失效（重启后 queued 由 D22 对账统一落 `failed`）；② 超时判定精度受 `SWEEP` 间隔影响（默认 5 秒）；③ `Retry-After` 仍是固定估计值；④ 没有「排队中」的独立指标时间序列。
 - 明天第一件事：把 D30 系列合进 main，或回到 D40 演示口径。
+## D25'–D30'（计划欠账补齐）— 2026-11-04
+
+- 补 D25：`/metrics`（Prometheus 文本格式）。六个核心指标：`execs_total{status}`、`exec_duration_seconds`（summary count/sum）、`exec_active`、`queue_depth{state}`、`sandboxes{state}`、`nodes_ready`。口径写死：前三个（execs/duration/sandboxes）来自 SQLite 跨进程共享，后三个是当前进程视角。
+- 补 D26：`PERSONAL_AGENT_LOG_JSON=1` 打开 JSONL 日志，`JsonLineFormatter` 输出 `ts/level/logger/msg/trace_id` 与白名单 extra；trace_id 取自 `src.core.trace_context`，同一请求的日志可按 trace_id 聚合。
+- 补 D27/D29：`scripts/bench_platform.py` 开放式到达率压测（固定 RPS 阶梯、真实服务、真实子进程），产出 CSV/JSON；实测拐点在 **8–12 RPS**（≤8 RPS p99 < 550ms、队列不积压；12 RPS 队列打满 16、p99 4.08s、10 次 `QUEUE_FULL`）。报告见 `docs/bench/SATURATION.md`。
+- 补 D30 尾巴：`docs/SLO.md` 草案，按实测数字写（可用性 ≥99.5%、≤4 RPS p99 ≤600ms、≤8 RPS p99 ≤1s、超容量允许 429 但不允许 5xx）。
+- **压测顺手抓到一个真 bug**：`node_local` 的租约没人续 —— 平台只在自己第一次 create 时注册节点，30 秒后租约过期 `accepting=false`，之后所有 create 都 429 `NO_READY_NODE`。修法：`ensure_default_node()` 在节点存在且未 removed 时**顺手续租**（代际不变）；removed 的节点不复活。新增 `test_default_node_renewal.py` 三条用例（含「把 last_heartbeat 拨回 5 分钟前再 create」的复现路径）。
+- 压测还暴露一个测量陷阱：客户端每条 exec 要轮询 `GET /v1/exec` 十几次，默认限流 600/min 会被轮询吃光（4 RPS 就 `RATE_LIMITED`）。压测脚本把限流调高、只测执行容量，并在 SATURATION.md 里写清口径。
+- 验收：`test_platform_metrics.py` 6 条、`test_default_node_renewal.py` 3 条全绿；全量 **84 文件 / 754 用例 PASS，198.34 秒**（D30.2 基线 82 / 745）。证据：`docs/evidence/d25-metrics-logs.txt`、`d30-node-renewal.txt`、`d31-backend-tests.txt`、`docs/bench/SATURATION.md`、`docs/SLO.md`。

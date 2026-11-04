@@ -38,6 +38,7 @@ logger = logging.getLogger("personal_agent.main")
 
 from src.core.chat_ownership import migrate_chat_ownership
 from src.core.ai_budget import init_budget_schema
+from src.core.log_json import configure_json_logging, json_logging_enabled
 from src.core.trace_context import bind_trace, new_trace_id, start_span
 
 
@@ -78,6 +79,11 @@ async def lifespan(_app: FastAPI):
             logger.info("审计清理：删除 %s 条过期记录", pruned)
     except Exception:
         logger.exception("审计清理失败")
+
+    # D26'：结构化 JSONL 日志（默认关闭，`PERSONAL_AGENT_LOG_JSON=1` 打开）。
+    if json_logging_enabled():
+        configure_json_logging()
+        logger.info("JSONL 日志已启用")
 
     # D16：平台 TTL 回收线程；测试环境用 PERSONAL_AGENT_PLATFORM_REAPER=0 关闭。
     start_reaper()
@@ -268,6 +274,17 @@ def health():
     return {
         "status": "ok",
     }
+
+
+@app.get("/metrics")
+def metrics():
+    """D25'：Prometheus 文本格式指标。"""
+
+    from fastapi.responses import Response
+
+    from src.platform.metrics import TEXT_CONTENT_TYPE, render
+
+    return Response(content=render(), media_type=TEXT_CONTENT_TYPE)
 
 
 # ==========================================
