@@ -1,0 +1,36 @@
+{
+  "status": "PASS",
+  "http_status": 200,
+  "tool_started_events": 3,
+  "tool_finished_events": 3,
+  "run_id": "run_4f8f00bd4af84660b37ed10f4a945410",
+  "run_status": "succeeded",
+  "tool_steps": 3,
+  "execs": [
+    {
+      "tool": "list_dir",
+      "status": "succeeded",
+      "sandbox_id": "sbx_7de688578e6b42f3b2cb2b0f7989fd73"
+    },
+    {
+      "tool": "g2_echo",
+      "status": "succeeded",
+      "sandbox_id": "sbx_7de688578e6b42f3b2cb2b0f7989fd73"
+    },
+    {
+      "tool": "list_dir",
+      "status": "succeeded",
+      "sandbox_id": "sbx_7de688578e6b42f3b2cb2b0f7989fd73"
+    }
+  ],
+  "trajectory_exec_events": [
+    "exec_started",
+    "exec_finished",
+    "exec_started",
+    "exec_finished",
+    "exec_started",
+    "exec_finished"
+  ],
+  "trace_exit_code": 0,
+  "trace_lines": 25
+}

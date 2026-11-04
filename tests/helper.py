@@ -25,12 +25,33 @@ isolate_paths() 一次替换三处：
 """
 
 import sys
+import time
 
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
 from src import config
+
+
+def wait_for_exec_worker(exec_id: str, timeout: float = 30.0) -> None:
+    """等后台 exec worker 真正退出，再让测试拆临时目录。
+
+    Windows 上临时目录里还有打开着的 SQLite 连接时，rmtree 会报
+    ``WinError 32``（另一个程序正在使用此文件）。HTTP 层在写终态之后才把
+    exec 从活动表里摘掉，所以「状态变 cancelled」不等于「worker 已收尾」。
+    """
+
+    from src.platform import active_execs
+
+    deadline = time.monotonic() + timeout
+
+    while time.monotonic() < deadline:
+        if exec_id not in active_execs.snapshot():
+            return
+        time.sleep(0.01)
+
+    raise AssertionError(f"exec {exec_id} 的 worker 在 {timeout}s 内没有退出")
 
 
 def build_temp_paths(container) -> config.Paths:

@@ -206,8 +206,18 @@ def run_chat_stream(
             emit({"type": "done", "run_id": run_id, "reply": reply})
             return reply
 
-        if len(tool_calls) > agent.MAX_REMINDER_TOOL_CALLS:
-            raise RuntimeError("模型一次请求多个工具，已全部拒绝执行")
+        if len(tool_calls) > agent.MAX_TOOL_CALLS_PER_TURN:
+            raise RuntimeError("模型一次请求的工具数量超过上限，已全部拒绝执行")
+
+        reminder_calls = [
+            call
+            for call in tool_calls
+            if call.function.name in agent.REMINDER_TOOL_NAMES
+        ]
+
+        if len(reminder_calls) > agent.MAX_REMINDER_TOOL_CALLS:
+            raise RuntimeError("模型一次请求多个提醒工具，已全部拒绝执行")
+
         for tool_call in tool_calls:
             agent._check_tool_call_arguments(tool_call)
         messages.append(_assistant_message_dict(assistant))

@@ -17,7 +17,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from src.main import app
-from tests.helper import isolate_paths
+from tests.helper import isolate_paths, wait_for_exec_worker
 
 TERMINAL = {"succeeded", "failed", "cancelled", "timed_out"}
 
@@ -172,6 +172,8 @@ class PlatformApiTest(unittest.TestCase):
 
         final = self.wait_state(exec_id, {"cancelled"})
         self.assertEqual(final["result_code"], "EXEC_CANCELLED")
+        # 终态写入后 worker 还要把 end_exec / 释连接做完，等它退场再拆目录。
+        wait_for_exec_worker(exec_id)
 
     def test_exec_rejects_invalid_command(self):
         sandbox_id = self.create().json()["sandbox_id"]

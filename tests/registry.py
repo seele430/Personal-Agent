@@ -366,6 +366,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：D23 G2 全链路（一次响应 3 个工具、轨迹 3 组 exec）
+    "integration/test_agent_multi_tool.py": TestSchema(
+        layer="integration",
+        domain="agent_tools",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",

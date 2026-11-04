@@ -91,6 +91,30 @@ MAX_REMINDER_TOOL_CALLS = 1
 MAX_REMINDER_MESSAGE_BYTES = 1024
 MAX_TOOL_ARGUMENT_BYTES = 32768
 
+# D23：一次响应里允许的工具调用总数。默认保持 1（与历史行为一致）；
+# G2 全链路演示用 PERSONAL_AGENT_MAX_TOOL_CALLS_PER_TURN=3 打开多工具。
+MAX_TOOL_CALLS_PER_TURN = 1
+
+try:
+    _configured_tool_calls = int(
+        os.getenv("PERSONAL_AGENT_MAX_TOOL_CALLS_PER_TURN", "") or 1
+    )
+except ValueError:
+    _configured_tool_calls = 1
+
+if 1 <= _configured_tool_calls <= 8:
+    MAX_TOOL_CALLS_PER_TURN = _configured_tool_calls
+
+# 提醒类工具仍然一次只允许一条：副作用绑定在「这一轮对话」上。
+REMINDER_TOOL_NAMES = frozenset(
+    {
+        "create_reminder",
+        "list_reminders",
+        "update_reminder",
+        "cancel_reminder",
+    }
+)
+
 # 单次列出的提醒条数上限：
 # 不要把整张表塞进模型上下文。
 MAX_LISTED_REMINDERS = 20

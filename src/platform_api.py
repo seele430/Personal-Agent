@@ -246,8 +246,6 @@ def _run_exec(
             result_code="EXEC_FAILED",
         )
     finally:
-        active_execs.unregister(exec_id)
-
         try:
             # D20：没有活动 exec 了 → running 回到 idle。
             if store.get(exec_id)["state"] in TERMINAL_EXEC_STATES:
@@ -257,6 +255,9 @@ def _run_exec(
                 )
         except (KeyError, PlatformError):
             logger.exception("sandbox end_exec 失败 sandbox_id=%s", sandbox_id)
+        finally:
+            # 最后才从活动表摘掉：只要还在这里，就说明 worker 可能还在碰数据库。
+            active_execs.unregister(exec_id)
 
 
 # ==========================================
