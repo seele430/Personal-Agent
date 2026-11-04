@@ -220,3 +220,11 @@
 - 验收：`tests/integration/test_auth_bootstrap.py` **5 条全绿**（空库可注册、建完能登录、只能建一次、短密码 400、建完后 state 变 initialized）；前端 `npm run build`（tsc + vite）通过；全量 **86 文件 / 762 用例 PASS，187.53 秒**。证据：`docs/evidence/first-run-bootstrap.txt`、`d41-first-run-backend-tests.txt`。
 - 顺手修：`test_active_exec_is_cancelled_on_expiry` 的 WinError 32 竞态（等 worker 退场 + 清理容错）。
 - 遗留：① 邀请码流程还没有 UI（创建其他用户仍需 owner 发邀请码）；② `/auth/bootstrap` 目前只靠「空库」+ 登录限流保护，没有额外限制来源；③ 终端脚本保留，作为离线/应急手段。
+## 按修订版审查补齐：最小调度 + 单用户全局上限 — 2026-11-04
+
+- 背景：外部审查（`PROJECT-REVIEW-2026-11-04.md`）指出 G2 缺「调度」环节、D21 口径是每租户而不是单用户全局上限。两条都成立。
+- 实现：
+  - `NodeRegistry.pick_node()`：只在「租约有效 + 未 cordon / drain + 未满容量」的节点里选**活动沙箱最少**的，并列按 `node_id` 字典序；无候选 → 429 `NO_READY_NODE`；候选全满 → 429 `CAPACITY_EXCEEDED`。
+  - 单用户全局上限：`PERSONAL_AGENT_SANDBOX_GLOBAL_LIMIT`（默认 8，0=不限），在 create 的同一事务里按「所有租户未回收沙箱合计」检查；租户配额保留为第二层。
+- 验收：`tests/integration/test_platform_scheduling.py` **5 条全绿**（least-loaded 轮流、cordon 跳过、容量满 429 CAPACITY_EXCEEDED、全局上限 1、回收后释放）；全量 **87 文件 / 771 用例 PASS，227.95 秒**。证据：`docs/evidence/d44-scheduling-backend-tests.txt`。
+- 未做：审查列出的其余缺口（runner PID 持久化与真实孤儿回收、完整 spans 与 trajectory JSONL 导出、10 分钟压测/重复/资源数据、告警冷却与磁盘故障注入、README/PLAN-STATUS/简历数据、G3 视频）仍待补。

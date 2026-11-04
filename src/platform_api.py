@@ -559,19 +559,31 @@ def create_sandbox(
     tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ):
     try:
-        node = NodeRegistry().ensure_default_node()
+        registry = NodeRegistry()
+        # 保底节点：单机部署至少有一个 node_local，并顺手续租。
+        registry.ensure_default_node()
 
-        if not node["accepting"]:
+        # 最小 least-loaded 调度：活动沙箱最少且未满容量的节点。
+        node = registry.pick_node()
+
+        if node is None:
+            full = registry.has_full_nodes()
+            code = "CAPACITY_EXCEEDED" if full else "NO_READY_NODE"
+
             _audit(
                 "sandbox.create",
                 request=request,
                 outcome="denied",
-                code="NO_READY_NODE",
+                code=code,
             )
             return _error(
                 429,
-                "NO_READY_NODE",
-                "没有可接收新沙箱的节点（cordon / drain / 租约过期）",
+                code,
+                (
+                    "所有可用节点都已达到容量上限"
+                    if full
+                    else "没有可接收新沙箱的节点（cordon / drain / 租约过期）"
+                ),
                 retryable=True,
             )
 

@@ -435,6 +435,15 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="low",
     ),
+    # L2：最小 least-loaded 调度与单用户全局上限（修订版 D19/D21）
+    "integration/test_platform_scheduling.py": TestSchema(
+        layer="integration",
+        domain="platform_nodes",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
     # L2：D30 压测暴露的默认节点续租回归
     "integration/test_default_node_renewal.py": TestSchema(
         layer="integration",

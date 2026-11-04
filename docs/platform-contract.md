@@ -265,6 +265,14 @@ failed → reclaimed
 > `result_code=EXEC_TIMED_OUT`），并写一条 `exec.timeout` 审计。看门狗线程
 > `PERSONAL_AGENT_PLATFORM_QUEUE_SWEEP`（默认 5 秒）周期扫描；出队时也会再检查
 > 一次，避免看门狗两跳之间的空档。
+>
+> D19'（2026-11-04，按修订版计划补齐）：**最小 least-loaded 调度**已实现。
+> `NodeRegistry.pick_node()` 只在「租约有效 + 未 cordon / drain + 未满容量」的
+> 节点里挑**活动沙箱数最少**的，并列按 `node_id` 字典序；没有候选节点时
+> 429 `NO_READY_NODE`，全部候选都满容量时 429 `CAPACITY_EXCEEDED`。
+> 同时补上**单用户全局沙箱上限** `PERSONAL_AGENT_SANDBOX_GLOBAL_LIMIT`
+> （默认 8，`0` = 不限），按所有租户合计计数；租户配额（D21）保留为第二层。
+> 仍然不感知真实 CPU / 内存，只是调度闭环。
 
 ## 6. 稳定错误码
 

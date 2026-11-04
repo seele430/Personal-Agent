@@ -145,6 +145,26 @@ def sandbox_quota() -> int:
     return min(value, MAX_QUOTA)
 
 
+GLOBAL_LIMIT_ENV = "PERSONAL_AGENT_SANDBOX_GLOBAL_LIMIT"
+DEFAULT_GLOBAL_LIMIT = 8
+
+
+def global_sandbox_limit() -> int:
+    """单用户全局沙箱上限（所有租户合计）；0 表示不限额。"""
+
+    raw = os.getenv(GLOBAL_LIMIT_ENV, "").strip()
+
+    if not raw:
+        return DEFAULT_GLOBAL_LIMIT
+
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_GLOBAL_LIMIT
+
+    return min(max(value, 0), MAX_QUOTA)
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -412,6 +432,23 @@ class SandboxService:
                     return sandbox
 
                 # D21：配额与容量在同一事务里检查，避免并发超分。
+                # 修订版口径：单用户全局上限（所有租户合计）优先，租户配额是
+                # 额外的一层，为将来多租户保留。
+                global_limit = global_sandbox_limit()
+
+                if global_limit:
+                    total = conn.execute(
+                        """
+                        SELECT COUNT(*) FROM agent_sandboxes
+                        WHERE state != 'reclaimed'
+                        """
+                    ).fetchone()[0]
+
+                    if int(total) >= global_limit:
+                        raise QuotaExceeded(
+                            f"单用户全局沙箱上限已用完（{total}/{global_limit}）"
+                        )
+
                 used = conn.execute(
                     """
                     SELECT COUNT(*) FROM agent_sandboxes

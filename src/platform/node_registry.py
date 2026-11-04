@@ -377,6 +377,58 @@ class NodeRegistry:
 
         return self.get(node_id, now=now)
 
+    def pick_node(self, *, now: datetime | None = None) -> dict[str, Any] | None:
+        """最小 least-loaded 调度：活动沙箱最少的节点优先，并列按 node_id。
+
+        只考虑「ready（租约有效）+ 未 cordon / drain + 未 removed + 未满容量」
+        的节点；没有可用节点返回 None。这里不感知真实 CPU / 内存。
+        """
+
+        from src.platform.sandbox_service import SandboxService
+
+        service = SandboxService()
+        candidates: list[tuple[int, str, dict[str, Any]]] = []
+
+        for node in self.list_nodes(now=now):
+            if node["removed"] or node["cordoned"] or node["draining"]:
+                continue
+
+            if not node["accepting"]:
+                continue
+
+            active = service.count_active(node["node_id"])
+
+            if active >= int(node["capacity"]):
+                continue
+
+            candidates.append((active, node["node_id"], node))
+
+        if not candidates:
+            return None
+
+        candidates.sort(key=lambda item: (item[0], item[1]))
+
+        return candidates[0][2]
+
+    def has_full_nodes(self, *, now: datetime | None = None) -> bool:
+        """是否存在「健康但容量已满」的节点（用来区分 CAPACITY_EXCEEDED）。"""
+
+        from src.platform.sandbox_service import SandboxService
+
+        service = SandboxService()
+
+        for node in self.list_nodes(now=now):
+            if node["removed"] or node["cordoned"] or node["draining"]:
+                continue
+
+            if not node["accepting"]:
+                continue
+
+            if service.count_active(node["node_id"]) >= int(node["capacity"]):
+                return True
+
+        return False
+
     def ensure_default_node(
         self, *, now: datetime | None = None
     ) -> dict[str, Any]:
