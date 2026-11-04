@@ -122,7 +122,8 @@ CREATE TABLE IF NOT EXISTS agent_sandboxes (
     reclaimed_at TEXT,
     reclaim_reason TEXT,
     node_id TEXT,
-    tenant_id TEXT NOT NULL DEFAULT 'default'
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    fail_reason TEXT
 )
 """
 
@@ -197,6 +198,10 @@ def _ensure_sandboxes_table(conn: sqlite3.Connection) -> None:
                 """
             )
 
+        # D22：failed 的终态原因（workspace_missing / runner_crashed / restart）。
+        if "fail_reason" not in columns:
+            conn.execute("ALTER TABLE agent_sandboxes ADD COLUMN fail_reason TEXT")
+
         conn.execute(
             """
             UPDATE agent_sandboxes SET node_id = ?
@@ -237,7 +242,8 @@ def _rebuild_sandboxes_for_states(conn: sqlite3.Connection) -> None:
                 reclaimed_at TEXT,
                 reclaim_reason TEXT,
                 node_id TEXT,
-                tenant_id TEXT NOT NULL DEFAULT 'default'
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                fail_reason TEXT
             )
             """
         )
@@ -259,13 +265,16 @@ def _rebuild_sandboxes_for_states(conn: sqlite3.Connection) -> None:
             if "tenant_id" in existing
             else "'default'"
         )
+        fail_expr = (
+            "fail_reason" if "fail_reason" in existing else "NULL"
+        )
 
         conn.execute(
             f"""
             INSERT INTO agent_sandboxes__d20(
                 id, workspace_id, tier, state, ttl_seconds,
                 created_at, expires_at, reclaimed_at, reclaim_reason,
-                node_id, tenant_id
+                node_id, tenant_id, fail_reason
             )
             SELECT
                 id, workspace_id, tier,
@@ -274,7 +283,7 @@ def _rebuild_sandboxes_for_states(conn: sqlite3.Connection) -> None:
                     ELSE 'created'
                 END,
                 ttl_seconds, created_at, expires_at, reclaimed_at,
-                {reason_expr}, {node_expr}, {tenant_expr}
+                {reason_expr}, {node_expr}, {tenant_expr}, {fail_expr}
             FROM agent_sandboxes
             """,
             (DEFAULT_NODE_PLACEHOLDER,),
@@ -611,6 +620,15 @@ class SandboxService:
                         WHERE id = ?
                         """,
                         (to_state, utc_now(), reason, sandbox_id),
+                    )
+                elif to_state == SANDBOX_FAILED:
+                    conn.execute(
+                        """
+                        UPDATE agent_sandboxes
+                        SET state = ?, fail_reason = ?
+                        WHERE id = ?
+                        """,
+                        (to_state, reason, sandbox_id),
                     )
                 else:
                     conn.execute(

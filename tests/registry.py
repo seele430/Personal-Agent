@@ -356,6 +356,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：D22 启动对账（中断 exec、缺失工作区、孤儿目录）
+    "integration/test_platform_reconcile.py": TestSchema(
+        layer="integration",
+        domain="platform_reconcile",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",

@@ -1,0 +1,10 @@
+{
+  "status": "PASS",
+  "sandbox_id": "sbx_f93fc943f53845d79fb3d084e5a29c4e",
+  "sandbox_state": "failed",
+  "sandbox_fail_reason": "workspace_missing",
+  "exec_state": "failed",
+  "exec_error_code": "INTERRUPTED_BY_RESTART",
+  "orphan_dir_removed": true,
+  "server_alive_after_reconcile": true
+}

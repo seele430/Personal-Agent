@@ -8,6 +8,8 @@
 
 from contextlib import asynccontextmanager, closing
 
+import logging
+
 from fastapi import FastAPI
 
 from src import api as legacy_chat
@@ -19,10 +21,13 @@ from src.monitors_api import router as monitor_router
 from src.notifications_api import router as notification_router
 from src.platform_api import router as platform_router
 from src.platform.reaper import start_reaper, stop_reaper
+from src.platform.reconcile import reconcile_startup
 from src.reminder_api import router as reminder_router
 from src.tts_api import router as tts_router
 from src.teams_api import router as teams_router
 from src.usage_api import router as usage_router
+
+logger = logging.getLogger("personal_agent.main")
 
 from src.core.chat_ownership import migrate_chat_ownership
 from src.core.ai_budget import init_budget_schema
@@ -45,6 +50,12 @@ async def lifespan(_app: FastAPI):
         with conn:
             migrate_chat_ownership(conn)
             init_budget_schema(conn)
+
+    # D22：启动对账 —— 上次进程留下的中断 exec / 孤儿沙箱先收敛，再开回收线程。
+    try:
+        reconcile_startup()
+    except Exception:
+        logger.exception("启动对账失败")
 
     # D16：平台 TTL 回收线程；测试环境用 PERSONAL_AGENT_PLATFORM_REAPER=0 关闭。
     start_reaper()

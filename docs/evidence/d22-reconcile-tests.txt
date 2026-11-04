@@ -1,0 +1,16 @@
+# D22 启动对账测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_platform_reconcile -v
+> 时间：2026-11-04T08:39:50.1033680+08:00
+
+test_active_exec_is_not_touched (tests.integration.test_platform_reconcile.ReconcileTest.test_active_exec_is_not_touched) ... ok
+test_interrupted_exec_becomes_failed (tests.integration.test_platform_reconcile.ReconcileTest.test_interrupted_exec_becomes_failed) ... ok
+test_missing_workspace_marks_sandbox_failed (tests.integration.test_platform_reconcile.ReconcileTest.test_missing_workspace_marks_sandbox_failed) ... ok
+test_orphan_dirs_removed_but_foreign_dirs_kept (tests.integration.test_platform_reconcile.ReconcileTest.test_orphan_dirs_removed_but_foreign_dirs_kept) ... ok
+test_reclaimed_sandbox_is_ignored (tests.integration.test_platform_reconcile.ReconcileTest.test_reclaimed_sandbox_is_ignored) ... ok
+test_reconcile_is_idempotent (tests.integration.test_platform_reconcile.ReconcileTest.test_reconcile_is_idempotent) ... ok
+test_running_sandbox_without_exec_returns_to_idle (tests.integration.test_platform_reconcile.ReconcileTest.test_running_sandbox_without_exec_returns_to_idle) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.468s
+
+OK

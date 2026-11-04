@@ -132,3 +132,9 @@
 - 验收与卡点：`tests/integration/test_sandbox_quota.py` **6 个用例全绿**（配额 2 时第三个 429 且可重试、回收后放行、幂等重放不占名额、节点 capacity=1 时第二个 429、非法配额 env 回退默认值、10 线程并发只成功 2 个、两个租户互不影响），证据见 `docs/evidence/d21-quota.txt`；全量 **76 文件 / 700 用例 PASS，199.68 秒**，证据见 `docs/evidence/d21-backend-tests.txt`。
 - 遗留限制：① `/v1` 没有认证，`X-Tenant-Id` 由调用方自报，**不能当安全边界**（D21 只做配额机制）；② 没有 least-loaded 调度，单机只有一个默认节点；③ 配额算的是「未回收沙箱数」而不是「活动 exec 数」，两者在有 idle 沙箱时会不同；④ 只有租户级配额，没有项目级二级配额；⑤ 并发用例是 8 线程的功能验证，不是压测。
 - 明天第一件事：D22 启动对账 —— 重启后清理孤儿沙箱 / exec，并让执行器崩溃能落到 `failed`。
+## D22 — 2026-11-04
+
+- 今天做了什么：实现启动对账（`src/platform/reconcile.py`，在 lifespan 里、reaper 之前跑）。重启后：① `queued / running` 的 exec 落 `failed / INTERRUPTED_BY_RESTART`（**不伪造 cancelled**）；② `running` 但没有活动 exec 的沙箱回到 `idle`；③ 工作区缺失的沙箱落 `failed / workspace_missing`（新增 `fail_reason` 列）；④ 沙箱根目录下 `sbx_` 命名但没有数据库记录的目录会被删除，其它目录一律不碰。对账幂等，并跳过本进程内确实在跑的 exec（`active_execs` 注册表）。
+- 验收与卡点：`tests/integration/test_platform_reconcile.py` **7 个用例全绿**（中断 exec → failed 且沙箱回 idle、活动 exec 不被误伤、running 无 exec → idle、缺工作区 → failed、已回收不受影响、孤儿目录删除但陌生目录保留、对账幂等），证据见 `docs/evidence/d22-reconcile-tests.txt`；**真实重启验证**：起服务建沙箱 → 杀掉 → 删工作区 + 插一条 running exec + 放一个孤儿目录 → 重启 → 直接读库确认 `failed / workspace_missing`、`INTERRUPTED_BY_RESTART`、孤儿目录消失，证据见 `docs/evidence/d22-reconcile.json`。全量 **77 文件 / 707 用例 PASS，203.84 秒**，证据见 `docs/evidence/d22-backend-tests.txt`。
+- 遗留限制：① 对账按「单进程」假设，多进程部署时别的进程正在跑的 exec 会被误判（当前是单机单进程）；② 平台重启但 runner 进程还活着的情况发现不了 —— 需要把 runner PID 持久化才能精确回收；③ 只在启动时对账一次，没有定期对账；④ 孤儿目录按 `sbx_` 命名判断，若有人手工建同名目录会被当成孤儿（在平台根目录下属于本平台领地）。
+- 明天第一件事：D23 G2 全链路 —— 助手 → 平台 → 沙箱 → 轨迹，准备 3 条 demo 命令与演示口径。
