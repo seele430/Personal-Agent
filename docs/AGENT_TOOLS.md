@@ -91,7 +91,7 @@ kwargs = {
 第 2 次的 `tool_choice="none"` 很关键：**它保证了这一轮不会自旋**，
 模型不能一边总结一边再发起工具调用。
 
-### 第 3 段 · 执行（`_execute_reminder_tool`）
+### 第 3 段 · 执行（D11 起改为 tier1 平台执行）
 
 按函数名分发到四个分支，每个分支都走"经过登录身份校验的入口"。
 未知工具名直接拒绝：
@@ -100,6 +100,60 @@ kwargs = {
 if name != "create_reminder":
     raise ValueError("未知工具")
 ```
+
+**D11 改变的是「谁来跑这段代码」**：
+
+- 宿主进程（助手 / API）只做三件事：查策略（allow / ask / deny）、校验参数与
+  字节上限、读当前认证身份。它不再调用 `_execute_reminder_tool`。
+- allow 工具一律交给 `src/platform/exec_service.py`：平台开一个独立工作区，
+  用清洗过的环境启动 `src/platform/tier1_runner.py`，由 runner 在子进程里
+  调用注册表里的 handler。`_execute_reminder_tool` 现在是**子进程侧的
+  handler**，不是宿主入口。
+- 工具声明自己在哪里执行：`ToolDefinition.execution`。提醒工具用
+  `{"kind": "tool"}`；`{"kind": "command", "argv": [...]}` 留给 D12 的
+  shell / python 工具，测试里的进程树探针也用它。
+- ask / deny 仍然在产生 exec **之前**就拦下 —— 审批不是隔离，中间件位置不变。
+
+因此一次工具调用的完整链路是：
+
+```text
+模型 tool_call
+  → 策略 / 参数 / 身份（宿主）
+  → 平台 exec（queued → running）
+  → tier1 runner 子进程（清洗环境 + 独立工作区）
+  → handler 或 command
+  → 进程树清理（Job Object 活动进程数归零）
+  → 终态 + trajectory 事件
+```
+
+### D12 的工具面
+
+| 工具 | 执行位置 | 默认策略 | 暴露给模型 |
+| --- | --- | --- | --- |
+| `create_reminder` / `list_reminders` | tier1 handler | allow | ✅ |
+| `update_reminder` / `cancel_reminder` | tier1 handler | ask | ✅（等 D13 审批交互） |
+| `read_file` / `list_dir` | tier1 handler | allow | ✅ |
+| `write_file` / `run_shell` / `run_python` / `http_get` | tier1 handler | ask | ❌ 暂不暴露 |
+
+- **路径规则**：只接受工作区内的相对路径；先解析 real path 再判断归属，
+  `..`、绝对路径、盘符路径、符号链接逃逸都会被拒绝
+  （见 `tests/integration/test_sandbox_tools.py`）。
+- **工作区生命周期**：同一次 run 共享一个沙箱工作区（`open_run_sandbox`），
+  run 结束（成功 / 取消 / 失败）统一回收，文件不跨 run 残留。
+- **输出上限**：read / shell / python / http 都有字节上限；写入受工具参数
+  32 KB 上限约束。
+
+### D13 审批门
+
+- `ask` 工具不再直接抛错：先写一条审批记录（`agent_approvals`），SSE 发
+  `approval_required`（带 `approval_id` 与参数预览），run 停在等待状态。
+  **批准之前没有 exec**，这是 D8 就定下的约束。
+- 批准后服务端才建 exec 并执行一次；拒绝 / 超时 / run 取消都不产生 exec，
+  step 落 `denied`，trajectory 只留 `tool_approval_requested` →
+  `tool_approval_decided`。
+- 参数在批准时冻结（sha256 摘要），执行前再校验一次；参数被换掉直接拒绝。
+- 决定接口：`POST /chat/requests/{request_id}/approvals/{approval_id}`，
+  202 接受 / 404 非本人 / 409 已经决定过。
 
 ---
 
@@ -133,8 +187,10 @@ system prompt 里写死的规则（`build_system_prompt`）：
 1. **执行前先全量校验**：`_check_tool_call_arguments()` 在**任何副作用之前**
    对全部 `tool_calls` 跑完，检查参数是字符串且不超过
    `MAX_TOOL_ARGUMENT_BYTES = 4096` 字节。
-2. **单轮调用次数上限**：`MAX_REMINDER_TOOL_CALLS = 1`，超出直接整轮 `RuntimeError`，
-   不给"部分执行"的机会。
+2. **单轮调用次数上限**：总数为 `MAX_TOOL_CALLS_PER_TURN`（默认 1，
+   `PERSONAL_AGENT_MAX_TOOL_CALLS_PER_TURN` 可配 1—8）；提醒类工具另有
+   `MAX_REMINDER_TOOL_CALLS = 1` 的独立上限，超出直接整轮 `RuntimeError`，
+   不给"部分执行"的机会。D23 的 G2 演示把总数开到 3，一次响应跑三个工具。
 3. **工具名白名单**：只认四个名字，模型幻觉出来的工具名不会被执行。
 4. **参数语义校验**（与 `create_reminder` 共用同一套，上限不会漂移）：
    - `_clean_reminder_message`：去空白，UTF-8 编码不超过 1024 字节；
@@ -203,7 +259,7 @@ python scripts/run_reminder_eval.py --confirm-cost   # 真实调用，约 US$0.0
 
 | 取舍 | 现状 | 原因 / 代价 |
 | --- | --- | --- |
-| 单轮只允许 1 次工具调用 | `MAX_REMINDER_TOOL_CALLS = 1` | 一次对话产生的副作用数量必须可预期；代价是复杂指令要分两轮说 |
+| 一次响应默认只允许 1 次工具调用 | `MAX_TOOL_CALLS_PER_TURN = 1`（可配 1—8）；提醒工具恒为 1 | 副作用数量必须可预期；G2 演示临时开到 3 次 |
 | 取消/改期必须给显式编号 | 不做"按内容模糊匹配" | 猜错一个字的代价是删错提醒，宁可要编号 |
 | 聊天无对话历史 | `chat(user_input)` 单轮无状态 | "先列后删"必然跨两轮：模型列出 → 用户报编号 → 模型删 |
 | 站内提醒只在网页可见 | 手机推送目前只对站长的 ntfy 有效 | 属于产品阶段的取舍，不是实现缺陷 |
@@ -215,7 +271,7 @@ python scripts/run_reminder_eval.py --confirm-cost   # 真实调用，约 US$0.0
 | | Personal Agent（本项目） | DeepResearch |
 | --- | --- | --- |
 | 工具协议 | DeepSeek 原生 Function Calling | 同为原生 Function Calling（另有 `REACT_MODE=text` 的文本 ReAct 对照实现） |
-| 循环形态 | **单轮工具 + 一轮收口**（两次调用，上界固定） | **手写 ReAct 主循环**，多轮「推理 → 调用 → 观察」 |
+| 循环形态 | **单轮工具 + 一轮收口**（默认两次调用；上限内可一次并发多个工具） | **手写 ReAct 主循环**，多轮「推理 → 调用 → 观察」 |
 | 约束重点 | 身份隔离、副作用上限、单轮次数 | 调用去重、调用次数上限（5 次搜索 / 8 次阅读）、抓取降级 |
 
 一句话区分：**这里讲"工具协议 + 服务端否决 + eval 量化"，

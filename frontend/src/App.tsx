@@ -8,13 +8,13 @@ import {
 } from "react";
 
 import BotsView from "./BotsView";
-import RoomView from "./RoomView";
 
 type MessageStatus =
   | "pending"
   | "sent"
   | "unknown"
-  | "rejected";
+  | "rejected"
+  | "cancelled";
 
 type Message = {
   id: string;
@@ -369,6 +369,7 @@ function loadMessages(userId?: string): Message[] {
             "sent",
             "unknown",
             "rejected",
+            "cancelled",
           ].includes(item.status)
       )
       .slice(-100)
@@ -418,7 +419,17 @@ export default function App(
     useState(() => loadDraft(userId));
 
   const [sending, setSending] = useState(false);
+  const [activeTool, setActiveTool] = useState("");
+  const [finishedTool, setFinishedTool] = useState("");
   const [error, setError] = useState("");
+
+  // D13 审批门：服务端会停在等待状态，这里必须让用户真的能批准 / 拒绝。
+  const [pendingApproval, setPendingApproval] = useState<{
+    approvalId: string;
+    requestId: string;
+    tool: string;
+    preview: string;
+  } | null>(null);
 
   const [checkingId, setCheckingId] =
     useState<string | null>(null);
@@ -429,7 +440,6 @@ export default function App(
     | "quota"
     | "monitors"
     | "bots"
-    | "rooms"
   >("chat");
 
   // 侧栏可收起：收起后主区占满，左上角留「☰」展开。
@@ -493,6 +503,9 @@ export default function App(
   >({});
 
   const sendingLock = useRef(false);
+  const activeController = useRef<AbortController | null>(null);
+  const activeRequestId = useRef<string | null>(null);
+  const cancelledRequests = useRef(new Set<string>());
   const checkingIds = useRef(new Set<string>());
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -746,129 +759,237 @@ export default function App(
   }, []);
 
   // ========================================
-  // 发送聊天请求
+  // 发送、流式显示与取消聊天请求
   // ========================================
+
+  function appendAssistantDelta(requestId: string, text: string) {
+    setMessages((previous) => {
+      const index = previous.findIndex(
+        (item) => item.role === "assistant" && item.replyTo === requestId
+      );
+      if (index >= 0) {
+        return previous.map((item, itemIndex) =>
+          itemIndex === index
+            ? { ...item, content: item.content + text }
+            : item
+        );
+      }
+      return [...previous, {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: text,
+        status: "sent",
+        replyTo: requestId,
+      }];
+    });
+  }
+
+  function markCancelled(requestId: string) {
+    cancelledRequests.current.add(requestId);
+    setMessages((previous) => previous.map((item) =>
+      item.requestId === requestId && item.role === "user"
+        ? { ...item, status: "cancelled" }
+        : item
+    ));
+    setActiveTool("");
+    setError("本次回复已取消，工具执行也已收到取消信号。");
+  }
+
+  function cancelActiveRun() {
+    const requestId = activeRequestId.current;
+    if (!requestId) return;
+    cancelledRequests.current.add(requestId);
+    activeController.current?.abort();
+    setPendingApproval(null);
+    markCancelled(requestId);
+    void fetch(`/api/chat/requests/${encodeURIComponent(requestId)}/cancel`, {
+      method: "POST",
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      keepalive: true,
+    }).catch(() => undefined);
+  }
+
+  async function decideApproval(decision: "approve" | "reject") {
+    const pending = pendingApproval;
+    if (!pending || !pending.approvalId) return;
+
+    setPendingApproval(null);
+
+    try {
+      const response = await fetch(
+        `/api/chat/requests/${encodeURIComponent(pending.requestId)}` +
+          `/approvals/${encodeURIComponent(pending.approvalId)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify({ decision }),
+        },
+      );
+
+      if (!response.ok) {
+        const result = await readJson(response);
+        setError(result.detail ?? "审批没有生效，请重试。");
+      }
+    } catch {
+      setError("审批请求没有送达，请重试。");
+    }
+  }
+
+  useEffect(() => {
+    function onEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape" && sendingLock.current) {
+        event.preventDefault();
+        cancelActiveRun();
+      }
+    }
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [authToken]);
 
   async function sendMessage(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
-
     const text = input.trim();
-
-    if (!text || sendingLock.current) {
-      return;
-    }
+    if (!text || sendingLock.current) return;
 
     sendingLock.current = true;
     setSending(true);
+    setActiveTool("");
+    setFinishedTool("");
+    setPendingApproval(null);
     setError("");
-
     const requestId = crypto.randomUUID();
-
+    cancelledRequests.current.delete(requestId);
     const userMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: text,
-      status: "pending",
-      requestId,
+      id: crypto.randomUUID(), role: "user", content: text,
+      status: "pending", requestId,
     };
-
-    // 先持久保存原请求 ID，再发送请求。
     const updated = [...messages, userMessage];
-
     saveMessages(updated, userId);
     setMessages(updated);
     setInput("");
 
     const controller = new AbortController();
-
-    const timeout = window.setTimeout(
-      () => controller.abort(),
-      60000
-    );
+    activeController.current = controller;
+    activeRequestId.current = requestId;
+    let timeout = window.setTimeout(() => controller.abort(), 60000);
 
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
-
         headers: {
           "Content-Type": "application/json",
-          ...(authToken
-            ? {
-                Authorization:
-                  `Bearer ${authToken}`,
-              }
-            : {}),
+          Accept: "text/event-stream, application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
-
-        body: JSON.stringify({
-          message: text,
-          request_id: requestId,
-        }),
-
+        body: JSON.stringify({ message: text, request_id: requestId, stream: true }),
         signal: controller.signal,
       });
 
+      if (response.ok && response.headers.get("content-type")?.includes("text/event-stream")) {
+        if (!response.body) throw new Error("浏览器不支持流式响应");
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let terminal = false;
+
+        const processBlock = (block: string) => {
+          if (!block.trim()) return;
+          const data = block.split(/\r?\n/)
+            .filter((line) => line.startsWith("data:"))
+            .map((line) => line.slice(5).trimStart())
+            .join("\n");
+          if (!data) return;
+          const payload = JSON.parse(data) as {
+            type?: string;
+            text?: string;
+            reply?: string;
+            tool?: string;
+            approval_id?: string;
+            preview?: string;
+            decision?: string;
+          };
+          if (payload.type === "text_delta" && payload.text) {
+            appendAssistantDelta(requestId, payload.text);
+          } else if (payload.type === "tool_started") {
+            setFinishedTool("");
+            setActiveTool(payload.tool ?? "工具");
+          } else if (payload.type === "tool_finished") {
+            setActiveTool("");
+            setFinishedTool(payload.tool ?? "工具");
+          } else if (payload.type === "approval_required") {
+            setActiveTool("");
+            setPendingApproval({
+              approvalId: payload.approval_id ?? "",
+              requestId,
+              tool: payload.tool ?? "工具",
+              preview: payload.preview ?? "",
+            });
+            // 审批可以等很久：把 60 秒的流超时换成 10 分钟，
+            // 否则客户端会在用户点批准之前主动断开。
+            window.clearTimeout(timeout);
+            timeout = window.setTimeout(() => controller.abort(), 600000);
+          } else if (payload.type === "approval_decided") {
+            setPendingApproval((current) =>
+              current && current.approvalId === payload.approval_id
+                ? null
+                : current,
+            );
+          } else if (payload.type === "done" && typeof payload.reply === "string") {
+            terminal = true;
+            finishRequest(requestId, payload.reply);
+          } else if (payload.type === "cancelled") {
+            terminal = true;
+            markCancelled(requestId);
+          } else if (payload.type === "run_failed" || payload.type === "request_unknown") {
+            terminal = true;
+            markUnknown(requestId, "服务没有确认最终结果，请先查询状态。");
+          }
+        };
+
+        while (!terminal) {
+          const { done, value } = await reader.read();
+          buffer += decoder.decode(value, { stream: !done });
+          const blocks = buffer.split(/\r?\n\r?\n/);
+          buffer = blocks.pop() ?? "";
+          blocks.forEach(processBlock);
+          if (done) {
+            if (buffer.trim()) processBlock(buffer);
+            break;
+          }
+        }
+        if (!terminal && !cancelledRequests.current.has(requestId)) {
+          markUnknown(requestId, "流式响应提前结束，请先查询状态。");
+        }
+        return;
+      }
+
       const result = await readJson(response);
-
-      // ====================================
-      // HTTP 429：明确拒绝，没有调用模型
-      // ====================================
-
-      if (
-        response.status === 429 &&
-        result.status === "rejected"
-      ) {
-        markRejected(
-          requestId,
-          text,
-          result.code
-        );
-      }
-
-      // ====================================
-      // 原请求仍在处理中
-      // ====================================
-
-      else if (
-        response.status === 202 &&
-        result.status === "processing"
-      ) {
+      if (response.status === 429 && result.status === "rejected") {
+        markRejected(requestId, text, result.code);
+      } else if (response.status === 202 && result.status === "processing") {
         await queryStatus(requestId, true);
-      }
-
-      // ====================================
-      // 成功收到回复
-      // ====================================
-
-      else if (
-        response.ok &&
-        typeof result.reply === "string"
-      ) {
+      } else if (response.ok && typeof result.reply === "string") {
         finishRequest(requestId, result.reply);
+      } else {
+        markUnknown(requestId, "服务没有返回确认的结果，请先查询状态。");
       }
-
-      // ====================================
-      // 其他无法确认的状态
-      // ====================================
-
-      else {
-        markUnknown(
-          requestId,
-          "服务没有返回确认的结果，请先查询状态。"
-        );
-      }
-
     } catch {
-      markUnknown(
-        requestId,
-        "网络异常或等待超时，模型可能已执行，请先查询状态。"
-      );
-
+      if (cancelledRequests.current.has(requestId)) {
+        markCancelled(requestId);
+      } else {
+        markUnknown(requestId, "网络异常或等待超时，模型可能已执行，请先查询状态。");
+      }
     } finally {
       window.clearTimeout(timeout);
       sendingLock.current = false;
+      activeController.current = null;
+      activeRequestId.current = null;
+      setActiveTool("");
       setSending(false);
     }
   }
@@ -1469,19 +1590,6 @@ export default function App(
           <button
             type="button"
             className={`nav-item ${
-              view === "rooms" ? "selected" : ""
-            }`}
-            onClick={() => setView("rooms")}
-            aria-pressed={view === "rooms"}
-            aria-label="聊天室"
-          >
-            <span className="nav-symbol">👥</span>
-            <span>聊天室</span>
-          </button>
-
-          <button
-            type="button"
-            className={`nav-item ${
               view === "reminders" ? "selected" : ""
             }`}
             onClick={() => setView("reminders")}
@@ -2061,8 +2169,6 @@ export default function App(
               </div>
             )}
           </section>
-        ) : view === "rooms" ? (
-          <RoomView authToken={authToken} />
         ) : view === "bots" ? (
           <BotsView authToken={authToken} />
         ) : view === "reminders" ? (
@@ -2257,6 +2363,12 @@ export default function App(
                     </div>
                   )}
 
+                  {message.status === "cancelled" && (
+                    <div className="message-status">
+                      已取消本次回复
+                    </div>
+                  )}
+
                   {message.role === "user" &&
                     message.requestId &&
                     (
@@ -2285,12 +2397,42 @@ export default function App(
               </article>
             ))}
 
+            {pendingApproval && (
+              <div className="approval-card" role="alertdialog" aria-label="工具审批">
+                <div className="approval-title">
+                  工具「{pendingApproval.tool}」需要你的批准
+                </div>
+                <pre className="approval-preview">{pendingApproval.preview}</pre>
+                <div className="approval-actions">
+                  <button
+                    type="button"
+                    onClick={() => void decideApproval("approve")}
+                  >
+                    批准执行
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => void decideApproval("reject")}
+                  >
+                    拒绝
+                  </button>
+                </div>
+              </div>
+            )}
+
             {sending && (
               <div className="loading" role="status">
                 <div className="spinner" />
 
                 <span>
-                  助手正在处理，请稍候…
+                  {pendingApproval
+                    ? "等待你批准工具调用…"
+                    : activeTool
+                      ? `正在执行工具：${activeTool}（Esc 停止）`
+                      : finishedTool
+                        ? `工具 ${finishedTool} 已完成，正在生成回答…`
+                        : "助手正在生成，按 Esc 停止…"}
                 </span>
               </div>
             )}
@@ -2328,15 +2470,23 @@ export default function App(
                 Enter 发送 · Shift + Enter 换行
               </span>
 
-              <button
-                type="submit"
-                disabled={sending || !input.trim()}
-                aria-label={
-                  sending ? "发送中…" : "发送 ↑"
-                }
-              >
-                {sending ? "发送中…" : "发送 ↑"}
-              </button>
+              {sending ? (
+                <button
+                  type="button"
+                  onClick={cancelActiveRun}
+                  aria-label="停止生成"
+                >
+                  停止 Esc
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim()}
+                  aria-label="发送 ↑"
+                >
+                  发送 ↑
+                </button>
+              )}
             </div>
           </form>
 

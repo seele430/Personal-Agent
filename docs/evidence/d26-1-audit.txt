@@ -1,0 +1,29 @@
+# D26.1 审计免限流 / 过滤 / 保留期测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_platform_audit -v
+> 时间：2026-11-04T10:06:01.8563367+08:00
+
+test_audit_endpoint_lists_records (tests.integration.test_platform_audit.AuditTest.test_audit_endpoint_lists_records) ... 2026-11-04 10:06:07,292 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_audit_endpoint_requires_token (tests.integration.test_platform_audit.AuditTest.test_audit_endpoint_requires_token) ... 2026-11-04 10:06:07,547 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_audit_filters (tests.integration.test_platform_audit.AuditTest.test_audit_filters) ... 2026-11-04 10:06:07,667 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_audit_is_not_rate_limited (tests.integration.test_platform_audit.AuditTest.test_audit_is_not_rate_limited) ... 2026-11-04 10:06:07,962 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_auth_denial_is_audited (tests.integration.test_platform_audit.AuditTest.test_auth_denial_is_audited) ... 2026-11-04 10:06:08,173 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_health_is_not_rate_limited (tests.integration.test_platform_audit.AuditTest.test_health_is_not_rate_limited) ... 2026-11-04 10:06:08,292 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_prune_removes_records_older_than_retention (tests.integration.test_platform_audit.AuditTest.test_prune_removes_records_older_than_retention) ... 2026-11-04 10:06:08,453 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_rate_limit_returns_429_and_is_audited (tests.integration.test_platform_audit.AuditTest.test_rate_limit_returns_429_and_is_audited) ... 2026-11-04 10:06:08,599 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_sandbox_and_exec_lifecycle_is_audited (tests.integration.test_platform_audit.AuditTest.test_sandbox_and_exec_lifecycle_is_audited) ... 2026-11-04 10:06:08,790 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_bucket_refills_with_injected_clock (tests.integration.test_platform_audit.RateLimiterUnitTest.test_bucket_refills_with_injected_clock) ... ok
+test_retry_after_is_positive (tests.integration.test_platform_audit.RateLimiterUnitTest.test_retry_after_is_positive) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 1.932s
+
+OK

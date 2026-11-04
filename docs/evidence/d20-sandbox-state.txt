@@ -1,0 +1,19 @@
+# D20 沙箱状态机测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_sandbox_state -v
+> 时间：2026-11-04T08:21:29.7997293+08:00
+
+test_exec_moves_sandbox_running_then_idle (tests.integration.test_sandbox_state.SandboxStateApiTest.test_exec_moves_sandbox_running_then_idle) ... 2026-11-04 08:21:33,405 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_exec_on_failed_sandbox_returns_409 (tests.integration.test_sandbox_state.SandboxStateApiTest.test_exec_on_failed_sandbox_returns_409) ... 2026-11-04 08:21:34,508 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_legacy_table_is_rebuilt_and_backfilled (tests.integration.test_sandbox_state.SandboxStateMigrationTest.test_legacy_table_is_rebuilt_and_backfilled) ... ok
+test_begin_exec_rejects_reclaimed_sandbox (tests.integration.test_sandbox_state.SandboxStateServiceTest.test_begin_exec_rejects_reclaimed_sandbox) ... ok
+test_concurrent_execs_keep_state_running (tests.integration.test_sandbox_state.SandboxStateServiceTest.test_concurrent_execs_keep_state_running) ... ok
+test_failed_can_only_be_reclaimed (tests.integration.test_sandbox_state.SandboxStateServiceTest.test_failed_can_only_be_reclaimed) ... ok
+test_illegal_transitions_are_rejected (tests.integration.test_sandbox_state.SandboxStateServiceTest.test_illegal_transitions_are_rejected) ... ok
+test_legal_chain_created_running_idle_reclaimed (tests.integration.test_sandbox_state.SandboxStateServiceTest.test_legal_chain_created_running_idle_reclaimed) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 1.552s
+
+OK

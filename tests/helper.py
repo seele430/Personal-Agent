@@ -25,12 +25,33 @@ isolate_paths() 一次替换三处：
 """
 
 import sys
+import time
 
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
 from src import config
+
+
+def wait_for_exec_worker(exec_id: str, timeout: float = 30.0) -> None:
+    """等后台 exec worker 真正退出，再让测试拆临时目录。
+
+    Windows 上临时目录里还有打开着的 SQLite 连接时，rmtree 会报
+    ``WinError 32``（另一个程序正在使用此文件）。HTTP 层在写终态之后才把
+    exec 从活动表里摘掉，所以「状态变 cancelled」不等于「worker 已收尾」。
+    """
+
+    from src.platform import active_execs
+
+    deadline = time.monotonic() + timeout
+
+    while time.monotonic() < deadline:
+        if exec_id not in active_execs.snapshot():
+            return
+        time.sleep(0.01)
+
+    raise AssertionError(f"exec {exec_id} 的 worker 在 {timeout}s 内没有退出")
 
 
 def build_temp_paths(container) -> config.Paths:
@@ -67,6 +88,23 @@ def _enter(stack: ExitStack, container) -> config.Paths:
             )
         )
 
+    # D26：默认关闭 /v1 限流 —— 否则同进程的所有用例共享一个令牌桶，
+    # 跑着跑着就 429。限流用例自己设值并 reset_limiter()。
+    stack.enter_context(
+        patch.dict(
+            "os.environ",
+            {"PERSONAL_AGENT_PLATFORM_RATE_PER_MIN": "0"},
+            clear=False,
+        )
+    )
+
+    limiter_module = sys.modules.get("src.platform.rate_limit")
+
+    if limiter_module is not None:
+        stack.enter_context(
+            patch.object(limiter_module, "_limiter", None)
+        )
+
     return temporary
 
 
@@ -85,3 +123,59 @@ def isolated_paths(container):
 
     with ExitStack() as stack:
         yield _enter(stack, container)
+
+
+def tool_result_outcome(result: dict | None = None):
+    """平台执行成功的替身结果。
+
+    D11 起工具在 tier1 子进程里执行，宿主不再调用 ``agent.create_reminder``
+    这类 handler。需要「工具已经执行成功」的用例改为替身平台执行层。
+    """
+
+    from src.platform.exec_service import ExecOutcome
+
+    return ExecOutcome(
+        sandbox_id="sbx_test",
+        status="succeeded",
+        exit_code=0,
+        stdout="",
+        stderr="",
+        truncated=False,
+        result=result if result is not None else {"success": True},
+        error_code=None,
+    )
+
+
+def tool_error_outcome(error_type: str, message: str):
+    """平台执行完成、但工具自身报错的替身结果。"""
+
+    from src.platform.exec_service import ExecOutcome
+
+    return ExecOutcome(
+        sandbox_id="sbx_test",
+        status="failed",
+        exit_code=3,
+        stdout="",
+        stderr="",
+        truncated=False,
+        tool_error={"ok": False, "error_type": error_type, "message": message},
+        error_code="TOOL_FAILED",
+    )
+
+
+def called_tool(mock):
+    """取出交给平台执行层的 (工具名, 参数字典)。"""
+
+    import json
+
+    call = mock.call_args
+
+    if call is None:
+        return None
+
+    tool_call = call.args[0] if call.args else call.kwargs["tool_call"]
+
+    return (
+        tool_call.function.name,
+        json.loads(tool_call.function.arguments),
+    )

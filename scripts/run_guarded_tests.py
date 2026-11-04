@@ -55,6 +55,8 @@ SAFE_ENVIRONMENT = {
     "NTFY_SERVER": "http://127.0.0.1:1",
     # An ntfy topic works like an access credential; never reuse the real one.
     "NTFY_TOPIC": "personal-agent-test-topic",
+    # 测试不启动平台 TTL 回收线程：后台线程会和临时目录清理抢时序。
+    "PERSONAL_AGENT_PLATFORM_REAPER": "0",
 }
 
 

@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "idempotent_create_same_id": true,
+  "sandbox_id": "sbx_fc338c3cc904468295d32d1a0e6d21e0",
+  "exec_state": "succeeded",
+  "exec_stdout": "sdk-ok",
+  "exec_result_code": "EXEC_SUCCEEDED",
+  "timeout_state": "timed_out",
+  "timeout_result_code": "EXEC_TIMED_OUT",
+  "cancel_state": "cancelled",
+  "cancel_result_code": "EXEC_CANCELLED",
+  "destroy_state": "reclaimed",
+  "after_destroy_http_status": 410,
+  "after_destroy_error_code": "SANDBOX_GONE"
+}

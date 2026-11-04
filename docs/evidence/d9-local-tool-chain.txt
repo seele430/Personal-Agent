@@ -1,0 +1,19 @@
+{
+  "status": "PASS",
+  "model_transport": "deterministic_local_sdk_double",
+  "real_external_model_called": false,
+  "question": "五分钟后提醒我喝水",
+  "event_sequence": [
+    "run_started",
+    "tool_started",
+    "tool_finished",
+    "text_delta",
+    "text_delta",
+    "done"
+  ],
+  "answer": "已为你创建 5 分钟后的喝水提醒。",
+  "reminders_created_in_temporary_db": 1,
+  "run_status": "succeeded",
+  "exec_status": "succeeded",
+  "tool_name": "create_reminder"
+}

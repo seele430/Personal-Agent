@@ -1,0 +1,23 @@
+# D26 审计与限流测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_platform_audit -v
+> 时间：2026-11-04T09:50:10.3714315+08:00
+
+test_audit_endpoint_lists_records (tests.integration.test_platform_audit.AuditTest.test_audit_endpoint_lists_records) ... 2026-11-04 09:50:13,623 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_audit_endpoint_requires_token (tests.integration.test_platform_audit.AuditTest.test_audit_endpoint_requires_token) ... 2026-11-04 09:50:13,792 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_auth_denial_is_audited (tests.integration.test_platform_audit.AuditTest.test_auth_denial_is_audited) ... 2026-11-04 09:50:13,872 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_health_is_not_rate_limited (tests.integration.test_platform_audit.AuditTest.test_health_is_not_rate_limited) ... 2026-11-04 09:50:13,961 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_rate_limit_returns_429_and_is_audited (tests.integration.test_platform_audit.AuditTest.test_rate_limit_returns_429_and_is_audited) ... 2026-11-04 09:50:14,063 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_sandbox_and_exec_lifecycle_is_audited (tests.integration.test_platform_audit.AuditTest.test_sandbox_and_exec_lifecycle_is_audited) ... 2026-11-04 09:50:14,209 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_bucket_refills_with_injected_clock (tests.integration.test_platform_audit.RateLimiterUnitTest.test_bucket_refills_with_injected_clock) ... ok
+test_retry_after_is_positive (tests.integration.test_platform_audit.RateLimiterUnitTest.test_retry_after_is_positive) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.939s
+
+OK

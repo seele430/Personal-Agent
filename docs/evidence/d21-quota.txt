@@ -1,0 +1,19 @@
+# D21 每租户并发配额与节点容量测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_sandbox_quota -v
+> 时间：2026-11-04T08:30:47.3965167+08:00
+
+test_idempotent_replay_does_not_consume_quota (tests.integration.test_sandbox_quota.QuotaApiTest.test_idempotent_replay_does_not_consume_quota) ... 2026-11-04 08:30:51,042 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_node_capacity_is_enforced (tests.integration.test_sandbox_quota.QuotaApiTest.test_node_capacity_is_enforced) ... 2026-11-04 08:30:51,219 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_quota_blocks_third_sandbox_then_releases (tests.integration.test_sandbox_quota.QuotaApiTest.test_quota_blocks_third_sandbox_then_releases) ... 2026-11-04 08:30:51,366 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_quota_env_fallbacks (tests.integration.test_sandbox_quota.QuotaApiTest.test_quota_env_fallbacks) ... 2026-11-04 08:30:51,565 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_concurrent_creates_cannot_exceed_quota (tests.integration.test_sandbox_quota.QuotaServiceTest.test_concurrent_creates_cannot_exceed_quota) ... ok
+test_tenants_have_independent_quotas (tests.integration.test_sandbox_quota.QuotaServiceTest.test_tenants_have_independent_quotas) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.795s
+
+OK

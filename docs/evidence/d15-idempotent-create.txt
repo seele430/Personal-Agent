@@ -1,0 +1,20 @@
+# D15 幂等 create：同 key 重试只建一个沙箱
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_sandbox_create -v
+> 时间：2026-11-03T16:23:18.0397393+08:00
+> 说明：直接验证控制面服务 + SQLite 唯一约束与事务语义，不经过 HTTP。
+
+test_concurrent_create_only_one_sandbox (tests.integration.test_sandbox_create.SandboxCreateTest.test_concurrent_create_only_one_sandbox) ... ok
+test_defaults_are_normalized (tests.integration.test_sandbox_create.SandboxCreateTest.test_defaults_are_normalized) ... ok
+test_idempotency_survives_restart (tests.integration.test_sandbox_create.SandboxCreateTest.test_idempotency_survives_restart) ... ok
+test_invalid_keys_are_rejected (tests.integration.test_sandbox_create.SandboxCreateTest.test_invalid_keys_are_rejected) ... ok
+test_invalid_ttl_and_tier_are_rejected (tests.integration.test_sandbox_create.SandboxCreateTest.test_invalid_ttl_and_tier_are_rejected) ... ok
+test_reclaim_is_idempotent_and_removes_workspace (tests.integration.test_sandbox_create.SandboxCreateTest.test_reclaim_is_idempotent_and_removes_workspace) ... ok
+test_run_sandbox_is_keyed_by_run_id (tests.integration.test_sandbox_create.SandboxCreateTest.test_run_sandbox_is_keyed_by_run_id) ... ok
+test_same_key_different_body_conflicts (tests.integration.test_sandbox_create.SandboxCreateTest.test_same_key_different_body_conflicts) ... ok
+test_same_key_ten_retries_creates_one_sandbox (tests.integration.test_sandbox_create.SandboxCreateTest.test_same_key_ten_retries_creates_one_sandbox) ... ok
+test_ttl_change_counts_as_different_request (tests.integration.test_sandbox_create.SandboxCreateTest.test_ttl_change_counts_as_different_request) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 2.477s
+
+OK

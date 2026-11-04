@@ -1,0 +1,25 @@
+# D13 审批门：批准前无 exec、批准后恰好一次
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_approval_gate -v
+> 时间：2026-11-03T16:03:00.3227149+08:00
+> 说明：模型调用是本地替身；审批表、exec、trajectory、平台子进程都是真的。
+
+test_list_pending (tests.integration.test_approval_gate.ApprovalApiTest.test_list_pending) ... 2026-11-03 16:03:02,989 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_other_user_gets_404 (tests.integration.test_approval_gate.ApprovalApiTest.test_other_user_gets_404) ... 2026-11-03 16:03:03,132 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_owner_can_approve (tests.integration.test_approval_gate.ApprovalApiTest.test_owner_can_approve) ... 2026-11-03 16:03:03,254 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_second_decision_is_409 (tests.integration.test_approval_gate.ApprovalApiTest.test_second_decision_is_409) ... 2026-11-03 16:03:03,384 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_approved_executes_exactly_once (tests.integration.test_approval_gate.ApprovalGateTest.test_approved_executes_exactly_once) ... ok
+test_cancel_expires_pending_approval (tests.integration.test_approval_gate.ApprovalGateTest.test_cancel_expires_pending_approval) ... ok
+test_changed_arguments_are_rejected (tests.integration.test_approval_gate.ApprovalGateTest.test_changed_arguments_are_rejected) ... ok
+test_duplicate_decision_is_rejected (tests.integration.test_approval_gate.ApprovalGateTest.test_duplicate_decision_is_rejected) ... ok
+test_other_user_cannot_decide (tests.integration.test_approval_gate.ApprovalGateTest.test_other_user_cannot_decide) ... ok
+test_pending_approval_creates_no_exec (tests.integration.test_approval_gate.ApprovalGateTest.test_pending_approval_creates_no_exec) ... ok
+test_timeout_expires_without_exec (tests.integration.test_approval_gate.ApprovalGateTest.test_timeout_expires_without_exec) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 4.629s
+
+OK

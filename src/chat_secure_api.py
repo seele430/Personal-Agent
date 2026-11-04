@@ -11,6 +11,8 @@
 不允许浏览器自行指定提醒所属用户。
 """
 
+import asyncio
+import json
 import sqlite3
 import uuid
 
@@ -23,14 +25,20 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Request,
     Response,
 )
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 
 from src import agent
 from src import api as legacy_chat
+from src.agent_stream import run_chat_stream
 from src.auth_api import get_current_user
+from src.core import approvals as approval_core
 from src.core.bot_store import BotStore
+from src.core.run_control import ChatCancelled, active_runs
+from src.core.run_store import RunStore
 
 from src.core.ai_budget import (
     BudgetExceeded,
@@ -308,12 +316,207 @@ def get_chat_request(
     }
 
 
+@router.post("/chat/requests/{request_id}/cancel")
+def cancel_chat_request(
+    request_id: str,
+    user: dict = Depends(get_current_user),
+):
+    legacy_chat.validate_request_id(request_id)
+    if _read(request_id, user["id"]) is None:
+        raise HTTPException(status_code=404, detail="请求不存在")
+    if active_runs.cancel(user["id"], request_id):
+        return JSONResponse(
+            status_code=202,
+            headers=NO_STORE,
+            content={"request_id": request_id, "status": "cancelling"},
+        )
+    return JSONResponse(
+        status_code=409,
+        headers=NO_STORE,
+        content={"request_id": request_id, "status": "not_active"},
+    )
+
+
+# ==========================================
+# D13 工具审批
+# ==========================================
+
+class ApprovalDecision(BaseModel):
+    decision: str
+
+
+def _owned_run(request_id: str, user_id: str):
+    if _read(request_id, user_id) is None:
+        return None
+
+    return RunStore().find_run_by_request(request_id, owner_id=user_id)
+
+
+@router.get("/chat/requests/{request_id}/approvals")
+def list_chat_approvals(
+    request_id: str,
+    response: Response,
+    user: dict = Depends(get_current_user),
+):
+    legacy_chat.validate_request_id(request_id)
+    response.headers["Cache-Control"] = "no-store"
+
+    run = _owned_run(request_id, user["id"])
+
+    if run is None:
+        raise HTTPException(status_code=404, detail="请求不存在")
+
+    pending = RunStore().list_approvals(run["id"], status="pending")
+
+    return {
+        "request_id": request_id,
+        "approvals": [
+            {
+                "approval_id": item["id"],
+                "tool": item["tool_name"],
+                "preview": item["arguments_preview"],
+                "status": item["status"],
+                "created_at": item["created_at"],
+            }
+            for item in pending
+        ],
+    }
+
+
+@router.post("/chat/requests/{request_id}/approvals/{approval_id}")
+def decide_chat_approval(
+    request_id: str,
+    approval_id: str,
+    payload: ApprovalDecision,
+    user: dict = Depends(get_current_user),
+):
+    legacy_chat.validate_request_id(request_id)
+
+    if _owned_run(request_id, user["id"]) is None:
+        raise HTTPException(status_code=404, detail="请求不存在")
+
+    try:
+        approval = approval_core.decide_for_request(
+            RunStore(),
+            request_id=request_id,
+            approval_id=approval_id,
+            user_id=user["id"],
+            decision=payload.decision,
+        )
+    except KeyError:
+        # 不属于这个 run / 这个用户：不泄露存在性。
+        raise HTTPException(status_code=404, detail="审批不存在") from None
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=409,
+            headers=NO_STORE,
+            content={
+                "request_id": request_id,
+                "approval_id": approval_id,
+                "status": "conflict",
+                "detail": str(exc),
+            },
+        )
+
+    return JSONResponse(
+        status_code=202,
+        headers=NO_STORE,
+        content={
+            "request_id": request_id,
+            "approval_id": approval["id"],
+            "status": approval["status"],
+        },
+    )
+
+
+async def _stream_chat_events(
+    http_request: Request,
+    *,
+    message: str,
+    request_id: str,
+    user_id: str,
+    role: str,
+    bot: dict | None,
+    cancel_token,
+):
+    """Bridge the synchronous assistant worker to SSE without losing cancellation."""
+
+    loop = asyncio.get_running_loop()
+    events = asyncio.Queue()
+    finished = asyncio.Event()
+
+    def emit(event):
+        loop.call_soon_threadsafe(events.put_nowait, event)
+
+    def worker():
+        try:
+            with bind_authenticated_reminder(
+                user_id=user_id, request_id=request_id, role=role
+            ):
+                with agent.track_chat_usage(user_id, request_id) as usage_scope:
+                    reply = run_chat_stream(
+                        message, emit=emit, cancel_token=cancel_token, bot=bot
+                    )
+            if not isinstance(reply, str) or not reply.strip():
+                raise ValueError("模型没有返回有效文本")
+            saved = _update(request_id, user_id, "completed", reply)
+            if not saved:
+                raise RuntimeError("请求状态发生变化")
+            _reconcile_completed_budget(
+                request_id, user_id, usage_scope.completed_calls
+            )
+        except ChatCancelled:
+            _retain_budget(request_id, user_id)
+            _update(request_id, user_id, "unknown")
+        except Exception as exc:
+            legacy_chat.logger.exception(
+                "Streaming model failed request_id=%s", request_id
+            )
+            _retain_budget(request_id, user_id)
+            _update(request_id, user_id, "unknown")
+            emit({
+                "type": "request_unknown", "request_id": request_id,
+                "error": str(exc),
+            })
+        finally:
+            active_runs.finish(user_id, request_id)
+            loop.call_soon_threadsafe(events.put_nowait, None)
+            loop.call_soon_threadsafe(finished.set)
+
+    async def watch_disconnect():
+        while not finished.is_set():
+            if await http_request.is_disconnected():
+                cancel_token.cancel()
+                return
+            await asyncio.sleep(0.05)
+
+    worker_task = asyncio.create_task(asyncio.to_thread(worker))
+    disconnect_task = asyncio.create_task(watch_disconnect())
+    try:
+        while True:
+            event = await events.get()
+            if event is None:
+                break
+            event.setdefault("request_id", request_id)
+            yield (
+                f"event: {event['type']}\n"
+                f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            )
+    finally:
+        if not worker_task.done():
+            cancel_token.cancel()
+        finished.set()
+        disconnect_task.cancel()
+        await asyncio.gather(worker_task, disconnect_task, return_exceptions=True)
+
+
 # ==========================================
 # 正式聊天接口
 # ==========================================
 
 @router.post("/chat")
 def chat_endpoint(
+    http_request: Request,
     request: legacy_chat.ChatRequest,
     response: Response,
     user: dict = Depends(get_current_user),
@@ -470,6 +673,26 @@ def chat_endpoint(
     # ======================================
     # 新请求：执行模型
     # ======================================
+
+    if request.stream:
+        cancel_token = active_runs.start(user_id, request_id)
+        return StreamingResponse(
+            _stream_chat_events(
+                http_request,
+                message=message,
+                request_id=request_id,
+                user_id=user_id,
+                role=role,
+                bot=bot,
+                cancel_token=cancel_token,
+            ),
+            media_type="text/event-stream",
+            headers={
+                **NO_STORE,
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
 
     try:
 

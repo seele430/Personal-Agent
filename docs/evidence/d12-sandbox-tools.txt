@@ -1,0 +1,22 @@
+# D12 沙箱工具：六个工具 + 路径负向测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_sandbox_tools -v
+> 时间：2026-11-03T13:18:35.3883281+08:00
+> 说明：handler 在 tier1 子进程里执行；http 用例只连本机拒绝端口，不产生外部网络流量。
+> 符号链接逃逸用目录联接（junction）覆盖；shell / python 输出边读边截断（不整段读入内存）。
+
+test_assistant_tool_call_produces_exactly_one_exec_and_trajectory (tests.integration.test_sandbox_tools.SandboxToolsTest.test_assistant_tool_call_produces_exactly_one_exec_and_trajectory) ... ok
+test_exec_output_is_capped_while_streaming (tests.integration.test_sandbox_tools.SandboxToolsTest.test_exec_output_is_capped_while_streaming) ... ok
+test_http_get_failure_is_a_tool_error (tests.integration.test_sandbox_tools.SandboxToolsTest.test_http_get_failure_is_a_tool_error) ... ok
+test_list_dir_reports_entries (tests.integration.test_sandbox_tools.SandboxToolsTest.test_list_dir_reports_entries) ... ok
+test_python_runs_in_sandbox_workspace (tests.integration.test_sandbox_tools.SandboxToolsTest.test_python_runs_in_sandbox_workspace) ... ok
+test_read_truncates_large_file (tests.integration.test_sandbox_tools.SandboxToolsTest.test_read_truncates_large_file) ... ok
+test_shell_reports_exit_code (tests.integration.test_sandbox_tools.SandboxToolsTest.test_shell_reports_exit_code) ... ok
+test_symlink_escape_is_rejected (tests.integration.test_sandbox_tools.SandboxToolsTest.test_symlink_escape_is_rejected) ... ok
+test_traversal_and_absolute_paths_are_rejected (tests.integration.test_sandbox_tools.SandboxToolsTest.test_traversal_and_absolute_paths_are_rejected) ... ok
+test_write_and_read_share_one_sandbox (tests.integration.test_sandbox_tools.SandboxToolsTest.test_write_and_read_share_one_sandbox) ... ok
+test_write_rejects_oversized_content (tests.integration.test_sandbox_tools.SandboxToolsTest.test_write_rejects_oversized_content) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 73.786s
+
+OK

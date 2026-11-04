@@ -1,0 +1,74 @@
+# D11 宿主直跑路径搜索结果
+> 命令：Get-ChildItem src -Recurse -Filter *.py | Select-String -Pattern "subprocess|Popen|os.system|create_subprocess|shell=True"
+> 时间：2026-11-03T12:55:35.7848977+08:00
+
+## 1. 原始搜索结果（src/ 下所有命中）
+
+src\tts_api.py:8: import subprocess
+src\tts_api.py:55: probe = subprocess.run(
+src\tts_api.py:124: completed = subprocess.run(
+src\tts_api.py:139: stdout=subprocess.DEVNULL,
+src\tts_api.py:144: stdin=subprocess.DEVNULL,
+src\platform\exec_service.py:26: import subprocess
+src\platform\exec_service.py:394: popen: subprocess.Popen | None = None
+src\platform\exec_service.py:403: subprocess.CREATE_NEW_PROCESS_GROUP
+src\platform\exec_service.py:404: | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+src\platform\exec_service.py:416: popen = subprocess.Popen(
+src\platform\exec_service.py:421: stdin=subprocess.PIPE,
+src\platform\exec_service.py:422: stdout=subprocess.PIPE,
+src\platform\exec_service.py:423: stderr=subprocess.PIPE,
+src\platform\exec_service.py:428: tree = ProcessTree(popen)
+src\platform\exec_service.py:435: assert popen.stdin is not None
+src\platform\exec_service.py:436: popen.stdin.write(
+src\platform\exec_service.py:439: popen.stdin.close()
+src\platform\exec_service.py:456: if popen.stdout is not None:
+src\platform\exec_service.py:458: target=pump, args=(popen.stdout, "stdout"), daemon=True
+src\platform\exec_service.py:463: if popen.stderr is not None:
+src\platform\exec_service.py:465: target=pump, args=(popen.stderr, "stderr"), daemon=True
+src\platform\exec_service.py:489: if popen.poll() is not None:
+src\platform\exec_service.py:496: popen.wait(timeout=timeout / 1000.0 + CLEANUP_TIMEOUT_SECONDS)
+src\platform\exec_service.py:515: if popen is not None:
+src\platform\exec_service.py:516: if popen.poll() is None:
+src\platform\exec_service.py:519: popen.wait(timeout=CLEANUP_TIMEOUT_SECONDS)
+src\platform\exec_service.py:520: except subprocess.TimeoutExpired:
+src\platform\exec_service.py:522: popen.kill()
+src\platform\exec_service.py:526: for stream in (popen.stdout, popen.stderr):
+src\platform\exec_service.py:537: exit_code = popen.returncode
+src\platform\process_tree.py:10: - 只终止 job 或本次 Popen 根 PID 名下的进程，绝不按进程名清理。
+src\platform\process_tree.py:20: import subprocess
+src\platform\process_tree.py:160: def assign(self, popen: subprocess.Popen) -> None:
+src\platform\process_tree.py:164: # 用 Popen 已经持有的进程句柄，避免「先关闭再按 PID 重开」的竞态。
+src\platform\process_tree.py:165: raw_handle = getattr(popen, "_handle", None)  # noqa: SLF001
+src\platform\process_tree.py:168: raise ProcessTreeError("Popen 没有可用的进程句柄")
+src\platform\process_tree.py:246: def __init__(self, popen: subprocess.Popen) -> None:
+src\platform\process_tree.py:247: self.popen = popen
+src\platform\process_tree.py:258: job.assign(popen)
+src\platform\process_tree.py:286: flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+src\platform\process_tree.py:287: subprocess.run(
+src\platform\process_tree.py:288: ["taskkill", "/F", "/T", "/PID", str(self.popen.pid)],
+src\platform\process_tree.py:289: stdout=subprocess.DEVNULL,
+src\platform\process_tree.py:290: stderr=subprocess.DEVNULL,
+src\platform\process_tree.py:296: self.popen.kill()
+src\platform\process_tree.py:311: if self.popen.poll() is not None:
+src\platform\process_tree.py:315: return self.popen.poll() is not None
+src\platform\tier1_runner.py:25: import subprocess
+src\platform\tier1_runner.py:173: completed = subprocess.run(
+src\platform\tier1_runner.py:175: stdin=subprocess.DEVNULL,
+
+## 2. 逐条判定
+
+- src/tts_api.py：TTS 独立子进程（edge-tts / 系统播放），不是 Agent 工具 exec。D11 明确保留，不并入 tier1；
+  它的生命周期由 TTS 路由自己管理，与 run/step/exec 无关。
+- src/platform/exec_service.py：**唯一**创建工具/命令子进程的地方（subprocess.Popen），
+  子进程会被立即分配进独立 Job Object，取消/超时/输出超限统一 TerminateJobObject。
+- src/platform/process_tree.py：降级路径使用 taskkill /F /T（只针对本平台创建的根 PID）。
+- src/platform/tier1_runner.py：command 模式下用 subprocess.run 执行平台下发的 argv；
+  它本身已经在 Job Object 里，所以它的后代同样被覆盖。
+- 其余 src/ 文件（agent.py / agent_stream.py / chat_secure_api.py 等）没有任何 subprocess / Popen 命中：
+  allow 工具不再由宿主直接执行。
+
+## 3. 结论
+
+- 工具 exec 的唯一入口是 src/platform/exec_service.py；宿主只做策略、参数与身份检查。
+- 保留的 subprocess 命中只有 TTS 与平台自身，二者都不属于“助手工具 exec”。
+

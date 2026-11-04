@@ -1,0 +1,23 @@
+# D19 cordon / drain / remove 测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_platform_node_ops -v
+> 时间：2026-11-04T08:11:39.4234172+08:00
+
+test_active_sandbox_count_is_visible (tests.integration.test_platform_node_ops.NodeOpsTest.test_active_sandbox_count_is_visible) ... 2026-11-04 08:11:42,791 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_cordon_blocks_new_sandboxes_but_keeps_state_ready (tests.integration.test_platform_node_ops.NodeOpsTest.test_cordon_blocks_new_sandboxes_but_keeps_state_ready) ... 2026-11-04 08:11:43,009 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_cordon_does_not_kill_running_exec (tests.integration.test_platform_node_ops.NodeOpsTest.test_cordon_does_not_kill_running_exec) ... 2026-11-04 08:11:43,180 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_cordon_is_idempotent (tests.integration.test_platform_node_ops.NodeOpsTest.test_cordon_is_idempotent) ... 2026-11-04 08:11:44,626 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_drain_waits_for_sandboxes_before_remove (tests.integration.test_platform_node_ops.NodeOpsTest.test_drain_waits_for_sandboxes_before_remove) ... 2026-11-04 08:11:44,778 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_remove_requires_drain (tests.integration.test_platform_node_ops.NodeOpsTest.test_remove_requires_drain) ... 2026-11-04 08:11:45,006 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_removed_node_rejects_heartbeat_and_new_ops (tests.integration.test_platform_node_ops.NodeOpsTest.test_removed_node_rejects_heartbeat_and_new_ops) ... 2026-11-04 08:11:45,116 | INFO | personal_agent.chat | Chat request storage ready
+ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 2.551s
+
+OK

@@ -434,53 +434,27 @@ class TestReminderChatHTTP(unittest.TestCase):
     # ======================================
 
     def test_member_reminder_is_rejected_when_disabled(self):
-        request_id = self.new_id()
-
+        # D11：handler 在 tier1 子进程里执行，宿主 patch 影响不到子进程里的
+        # IN_APP_DELIVERY_ENABLED（子进程用的是同一份代码默认值）。
+        # 这里直接验证规则本身；「成员开关打开时能建 in_app 提醒」由
+        # tests/integration/test_tier1_runner.py 的真实进程用例覆盖。
         with patch.object(
             reminder_identity,
             "IN_APP_DELIVERY_ENABLED",
             False,
         ):
-            with patch.object(
-                agent.client.chat.completions,
-                "create",
-                side_effect=self.model_replies(
-                    "个人提醒功能尚未开放"
-                ),
-            ) as model:
-
-                response = self.send(
-                    request_id,
-                    token="member-test-token",
-                )
-
-        self.assertEqual(
-            response.status_code,
-            200,
-        )
-
-        self.assertEqual(
-            model.call_count,
-            2,
-        )
-
-        second_messages = (
-            model.call_args_list[1]
-            .kwargs["messages"]
-        )
-
-        tool_result = json.loads(
-            second_messages[-1]["content"]
-        )
-
-        self.assertFalse(
-            tool_result["success"]
-        )
-
-        self.assertIn(
-            "站内通知中心",
-            tool_result["error"],
-        )
+            with reminder_identity.bind_authenticated_reminder(
+                user_id="member_001",
+                request_id=self.new_id(),
+                role="member",
+            ):
+                with self.assertRaises(
+                    reminder_identity.ReminderDeliveryUnavailable
+                ):
+                    reminder_identity.create_reminder_for_current_user(
+                        "喝水",
+                        5,
+                    )
 
         # 开关关闭时什么都不写。
         self.assertEqual(
@@ -681,6 +655,9 @@ class TestReminderChatHTTP(unittest.TestCase):
                 "list_reminders",
                 "cancel_reminder",
                 "update_reminder",
+                # D12：只把安全的只读沙箱工具暴露给模型
+                "read_file",
+                "list_dir",
             ],
         )
 

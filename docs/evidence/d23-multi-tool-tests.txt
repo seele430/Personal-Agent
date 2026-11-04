@@ -1,0 +1,12 @@
+# D23 G2 多工具链路测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_agent_multi_tool -v
+> 时间：2026-11-04T08:49:44.3625763+08:00
+
+test_default_limit_still_rejects_two_tools (tests.integration.test_agent_multi_tool.MultiToolChainTest.test_default_limit_still_rejects_two_tools) ... ok
+test_reminder_cap_is_independent_of_turn_limit (tests.integration.test_agent_multi_tool.MultiToolChainTest.test_reminder_cap_is_independent_of_turn_limit) ... ok
+test_three_tools_run_in_sandbox_and_land_in_trajectory (tests.integration.test_agent_multi_tool.MultiToolChainTest.test_three_tools_run_in_sandbox_and_land_in_trajectory) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 5.356s
+
+OK

@@ -1,0 +1,9 @@
+{
+  "status": "PASS",
+  "normal_delta_events": 2,
+  "cancel_http_status": 202,
+  "cancel_sse_event": true,
+  "legacy_request_status_after_cancel": "unknown",
+  "client_disconnect_cancelled_worker": true,
+  "server_process_running_during_check": true
+}

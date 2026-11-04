@@ -111,6 +111,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L1：Python SDK 与语言中立 v1 fixture（内存传输）
+    "unit/test_platform_sdk.py": TestSchema(
+        layer="unit",
+        domain="platform_sdk",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
     # L1：Agent 工具调用次数上限
     "test_agent_call_count.py": TestSchema(
         layer="unit",
@@ -213,6 +223,187 @@ TEST_SCHEMAS = {
         authentication="none",
         external_network="none",
         risk="low",
+    ),
+
+    # L2：tier1 runner 的工作区隔离 / 环境清洗 / 超时 / 输出上限 / 进程树清理
+    # 真实创建 OS 子进程，因此 risk=high；数据库只用临时目录。
+    "integration/test_tier1_runner.py": TestSchema(
+        layer="integration",
+        domain="platform_exec",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
+
+    # L2：助手 → 平台 exec → runner 的取消传播与 trajectory 事件顺序
+    "integration/test_platform_exec_cancel.py": TestSchema(
+        layer="integration",
+        domain="platform_exec",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
+
+    # L2：D12 沙箱工具（read / write / ls / shell / python / http）与路径负向测试
+    "integration/test_sandbox_tools.py": TestSchema(
+        layer="integration",
+        domain="platform_exec",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
+
+    # L2：D13 审批门（批准前无 exec、批准后恰好一次、拒绝 / 超时 / 取消 / 归属）
+    "integration/test_approval_gate.py": TestSchema(
+        layer="integration",
+        domain="approval",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L2：D14 轨迹渲染与 CLI（step / exec / 审批 / 事件）
+    "integration/test_trajectory_cli.py": TestSchema(
+        layer="integration",
+        domain="trajectory",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
+    # L2：D15 幂等 create（同 key 重试 / 并发 / 指纹冲突 / 重启后仍生效）
+    "integration/test_sandbox_create.py": TestSchema(
+        layer="integration",
+        domain="platform_create",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L2：D15 续 平台 v1 HTTP API（create / exec / get_exec / cancel / destroy）
+    "integration/test_platform_api.py": TestSchema(
+        layer="integration",
+        domain="platform_http",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L2：D16 TTL 回收 / tombstone 保留 / 410 与惰性过期
+    "integration/test_platform_ttl.py": TestSchema(
+        layer="integration",
+        domain="platform_ttl",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L2：D17 节点注册 / 心跳 / generation 与默认节点
+    "integration/test_platform_nodes.py": TestSchema(
+        layer="integration",
+        domain="platform_nodes",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
+    # L2：D18 节点租约（3 个周期过期 / 续约 / 旧代际不能复活）
+    "integration/test_platform_lease.py": TestSchema(
+        layer="integration",
+        domain="platform_nodes",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
+    # L2：D19 cordon / drain / remove（摘流不杀存量、drain 完才能下线）
+    "integration/test_platform_node_ops.py": TestSchema(
+        layer="integration",
+        domain="platform_nodes",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L2：D20 沙箱状态机（running/idle/failed、非法迁移、旧库重建）
+    "integration/test_sandbox_state.py": TestSchema(
+        layer="integration",
+        domain="platform_state",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L2：D21 每租户并发配额与节点容量（429 CAPACITY_EXCEEDED）
+    "integration/test_sandbox_quota.py": TestSchema(
+        layer="integration",
+        domain="platform_quota",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L2：D22 启动对账（中断 exec、缺失工作区、孤儿目录）
+    "integration/test_platform_reconcile.py": TestSchema(
+        layer="integration",
+        domain="platform_reconcile",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L2：D23 G2 全链路（一次响应 3 个工具、轨迹 3 组 exec）
+    "integration/test_agent_multi_tool.py": TestSchema(
+        layer="integration",
+        domain="agent_tools",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L2：D24 traceparent（宿主注入、子进程可见、一条 run 共用 trace-id）
+    "integration/test_platform_trace.py": TestSchema(
+        layer="integration",
+        domain="platform_trace",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L2：D25 /v1 Bearer 认证（缺/错 401、SDK 带头、未配置时的行为）
+    "integration/test_platform_auth.py": TestSchema(
+        layer="integration",
+        domain="platform_auth",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L2：D26 审计与限流（拒绝留痕、操作留痕、429）
+    "integration/test_platform_audit.py": TestSchema(
+        layer="integration",
+        domain="platform_audit",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
     ),
 
     # L2：AI 预算预留、结算与并发
@@ -554,6 +745,46 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：流式模型、工具执行与取消留痕（SDK 全部模拟）
+    "test_agent_stream.py": TestSchema(
+        layer="integration",
+        domain="agent_stream",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="mocked",
+        risk="high",
+    ),
+
+    # L1：工具注册表与 allow / ask / deny 策略矩阵
+    "test_tool_registry.py": TestSchema(
+        layer="unit",
+        domain="tool_policy",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
+    # L2：run / turn / step / exec 关联与归属隔离
+    "test_run_store.py": TestSchema(
+        layer="integration",
+        domain="run_model",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
+
+    # L2：旧库副本的备份、原子迁移、幂等与回滚
+    "test_run_migration.py": TestSchema(
+        layer="integration",
+        domain="run_model",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
+
     # L3：Bot 管理接口（创建 / 列表 / 身份卡 / 禁用，模拟身份）
     "test_bot_api.py": TestSchema(
         layer="api",
@@ -584,70 +815,10 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
-    # L2：聊天室存储层（房间 / 成员 / 消息 + 归属隔离）
-    "test_room_store.py": TestSchema(
-        layer="integration",
-        domain="room",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="none",
-        risk="medium",
-    ),
-
-    # L1：Bot 发言函数（utter：身份卡 + 限字数，client 被 patch）
-    "test_utter.py": TestSchema(
-        layer="unit",
-        domain="bot",
-        database="none",
-        authentication="none",
-        external_network="mocked",
-        risk="medium",
-    ),
-
-    # L2：聊天室发言编排（@ 解析 + 定向发言 + 消息落库，speak 被注入）
-    "test_room_service.py": TestSchema(
-        layer="integration",
-        domain="room",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="mocked",
-        risk="medium",
-    ),
-
-    # L3：聊天室接口（房间 / 成员 / 发言 / 消息流，模型被 patch）
-    "test_room_api.py": TestSchema(
+    # L3：独立 TTS 与正式应用路由（合成和网络均 mock）
+    "test_tts_api.py": TestSchema(
         layer="api",
-        domain="room",
-        database="temporary_sqlite",
-        authentication="mocked",
-        external_network="mocked",
-        risk="medium",
-    ),
-
-    # L2：举手状态机 + 活跃度（raise/approve/reject + 扣分）
-    "test_room_hands.py": TestSchema(
-        layer="integration",
-        domain="room",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="none",
-        risk="medium",
-    ),
-
-    # L2：展开生成（approve_and_expand，speak 被注入）
-    "test_room_expand.py": TestSchema(
-        layer="integration",
-        domain="room",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="mocked",
-        risk="medium",
-    ),
-
-    # L2：主持人汇总（host_summary + host_summarize_turn，模型被 patch）
-    "test_room_summary.py": TestSchema(
-        layer="integration",
-        domain="room",
+        domain="bot",
         database="temporary_sqlite",
         authentication="none",
         external_network="mocked",

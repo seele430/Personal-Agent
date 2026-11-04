@@ -1,0 +1,31 @@
+# D11 真实 HTTP / SSE 断流验收
+
+> 命令：.venv/Scripts/python.exe scripts/verify_d11_cancel.py
+> 原始证据：docs/evidence/d11-live-cancel.json
+
+模型调用为本地替身；平台、runner、进程树、SQLite 都是真的。
+
+## explicit-cancel
+
+- request_id: d11_live_cancel
+- POST cancel HTTP 状态: 202
+- 旧聊天记录状态: unknown
+- run 状态: cancelled
+- exec: cancelled / EXEC_CANCELLED / sandbox=sbx_489f59595b204d27a9d69501678f0994
+- 探针父进程 PID 14284 存活: False
+- 探针子进程 PID 15604 存活: False
+- 无关进程存活（未误杀）: True
+- trajectory 事件顺序: exec_started/running -> exec_cancel_requested/cancel_requested -> exec_finished/cancelled
+
+## client-disconnect
+
+- request_id: d11_live_disconnect
+- 旧聊天记录状态: unknown
+- run 状态: cancelled
+- exec: cancelled / EXEC_CANCELLED / sandbox=sbx_32ef0e7502ce4935b278b5f90655c3bc
+- 探针父进程 PID 27640 存活: False
+- 探针子进程 PID 18260 存活: False
+- 无关进程存活（未误杀）: True
+- trajectory 事件顺序: exec_started/running -> exec_cancel_requested/cancel_requested -> exec_finished/cancelled
+
+结论：两条取消路径都让平台 exec 落到 cancelled，且落终态之前进程树已经清空；无关进程没有被误杀。

@@ -1,0 +1,22 @@
+# D11 tier1 runner 与取消传播：真实进程测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_tier1_runner tests.integration.test_platform_exec_cancel -v
+> 时间：2026-11-03T12:55:13.5597916+08:00
+> 环境：Windows / Python 3.12.10
+> 说明：两个文件共 11 个用例，全部创建真实 OS 进程；tearDown 逐个确认探针 PID 已消失。
+
+test_already_cancelled_token_starts_no_process (tests.integration.test_tier1_runner.Tier1RunnerTest.test_already_cancelled_token_starts_no_process) ... ok
+test_cancel_terminates_whole_tree (tests.integration.test_tier1_runner.Tier1RunnerTest.test_cancel_terminates_whole_tree) ... ok
+test_child_environment_is_cleaned (tests.integration.test_tier1_runner.Tier1RunnerTest.test_child_environment_is_cleaned) ... ok
+test_child_runs_in_platform_workspace (tests.integration.test_tier1_runner.Tier1RunnerTest.test_child_runs_in_platform_workspace) ... ok
+test_output_limit_terminates_whole_tree (tests.integration.test_tier1_runner.Tier1RunnerTest.test_output_limit_terminates_whole_tree) ... ok
+test_timeout_terminates_whole_tree (tests.integration.test_tier1_runner.Tier1RunnerTest.test_timeout_terminates_whole_tree) ... ok
+test_tool_error_is_reported_not_masked_as_crash (tests.integration.test_tier1_runner.Tier1RunnerTest.test_tool_error_is_reported_not_masked_as_crash) ... ok
+test_tool_runs_in_child_not_in_host (tests.integration.test_tier1_runner.Tier1RunnerTest.test_tool_runs_in_child_not_in_host) ... ok
+test_ask_tool_never_creates_exec (tests.integration.test_platform_exec_cancel.PlatformExecCancelTest.test_ask_tool_never_creates_exec) ... ok
+test_cancel_propagates_to_runner_and_records_events (tests.integration.test_platform_exec_cancel.PlatformExecCancelTest.test_cancel_propagates_to_runner_and_records_events) ... ok
+test_platform_timeout_marks_exec_timed_out (tests.integration.test_platform_exec_cancel.PlatformExecCancelTest.test_platform_timeout_marks_exec_timed_out) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 11.695s
+
+OK

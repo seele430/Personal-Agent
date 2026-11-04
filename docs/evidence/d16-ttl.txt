@@ -1,0 +1,22 @@
+# D16 TTL 回收与 410 语义测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_platform_ttl -v
+> 时间：2026-11-03T16:44:04.0954479+08:00
+> 说明：sweep_once(now=...) 注入时钟；惰性过期用真实 1 秒 TTL。
+
+test_access_after_ttl_returns_410_without_sweep (tests.integration.test_platform_ttl.PlatformTtlTest.test_access_after_ttl_returns_410_without_sweep) ... 2026-11-03 16:44:08,991 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_active_exec_is_cancelled_on_expiry (tests.integration.test_platform_ttl.PlatformTtlTest.test_active_exec_is_cancelled_on_expiry) ... 2026-11-03 16:44:10,350 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_reclaimed_sandbox_keeps_idempotency_until_tombstone_clears (tests.integration.test_platform_ttl.PlatformTtlTest.test_reclaimed_sandbox_keeps_idempotency_until_tombstone_clears) ... 2026-11-03 16:44:10,590 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_sweep_is_idempotent (tests.integration.test_platform_ttl.PlatformTtlTest.test_sweep_is_idempotent) ... 2026-11-03 16:44:10,717 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_sweep_reclaims_expired_sandbox (tests.integration.test_platform_ttl.PlatformTtlTest.test_sweep_reclaims_expired_sandbox) ... 2026-11-03 16:44:10,835 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_tombstone_survives_retention_then_is_cleared (tests.integration.test_platform_ttl.PlatformTtlTest.test_tombstone_survives_retention_then_is_cleared) ... 2026-11-03 16:44:11,020 | INFO | personal_agent.chat | Chat request storage ready
+ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 2.305s
+
+OK
