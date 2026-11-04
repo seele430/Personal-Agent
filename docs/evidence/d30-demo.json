@@ -1,0 +1,16 @@
+{
+  "status": "PASS",
+  "first": "queued",
+  "second": "queued",
+  "third_http": 429,
+  "third_code": "QUEUE_FULL",
+  "retry_after": "5",
+  "queue": {
+    "active": 1,
+    "queued": 1,
+    "max_active": 1,
+    "max_queued": 1,
+    "max_wait_seconds": 2.0
+  },
+  "second_final": "timed_out"
+}
