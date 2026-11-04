@@ -77,7 +77,12 @@ public class G3Win32 {
     if ($hwnd -ne [IntPtr]::Zero) {
         [G3Win32]::ShowWindow($hwnd, 3) | Out-Null   # SW_MAXIMIZE
 
-        $deadline = (Get-Date).AddSeconds(20)
+        Write-Host ""
+        Write-Host "请把 'G3 Demo' 窗口点到最前面（它可能被 VS Code 挡着）。" -ForegroundColor Yellow
+        Write-Host "脚本会最多等 3 分钟，检测到它在前台后自动开始录制。" -ForegroundColor Yellow
+        Write-Host ""
+
+        $deadline = (Get-Date).AddSeconds(180)
 
         while ((Get-Date) -lt $deadline) {
             [G3Win32]::SetForegroundWindow($hwnd) | Out-Null
@@ -91,7 +96,9 @@ public class G3Win32 {
     }
 
     if (-not $foreground) {
-        throw "The '$title' window is not in the foreground. Click it (or press Alt+Tab to it) and run again."
+        $fg = [G3Win32]::GetForegroundWindow()
+        throw ("The '$title' window is not in the foreground (window=$hwnd, foreground=$fg). " +
+            "Click the '$title' window, then run again.")
     }
 
     Start-Sleep -Milliseconds 800
