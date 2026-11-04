@@ -466,9 +466,13 @@ def main() -> int:
                     assert item["execs"][0]["error_code"] == "EXEC_CANCELLED", item
                     assert item["execs"][0]["sandbox_id"], item
 
+                    # 只看这条 exec 的事件：D14 之后 run 级事件也进轨迹，
+                    # 但「取消请求必须先于终态」这条规则只针对 exec 自己。
+                    exec_id = item["execs"][0]["id"]
                     sequence = [
                         (event["event_type"], event["status"])
                         for event in item["events"]
+                        if event["exec_id"] == exec_id
                     ]
                     assert sequence == [
                         ("exec_started", "running"),
