@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 from src.core.run_control import CancellationToken
 from src.platform import active_execs
-from src.platform.audit import AuditLog
+from src.platform.audit import EVENTS, AuditLog
 from src.platform.node_registry import (
     InvalidNodeState,
     NodeBusy,
@@ -650,7 +650,28 @@ def cancel_exec(exec_id: str, request: Request):
 
 
 @router.get("/audit")
-def list_audit(limit: int = 100):
-    """最近的平台操作审计（新的一般在前）。"""
+def list_audit(
+    limit: int = 100,
+    event: str | None = None,
+    outcome: str | None = None,
+    since: str | None = None,
+):
+    """最近的平台操作审计（新的一般在前）；支持按事件 / 结果 / 时间过滤。"""
 
-    return {"records": AuditLog().list(limit=limit)}
+    if event is not None and event not in EVENTS:
+        return _error(400, "INVALID_ARGUMENT", f"未知审计事件：{event}")
+
+    if since is not None:
+        try:
+            datetime.fromisoformat(since)
+        except ValueError:
+            return _error(400, "INVALID_ARGUMENT", "since 必须是 ISO 8601 时间")
+
+    return {
+        "records": AuditLog().list(
+            limit=limit,
+            event=event,
+            outcome=outcome,
+            since=since,
+        )
+    }

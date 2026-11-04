@@ -164,3 +164,10 @@
 - 验收与卡点：`tests/integration/test_platform_audit.py` **8 个用例全绿**（401 留痕、生命周期四事件、audit 接口、audit 也要令牌、429 + `Retry-After` + 留痕、`/health` 不受限、桶按注入时钟恢复、`retry_after` 为正）。全量 **81 文件 / 733 用例 PASS，241.47 秒**，证据见 `docs/evidence/d26-audit.txt`、`docs/evidence/d26-backend-tests.txt`。
 - 遗留限制：① 限流是**进程内**的，多 worker 各算各的；② 审计只记结构化事实，不记命令正文（要看命令得拿 `exec_id` 查 exec 记录）；③ 审计表没有清理 / 归档策略，会一直长；④ 只能按 limit 取最近记录，没有按事件类型 / 时间过滤；⑤ 令牌指纹（sha256 前 12 位）只用于分桶，不是身份。
 - 明天第一件事：D30 有界队列 —— 队列满 429 `QUEUE_FULL`，queued 请求可取消。
+## D26.1 — 2026-11-04
+
+- 今天做了什么：把 D26 里自己发现的刺拔掉。① `/v1/audit` **免限流**（认证仍然要过）—— 事故排查时审计不该被自己的桶挡住；② 审计查询支持 `event` / `outcome` / `since`（ISO 8601）过滤，未知事件与非法时间返回 400；③ 启动时按 `PERSONAL_AGENT_AUDIT_RETENTION_DAYS`（默认 30，`0` = 永久保留）调用 `AuditLog.prune()` 清理过期记录。
+- 验收与卡点：`tests/integration/test_platform_audit.py` 从 8 个扩到 **11 个用例全绿**（审计免限流、三种过滤 + 两个 400、按保留期清理且 0 表示永久）。全量 **81 文件 / 736 用例 PASS，226.32 秒**，证据见 `docs/evidence/d26-1-audit.txt`、`docs/evidence/d26-1-backend-tests.txt`。
+- 踩的两个坑（都记下来）：① 把新用例贴到文件末尾时**贴进了 `RateLimiterUnitTest` 类里** —— 那几条用例没有 `isolate_paths`，直接往真实 `platform.db` 写了 2 行、删了 1 行。测试隔离的意义就在这；已把用例移回 `AuditTest` 并清掉真实库里的测试残留。② `with log.connect() as conn:` **不等于关闭连接**（sqlite3 的上下文管理器只管事务），Windows 上会锁住临时库，teardown 报 `WinError 32`；改成 `closing(...)`。
+- 遗留限制：限流仍是进程内的；审计仍不记命令正文；保留期清理只在启动时跑一次。
+- 明天第一件事：D30 有界队列 —— 队列满 429 `QUEUE_FULL`，queued 请求可取消。

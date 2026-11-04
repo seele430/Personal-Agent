@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 import unittest
 
+from contextlib import closing
+
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -167,6 +169,73 @@ class AuditTest(unittest.TestCase):
         events = self.events()
         self.assertIn("rate_limited", events)
 
+    def test_audit_is_not_rate_limited(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "PERSONAL_AGENT_PLATFORM_RATE_PER_MIN": "1",
+                "PERSONAL_AGENT_PLATFORM_RATE_BURST": "1",
+            },
+        ):
+            rate_limit.reset_limiter()
+
+            first = self.client.get("/v1/nodes", headers=AUTH)
+            second = self.client.get("/v1/nodes", headers=AUTH)
+            audit = self.client.get("/v1/audit", headers=AUTH)
+
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(second.status_code, 429, second.text)
+        # 事故排查时审计不能被自己的限流挡住
+        self.assertEqual(audit.status_code, 200, audit.text)
+
+    def test_audit_filters(self):
+        self.create()
+        self.client.get("/v1/nodes")  # 无令牌 → auth.denied
+
+        creates = self.client.get(
+            "/v1/audit?event=sandbox.create", headers=AUTH
+        ).json()["records"]
+        denied = self.client.get(
+            "/v1/audit?outcome=denied", headers=AUTH
+        ).json()["records"]
+        future = self.client.get(
+            "/v1/audit?since=2999-01-01T00:00:00%2B00:00", headers=AUTH
+        ).json()["records"]
+
+        self.assertTrue(creates)
+        self.assertTrue(all(item["event"] == "sandbox.create" for item in creates))
+        self.assertTrue(denied)
+        self.assertTrue(all(item["outcome"] == "denied" for item in denied))
+        self.assertEqual(future, [])
+
+        self.assertEqual(
+            self.client.get("/v1/audit?event=nope", headers=AUTH).status_code,
+            400,
+        )
+        self.assertEqual(
+            self.client.get("/v1/audit?since=yesterday", headers=AUTH).status_code,
+            400,
+        )
+
+    def test_prune_removes_records_older_than_retention(self):
+        from src.platform.audit import AuditLog
+
+        log = AuditLog()
+        log.record("auth.denied", outcome="denied", code="UNAUTHORIZED")
+        old_id = log.list(limit=1)[0]["id"]
+        log.record("auth.denied", outcome="denied", code="UNAUTHORIZED")
+
+        with closing(log.connect()) as conn, conn:
+            conn.execute(
+                "UPDATE agent_audit SET at = '2000-01-01T00:00:00+00:00' WHERE id = ?",
+                (old_id,),
+            )
+
+        self.assertEqual(log.prune(30), 1)
+        self.assertEqual(len(log.list(limit=10)), 1)
+        self.assertEqual(log.prune(0), 0)  # 0 = 永久保留
+
+
     def test_health_is_not_rate_limited(self):
         with patch.dict(
             "os.environ",
@@ -201,6 +270,7 @@ class RateLimiterUnitTest(unittest.TestCase):
         limiter.allow("k")
 
         self.assertGreaterEqual(limiter.retry_after_seconds("k"), 1)
+
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ from src.inbox_api import router as inbox_router
 from src.monitors_api import router as monitor_router
 from src.notifications_api import router as notification_router
 from src.platform_api import router as platform_router
-from src.platform.audit import AuditLog
+from src.platform.audit import AuditLog, audit_retention_days
 from src.platform.rate_limit import get_limiter
 from src.platform.reaper import start_reaper, stop_reaper
 from src.platform.reconcile import reconcile_startup
@@ -68,6 +68,15 @@ async def lifespan(_app: FastAPI):
         logger.warning(
             "PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用"
         )
+
+    # D26.1：启动时按保留期清理旧审计。
+    try:
+        pruned = AuditLog().prune(audit_retention_days())
+
+        if pruned:
+            logger.info("审计清理：删除 %s 条过期记录", pruned)
+    except Exception:
+        logger.exception("审计清理失败")
 
     # D16：平台 TTL 回收线程；测试环境用 PERSONAL_AGENT_PLATFORM_REAPER=0 关闭。
     start_reaper()
@@ -199,7 +208,12 @@ async def _platform_auth(request, call_next):
     key = _platform_actor_key(request)
     limiter = get_limiter()
 
-    if limiter is not None and not limiter.allow(key):
+    # 审计查询要能在事故中随取随用，不占限流额度（认证仍然要过）。
+    if (
+        limiter is not None
+        and not request.url.path.startswith("/v1/audit")
+        and not limiter.allow(key)
+    ):
         _audit_denied(request, "rate_limited", "RATE_LIMITED")
         return JSONResponse(
             status_code=429,

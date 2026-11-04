@@ -9,11 +9,12 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import uuid
 
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,25 @@ EVENTS = frozenset(
         "rate_limited",
     }
 )
+
+RETENTION_ENV = "PERSONAL_AGENT_AUDIT_RETENTION_DAYS"
+DEFAULT_RETENTION_DAYS = 30
+
+
+def audit_retention_days() -> int:
+    """保留天数；0 表示永久保留。"""
+
+    raw = os.getenv(RETENTION_ENV, "").strip()
+
+    if not raw:
+        return DEFAULT_RETENTION_DAYS
+
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_RETENTION_DAYS
+
+    return max(0, value)
 
 
 def utc_now() -> str:
@@ -126,20 +146,62 @@ class AuditLog:
 
         return _view(row)
 
-    def list(self, limit: int = 100) -> list[dict[str, Any]]:
+    def list(
+        self,
+        limit: int = 100,
+        *,
+        event: str | None = None,
+        outcome: str | None = None,
+        since: str | None = None,
+    ) -> list[dict[str, Any]]:
         limit = max(1, min(int(limit), 500))
+
+        clauses: list[str] = []
+        parameters: list[Any] = []
+
+        if event:
+            clauses.append("event = ?")
+            parameters.append(event)
+
+        if outcome:
+            clauses.append("outcome = ?")
+            parameters.append(outcome)
+
+        if since:
+            clauses.append("at >= ?")
+            parameters.append(since)
+
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        parameters.append(limit)
 
         with closing(self.connect()) as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT * FROM agent_audit
+                {where}
                 ORDER BY at DESC, rowid DESC
                 LIMIT ?
                 """,
-                (limit,),
+                parameters,
             ).fetchall()
 
         return [_view(row) for row in rows]
+
+    def prune(self, retention_days: int) -> int:
+        """删掉超过保留期的记录；返回删除条数。0 表示永久保留。"""
+
+        if retention_days <= 0:
+            return 0
+
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=retention_days)
+        ).isoformat()
+
+        with closing(self.connect()) as conn, conn:
+            cursor = conn.execute(
+                "DELETE FROM agent_audit WHERE at < ?", (cutoff,)
+            )
+            return int(cursor.rowcount or 0)
 
 
 def _view(row: sqlite3.Row) -> dict[str, Any]:

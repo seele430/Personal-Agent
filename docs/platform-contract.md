@@ -240,6 +240,12 @@ failed → reclaimed
 > 拒绝路径（`auth.denied` / `rate_limited`）与关键操作（`sandbox.create` /
 > `sandbox.destroy` / `exec.create` / `exec.cancel`）都写进 `agent_audit` 表，
 > 可用 `GET /v1/audit?limit=N` 查询。**限流是进程内的**，多 worker 各算各的。
+>
+> D26.1（2026-11-04）：`/v1/audit` **不计入限流**（认证仍然要过）—— 事故排查
+> 时审计不能被自己的限流挡住；审计查询支持 `event` / `outcome` /
+> `since`（ISO 8601）过滤，未知事件或非法时间返回 400 `INVALID_ARGUMENT`；
+> 启动时按 `PERSONAL_AGENT_AUDIT_RETENTION_DAYS`（默认 30，`0` = 永久保留）
+> 清理过期记录。
 
 ## 6. 稳定错误码
 
