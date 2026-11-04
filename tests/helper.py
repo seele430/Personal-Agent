@@ -24,14 +24,28 @@ isolate_paths() 一次替换三处：
         ...
 """
 
+import os
 import sys
 import time
+import unittest
 
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
 from src import config
+
+
+# 平台执行层的进程树清理是 Windows 专属能力（Job Object + taskkill）。
+# 非 Windows 只有 ``process_only`` 降级路径，因此「整棵树被清掉」这类
+# 断言只能在 Windows 上验证。
+WINDOWS = os.name == "nt"
+
+
+def windows_only(reason: str):
+    """把只能在 Windows 上成立的用例标成 skip，而不是让它红。"""
+
+    return unittest.skipUnless(WINDOWS, reason)
 
 
 def wait_for_exec_worker(exec_id: str, timeout: float = 30.0) -> None:
@@ -103,6 +117,14 @@ def _enter(stack: ExitStack, container) -> config.Paths:
     if limiter_module is not None:
         stack.enter_context(
             patch.object(limiter_module, "_limiter", None)
+        )
+
+    # D30：执行队列是进程级单例，不清掉会让用例互相挤占并发名额。
+    queue_module = sys.modules.get("src.platform.exec_queue")
+
+    if queue_module is not None:
+        stack.enter_context(
+            patch.object(queue_module, "_queue", None)
         )
 
     return temporary

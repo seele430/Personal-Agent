@@ -246,6 +246,13 @@ failed → reclaimed
 > `since`（ISO 8601）过滤，未知事件或非法时间返回 400 `INVALID_ARGUMENT`；
 > 启动时按 `PERSONAL_AGENT_AUDIT_RETENTION_DAYS`（默认 30，`0` = 永久保留）
 > 清理过期记录。
+>
+> D30（2026-11-04）：有界执行队列已实现。全局并发上限
+> `PERSONAL_AGENT_PLATFORM_MAX_ACTIVE_EXECS`（默认 4）、等待队列
+> `PERSONAL_AGENT_PLATFORM_QUEUE_SIZE`（默认 16）；两者都满时返回
+> 429 `QUEUE_FULL`，且**不创建 exec 记录**。排队中的 exec 可以通过 cancel
+> 直接落 `cancelled`（它从未起过进程）；活跃名额释放后自动放行队首。
+> 队列与并发都是进程内的，不是全局调度。
 
 ## 6. 稳定错误码
 

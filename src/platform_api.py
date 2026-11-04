@@ -41,6 +41,7 @@ from src.platform.exec_service import (
     Tier1Executor,
 )
 from src.platform.trace_context import is_valid, new_traceparent
+from src.platform.exec_queue import QueuedExec, get_queue
 from src.platform.exec_store import (
     EXEC_CANCELLED as STORE_CANCELLED,
     TERMINAL_EXEC_STATES,
@@ -219,6 +220,10 @@ def _run_exec(
     active_execs.register(exec_id, sandbox_id, token)
 
     try:
+        # D30：出队后可能已经被取消（排队期间取消不需要杀进程）。
+        if store.get(exec_id)["state"] in TERMINAL_EXEC_STATES:
+            return
+
         # D20：有 exec 在跑 → 沙箱进入 running；被回收/失败时直接拒绝执行。
         service.begin_exec(sandbox_id)
 
@@ -266,6 +271,34 @@ def _run_exec(
         finally:
             # 最后才从活动表摘掉：只要还在这里，就说明 worker 可能还在碰数据库。
             active_execs.unregister(exec_id)
+            # D30：让出并发名额，必要时放出队首。
+            _exec_queue().finish()
+
+
+def _spawn_exec(item) -> None:
+    """队列放行一条 exec：起线程跑真实的 tier1 执行。"""
+
+    threading.Thread(
+        target=_run_exec,
+        args=(
+            item.exec_id,
+            item.sandbox_id,
+            item.argv,
+            item.timeout_ms,
+            item.max_output_bytes,
+            item.traceparent,
+        ),
+        daemon=True,
+    ).start()
+
+
+def _exec_queue():
+    queue = get_queue()
+
+    if queue._start is None:  # noqa: SLF001 - 单例只需要装一次启动器
+        queue.start_with(_spawn_exec)
+
+    return queue
 
 
 # ==========================================
@@ -578,6 +611,24 @@ def create_exec(
     if not is_valid(traceparent):
         traceparent = new_traceparent()
 
+    queue = _exec_queue()
+
+    # D30：队列满了就不创建 exec，直接 429；不隐式无限排队。
+    if not queue.accepting():
+        _audit(
+            "exec.create",
+            request=request,
+            outcome="denied",
+            code="QUEUE_FULL",
+            sandbox_id=sandbox_id,
+        )
+        return _error(
+            429,
+            "QUEUE_FULL",
+            "执行队列已满，请稍后重试",
+            retryable=True,
+        )
+
     row = ExecStore().create(
         sandbox_id,
         argv=command,
@@ -588,18 +639,43 @@ def create_exec(
         traceparent=traceparent,
     )
 
-    threading.Thread(
-        target=_run_exec,
-        args=(
+    outcome = queue.submit(
+        QueuedExec(
+            exec_id=row["id"],
+            sandbox_id=sandbox_id,
+            argv=command,
+            timeout_ms=payload.timeout_ms,
+            max_output_bytes=payload.max_output_bytes,
+            traceparent=traceparent,
+        )
+    )
+
+    if outcome == "full":
+        # 预检之后被别人抢了位置：这条已经建出来的 exec 落失败，请求仍是 429。
+        ExecStore().finish(
             row["id"],
-            sandbox_id,
-            command,
-            payload.timeout_ms,
-            payload.max_output_bytes,
-            traceparent,
-        ),
-        daemon=True,
-    ).start()
+            state=EXEC_FAILED,
+            exit_code=None,
+            stdout="",
+            stderr="执行队列已满",
+            truncated=False,
+            error_code="QUEUE_FULL",
+            result_code="EXEC_FAILED",
+        )
+        _audit(
+            "exec.create",
+            request=request,
+            outcome="denied",
+            code="QUEUE_FULL",
+            sandbox_id=sandbox_id,
+            exec_id=row["id"],
+        )
+        return _error(
+            429,
+            "QUEUE_FULL",
+            "执行队列已满，请稍后重试",
+            retryable=True,
+        )
 
     _audit(
         "exec.create",
@@ -635,6 +711,35 @@ def cancel_exec(exec_id: str, request: Request):
 
     if row["state"] in TERMINAL_EXEC_STATES:
         return _error(409, "EXEC_NOT_CANCELLABLE", "exec 已到不可取消的终态")
+
+    if row["state"] == "queued":
+        # D30：排队中的 exec 从未起过进程，摘出队列后直接落 cancelled。
+        # 但 worker 可能在「已出队、还没置 running」的窗口里 —— 顺手把 token
+        # 也取消掉，否则它会带着未取消的 token 跑完整个命令。
+        _exec_queue().cancel(exec_id)
+        active_execs.cancel(exec_id)
+        ExecStore().finish(
+            exec_id,
+            state=EXEC_CANCELLED,
+            exit_code=None,
+            stdout="",
+            stderr="",
+            truncated=False,
+            error_code="EXEC_CANCELLED",
+            result_code="EXEC_CANCELLED",
+        )
+
+        _audit(
+            "exec.cancel",
+            request=request,
+            sandbox_id=row["sandbox_id"],
+            exec_id=exec_id,
+            detail={"was": "queued"},
+        )
+
+        return JSONResponse(
+            status_code=202, content=_exec_body(ExecStore().get(exec_id))
+        )
 
     active_execs.cancel(exec_id)
 

@@ -1,0 +1,21 @@
+# D30 有界队列测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_platform_queue -v
+> 时间：2026-11-04T11:24:20.7168712+08:00
+> 说明：修复 queued-cancel 竞态之后的复跑结果。
+
+test_queue_full_returns_429_without_creating_exec (tests.integration.test_platform_queue.ExecQueueApiTest.test_queue_full_returns_429_without_creating_exec) ... 2026-11-04 11:24:24,500 | INFO | personal_agent.chat | Chat request storage ready
+PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用
+ok
+test_queued_exec_can_be_cancelled (tests.integration.test_platform_queue.ExecQueueApiTest.test_queued_exec_can_be_cancelled) ... 2026-11-04 11:24:24,964 | INFO | personal_agent.chat | Chat request storage ready
+PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用
+ok
+test_queued_exec_starts_after_slot_frees (tests.integration.test_platform_queue.ExecQueueApiTest.test_queued_exec_starts_after_slot_frees) ... 2026-11-04 11:24:25,485 | INFO | personal_agent.chat | Chat request storage ready
+PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用
+ok
+test_finish_releases_next_queued (tests.integration.test_platform_queue.ExecQueueUnitTest.test_finish_releases_next_queued) ... ok
+test_submit_finish_and_cancel (tests.integration.test_platform_queue.ExecQueueUnitTest.test_submit_finish_and_cancel) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 3.869s
+
+OK

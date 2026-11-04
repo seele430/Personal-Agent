@@ -10,7 +10,10 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
 import sqlite3
+import subprocess
 import sys
 import threading
 import unittest
@@ -33,8 +36,12 @@ from src.platform.exec_service import (
     EXEC_TIMED_OUT,
     Tier1Executor,
 )
-from src.platform.process_tree import CLEANUP_JOB_OBJECT, process_is_alive
-from tests.helper import isolate_paths
+from src.platform.process_tree import (
+    CLEANUP_JOB_OBJECT,
+    CLEANUP_PROCESS_ONLY,
+    process_is_alive,
+)
+from tests.helper import WINDOWS, isolate_paths, windows_only
 from tests.integration.tier1_probe import (
     probe_argv,
     read_pids,
@@ -73,6 +80,13 @@ class Tier1RunnerTest(unittest.TestCase):
                 if process_is_alive(pid):
                     leftovers.append(pid)
 
+        if not WINDOWS:
+            # 非 Windows 只有 process_only 降级：平台保证不了「整棵树」，
+            # 孙进程由测试自己收掉，否则会污染后续用例。
+            for pid in leftovers:
+                force_kill(pid)
+            return
+
         self.assertEqual(leftovers, [], f"遗留进程：{leftovers}")
 
     # ------------------------------------------------------------------
@@ -85,7 +99,10 @@ class Tier1RunnerTest(unittest.TestCase):
         )
 
         self.assertEqual(outcome.status, EXEC_SUCCEEDED, outcome.stderr)
-        self.assertEqual(outcome.cleanup, CLEANUP_JOB_OBJECT)
+
+        # 清理模式按平台降级，但必须如实写进 outcome，不能冒充 job 级清理。
+        expected_cleanup = CLEANUP_JOB_OBJECT if WINDOWS else CLEANUP_PROCESS_ONLY
+        self.assertEqual(outcome.cleanup, expected_cleanup)
 
         workspace = Path(outcome.stdout.strip())
         self.assertTrue(
@@ -181,6 +198,7 @@ class Tier1RunnerTest(unittest.TestCase):
     # 超时 / 输出上限 / 取消：都要清整棵树
     # ------------------------------------------------------------------
 
+    @windows_only("整棵进程树清理依赖 Windows Job Object")
     def test_timeout_terminates_whole_tree(self):
         pid_file = self.pid_file()
 
@@ -195,6 +213,7 @@ class Tier1RunnerTest(unittest.TestCase):
         self.assertFalse(process_is_alive(pids["parent"]))
         self.assertFalse(process_is_alive(pids["child"]))
 
+    @windows_only("整棵进程树清理依赖 Windows Job Object")
     def test_output_limit_terminates_whole_tree(self):
         pid_file = self.pid_file()
 
@@ -213,6 +232,7 @@ class Tier1RunnerTest(unittest.TestCase):
         self.assertFalse(process_is_alive(pids["parent"]))
         self.assertFalse(process_is_alive(pids["child"]))
 
+    @windows_only("整棵进程树清理依赖 Windows Job Object")
     def test_cancel_terminates_whole_tree(self):
         pid_file = self.pid_file()
         token = CancellationToken()
@@ -246,6 +266,24 @@ class Tier1RunnerTest(unittest.TestCase):
 
         self.assertEqual(outcome.status, EXEC_CANCELLED)
         self.assertEqual(outcome.stdout, "")
+
+
+def force_kill(pid: int) -> None:
+    """测试兜底：按 PID 结束残留进程，不参与平台能力断言。"""
+
+    if WINDOWS:
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return
+
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
 
 
 if __name__ == "__main__":

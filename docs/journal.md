@@ -171,3 +171,10 @@
 - 踩的两个坑（都记下来）：① 把新用例贴到文件末尾时**贴进了 `RateLimiterUnitTest` 类里** —— 那几条用例没有 `isolate_paths`，直接往真实 `platform.db` 写了 2 行、删了 1 行。测试隔离的意义就在这；已把用例移回 `AuditTest` 并清掉真实库里的测试残留。② `with log.connect() as conn:` **不等于关闭连接**（sqlite3 的上下文管理器只管事务），Windows 上会锁住临时库，teardown 报 `WinError 32`；改成 `closing(...)`。
 - 遗留限制：限流仍是进程内的；审计仍不记命令正文；保留期清理只在启动时跑一次。
 - 明天第一件事：D30 有界队列 —— 队列满 429 `QUEUE_FULL`，queued 请求可取消。
+## D30 — 2026-11-04
+
+- 今天做了什么：实现有界执行队列。新增 `src/platform/exec_queue.py`：全局活跃上限 `PERSONAL_AGENT_PLATFORM_MAX_ACTIVE_EXECS`（默认 4）+ 等待队列 `PERSONAL_AGENT_PLATFORM_QUEUE_SIZE`（默认 16）；`create_exec` 先预检 `accepting()`，满则 429 `QUEUE_FULL` 且**不创建 exec 记录**，再 `submit()`（started / queued / full）。活跃名额释放（worker finally → `queue.finish()`）自动放行队首。排队中的 exec 可以 cancel：摘出队列 + 取消 token + 直接落 `cancelled`（它从未起过进程）。
+- 验收与卡点：`tests/integration/test_platform_queue.py` **5 个用例全绿**（队列满 429 且不新增 exec、排队项在名额释放后自动启动并成功、排队项可取消且不产生输出、取消排队项后名额可复用、队列单元测试的 submit/finish/cancel 与放行顺序）。平台相关 5 个文件一起跑 38 个用例也全绿。全量 **82 文件 / 741 用例 PASS，248.47 秒**，证据见 `docs/evidence/d30-queue.txt`、`docs/evidence/d30-backend-tests.txt`。
+- 修的一个真竞态：`queued` 分支取消时只摘队列、没取消 token；如果 worker 恰好处在「已出队、还没置 running」的窗口，它会带着未取消的 token 跑满整条命令（审计用例连续两次 30 秒超时暴露了它）。修法：queued 分支同时调用 `active_execs.cancel(exec_id)`，让刚出队的 worker 立刻看到取消。修后连跑 6 次稳定。
+- 遗留限制：① 队列和并发都是**进程内**的，多 worker 各算各的；② 队列不跨重启，重启时 queued 的 exec 由 D22 对账统一落 `failed / INTERRUPTED_BY_RESTART`；③ 没有优先级、没有公平性保证（FIFO 而已）；④ 没有队列深度指标暴露（只有 `GET /v1/nodes` 和日志能间接看）；⑤ 429 没有 `Retry-After`（队列满时给不出准确等待时间）。
+- 明天第一件事：D31 队列可观测性 / 背压指标，或回到 D40 演示收尾。

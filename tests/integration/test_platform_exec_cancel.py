@@ -29,7 +29,7 @@ from src.core.run_control import CancellationToken, ChatCancelled
 from src.core.run_store import RunStore
 from src.platform.exec_service import PlatformExecutionError
 from src.platform.process_tree import process_is_alive
-from tests.helper import isolate_paths
+from tests.helper import WINDOWS, isolate_paths, windows_only
 from tests.integration.tier1_probe import (
     wait_for_pids,
     register_probe_tool,
@@ -121,6 +121,7 @@ class PlatformExecCancelTest(unittest.TestCase):
     # 1. 取消：进程树清空之后才允许落 cancelled
     # ------------------------------------------------------------------
 
+    @windows_only("探针整棵进程树的清理依赖 Windows Job Object")
     def test_cancel_propagates_to_runner_and_records_events(self):
         register_probe_tool(sys.executable, self.pid_file)
 
@@ -272,6 +273,7 @@ class PlatformExecCancelTest(unittest.TestCase):
     # 3. 平台超时：exec 落 timed_out，进程树同样要清
     # ------------------------------------------------------------------
 
+    @windows_only("探针整棵进程树的清理依赖 Windows Job Object")
     def test_platform_timeout_marks_exec_timed_out(self):
         register_probe_tool(sys.executable, self.pid_file, timeout_ms=1500)
 
@@ -340,7 +342,16 @@ class PlatformExecCancelTest(unittest.TestCase):
 def subprocess_kill(pid: int) -> None:
     """仅用于测试兜底：按 PID 结束探针进程。"""
 
+    import os
+    import signal
     import subprocess
+
+    if not WINDOWS:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+        return
 
     subprocess.run(
         ["taskkill", "/F", "/T", "/PID", str(pid)],
