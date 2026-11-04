@@ -36,6 +36,14 @@ EXIT_RUNNER_ERROR = 5
 # src/platform/tier1_runner.py -> 仓库根目录
 ROOT = Path(__file__).resolve().parents[2]
 
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.platform.trace_context import (  # noqa: E402
+    TRACEPARENT_ENV,
+    is_valid,
+)
+
 DATA_DIR_ENV = "PERSONAL_AGENT_DATA_DIR"
 TIER1_ENV = "PERSONAL_AGENT_TIER1"
 
@@ -174,6 +182,7 @@ def run_command(spec: dict) -> int:
         argv,
         stdin=subprocess.DEVNULL,
         cwd=os.getcwd(),
+        env=dict(os.environ),
         check=False,
     )
 
@@ -212,6 +221,13 @@ def main(argv: list[str] | None = None) -> int:
     except InvalidSpec as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID_SPEC
+
+    # D24：宿主注入的 W3C traceparent。放进本进程环境，工具 handler 与
+    # 命令子进程都能继承到；非法值一律忽略（不因为坏头拒绝执行）。
+    traceparent = spec.get("traceparent")
+
+    if is_valid(traceparent):
+        os.environ[TRACEPARENT_ENV] = traceparent
 
     if args.kind == "tool":
         try:

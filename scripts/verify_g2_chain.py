@@ -296,6 +296,12 @@ def main() -> int:
                     "trajectory_exec_events": [
                         event["event_type"] for event in exec_events
                     ],
+                    # D24：同一条 run 的 trace-id 应该一致，span 每次不同。
+                    "traceparents": [
+                        event["payload"]["traceparent"]
+                        for event in exec_events
+                        if event["event_type"] == "exec_started"
+                    ],
                     "trace_exit_code": trace.returncode,
                     "trace_lines": len(trace.stdout.splitlines()),
                 }
@@ -309,6 +315,16 @@ def main() -> int:
                 assert report["trajectory_exec_events"].count("exec_started") == 3, report
                 assert report["trajectory_exec_events"].count("exec_finished") == 3, report
                 assert report["trace_exit_code"] == 0, report
+
+                trace_ids = {
+                    item.split("-")[1] for item in report["traceparents"]
+                }
+                span_ids = {
+                    item.split("-")[2] for item in report["traceparents"]
+                }
+                assert len(report["traceparents"]) == 3, report
+                assert len(trace_ids) == 1, report
+                assert len(span_ids) == 3, report
 
                 EVIDENCE.write_text(
                     json.dumps(report, ensure_ascii=False, indent=2),

@@ -145,3 +145,10 @@
 - 遗留限制：① 「3 个工具」依赖模型一次响应并发多个 `tool_call`；若模型逐个返回，仍只是 1 个工具/轮（多轮 loop 留给 D30 之后）；② G2 演示里的模型是脚本替身，真实模型的 3 工具行为没有重复验证（单工具真实链路 D9 已验）；③ 工具数上限是进程级环境变量，改了要重启；④ 「面板」目前是 CLI（`trace_run.py`），Web 面板还没做；⑤ 三个工具里 `list_dir` 用了两次，演示的是「多工具」而不是「多不同工具」。
 - 补记（同日）：kimi 目录复跑时偶然撞到 `WinError 32`（临时目录里的 `platform.db` 仍被后台 worker 打开）。根因是终态写入后 worker 还要做 `end_exec` 并保留活动注册，测试拆目录正好撞上。修法：`_run_exec` 的 finally 改成**先 `end_exec` 再 `unregister`**（「还在活动表里」＝worker 可能还在碰库），测试侧加 `wait_for_exec_worker()` 等它退场。单测连跑 5 次稳定，全量复跑 710 全绿。
 - 明天第一件事：D24 traceparent 跨进程 —— 沙箱子进程注入 traceparent，把宿主 span 与沙箱 span 串起来。
+## D24 — 2026-11-04
+
+- 今天做了什么：实现跨进程 traceparent 注入。新增 `src/platform/trace_context.py`（W3C 版本 00 的生成 / 校验 / 派生，纯标准库）；`Tier1Executor.execute_tool` / `execute_command` 接受 traceparent，没有就新生成；runner 从任务说明里取出并放进子进程环境 `TRACEPARENT`（命令显式 `env=dict(os.environ)`，工具 handler 直接继承）；`platform_execs` 增加 `traceparent` 列（旧库补列），`/v1` 的 exec 响应和 `GET /v1/exec` 都能读到；调用方可用 `traceparent` 头沿用外部 trace，非法值忽略并新生成。assistant 链路按 run 生成 trace-id、每次 exec 派生新 span，写进 `exec_started` 事件；`trace_run.py` 把它缩成 `trace=… span=…` 显示。
+- 验收与卡点：`tests/integration/test_platform_trace.py` **6 个用例全绿**（子进程读到生成的 traceparent、调用方传入的被沿用、非法头被替换、两次 exec span 不同、GET 能查到、一条 run 的两次 exec 共享 trace-id 且 span 不同）。G2 脚本复跑会把三个 traceparent 写进报告并断言「1 个 trace-id + 3 个 span」，CLI 输出三行 `trace=9638f6cb… span=…`。全量 **79 文件 / 716 用例 PASS，265.80 秒**，证据见 `docs/evidence/d24-trace.txt`、`docs/evidence/d24-backend-tests.txt`、`docs/evidence/d23-g2-chain.json`。
+- 过程中修的一个回归：`test_agent_stream` 里的 `fake_platform` 是显式签名的替身，新增 `traceparent` 关键字后调用直接 TypeError，导致「进入工具」事件没发生、断言超时 —— 给替身补上参数后恢复。再次说明：改接缝签名要同时扫所有手写替身。
+- 遗留限制：① 只做注入与透传，不采集、不上报，没有 OpenTelemetry 依赖；② 沙箱内部再往下派生要靠子进程自己遵守规范，平台不校验；③ 只覆盖 exec 与工具调用，runner 自身启动、reaper、API 请求没有 span；④ 采样标志固定 `01`，没有 `tracestate`；⑤ assistant 的 trace-id 由 run_id 哈希得到，语义上不是随机值。
+- 明天第一件事：D25 /v1 认证 —— 那个安全边界还开着。

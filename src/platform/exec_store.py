@@ -67,10 +67,19 @@ def init_exec_schema(conn: sqlite3.Connection) -> None:
             result_code TEXT,
             created_at TEXT NOT NULL,
             started_at TEXT,
-            finished_at TEXT
+            finished_at TEXT,
+            traceparent TEXT
         )
         """
     )
+
+    # D24：traceparent 是后加的列，旧库补列（幂等）。
+    columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(platform_execs)")
+    }
+
+    if "traceparent" not in columns:
+        conn.execute("ALTER TABLE platform_execs ADD COLUMN traceparent TEXT")
     conn.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_platform_execs_sandbox
@@ -101,6 +110,7 @@ class ExecStore:
         step_id: str | None,
         timeout_ms: int,
         max_output_bytes: int,
+        traceparent: str | None = None,
     ) -> dict[str, Any]:
         exec_id = f"exec_{uuid.uuid4().hex}"
 
@@ -109,8 +119,8 @@ class ExecStore:
                 """
                 INSERT INTO platform_execs(
                     id, sandbox_id, run_id, step_id, state, argv_json,
-                    timeout_ms, max_output_bytes, created_at
-                ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?)
+                    timeout_ms, max_output_bytes, created_at, traceparent
+                ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)
                 """,
                 (
                     exec_id,
@@ -121,6 +131,7 @@ class ExecStore:
                     timeout_ms,
                     max_output_bytes,
                     utc_now(),
+                    traceparent,
                 ),
             )
 

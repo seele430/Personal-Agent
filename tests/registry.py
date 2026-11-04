@@ -376,6 +376,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：D24 traceparent（宿主注入、子进程可见、一条 run 共用 trace-id）
+    "integration/test_platform_trace.py": TestSchema(
+        layer="integration",
+        domain="platform_trace",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",

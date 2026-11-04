@@ -1,0 +1,20 @@
+# D24 traceparent 测试
+> 命令：.venv/Scripts/python.exe -m unittest tests.integration.test_platform_trace -v
+> 时间：2026-11-04T09:20:49.6806809+08:00
+
+test_caller_traceparent_is_propagated (tests.integration.test_platform_trace.TraceApiTest.test_caller_traceparent_is_propagated) ... 2026-11-04 09:20:53,299 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_command_sees_generated_traceparent (tests.integration.test_platform_trace.TraceApiTest.test_command_sees_generated_traceparent) ... 2026-11-04 09:20:53,827 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_each_exec_has_its_own_span (tests.integration.test_platform_trace.TraceApiTest.test_each_exec_has_its_own_span) ... 2026-11-04 09:20:54,505 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_invalid_traceparent_is_replaced (tests.integration.test_platform_trace.TraceApiTest.test_invalid_traceparent_is_replaced) ... 2026-11-04 09:20:55,367 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_traceparent_visible_on_get (tests.integration.test_platform_trace.TraceApiTest.test_traceparent_visible_on_get) ... 2026-11-04 09:20:55,899 | INFO | personal_agent.chat | Chat request storage ready
+ok
+test_run_execs_share_trace_id (tests.integration.test_platform_trace.TraceRunTest.test_run_execs_share_trace_id) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 9.079s
+
+OK

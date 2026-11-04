@@ -32,6 +32,15 @@ def _payload_text(event: dict[str, Any]) -> str:
     if not payload:
         return ""
 
+    # D24：exec_started 只带一个 traceparent，缩成「trace… span…」更好扫。
+    traceparent = payload.get("traceparent")
+
+    if isinstance(traceparent, str) and len(payload) == 1:
+        parts = traceparent.split("-")
+
+        if len(parts) == 4:
+            return f"trace={parts[1][:8]}… span={parts[2][:8]}"
+
     text = json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
     return short_text(text, PAYLOAD_LIMIT)

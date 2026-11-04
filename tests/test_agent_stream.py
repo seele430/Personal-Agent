@@ -125,6 +125,7 @@ class AgentStreamTest(unittest.TestCase):
             on_started=None,
             on_cancel_requested=None,
             require_allow=True,
+            traceparent=None,
         ):
             on_started("sbx_stream_test")
             unregister = cancel_token.register_canceller(interrupted.set)

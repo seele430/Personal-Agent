@@ -17,6 +17,7 @@ from src.core import approvals
 from src.core.run_control import CancellationToken, ChatCancelled
 from src.core.run_store import RunStore
 from src.core.tool_registry import ToolApprovalRequired, ToolDenied
+from src.platform.trace_context import child_traceparent, traceparent_for_run
 from src.platform.exec_service import (
     ERROR_CANCELLED,
     ERROR_RUNNER,
@@ -150,6 +151,11 @@ def run_chat_stream(
         store.append_event(run["id"], event_type="run_started", status="running")
     run_id = run["id"] if run is not None else None
 
+    # D24：同一条 run 共用一条 trace-id，沙箱子进程通过 TRACEPARENT 继承。
+    run_traceparent = (
+        traceparent_for_run(run_id) if run_id is not None else None
+    )
+
     def finish_run(status: str) -> None:
         """写终态：先落 trajectory 事件，再改 run 状态。"""
 
@@ -224,6 +230,12 @@ def run_chat_stream(
 
         for tool_call in tool_calls:
             cancel_token.check()
+            # D24：同一 run 共享 trace-id，每次 exec 派生自己的 span。
+            exec_traceparent = (
+                child_traceparent(run_traceparent)
+                if run_traceparent is not None
+                else None
+            )
             name = tool_call.function.name
             policy = agent.TOOL_REGISTRY.policy(name)
             tool_step = (
@@ -266,7 +278,12 @@ def run_chat_stream(
                 sandbox_ref["id"] = sandbox_id
                 if store is not None and execution is not None:
                     store.start_exec(execution["id"], sandbox_id=sandbox_id)
-                record_event("exec_started", "running", sandbox_id=sandbox_id)
+                record_event(
+                    "exec_started",
+                    "running",
+                    sandbox_id=sandbox_id,
+                    payload={"traceparent": exec_traceparent},
+                )
 
             def on_cancel_requested(requested_at):
                 # 取消请求与最终 cancelled 必须可区分，且先于终态写入。
@@ -348,6 +365,7 @@ def run_chat_stream(
                         on_started=on_started,
                         on_cancel_requested=on_cancel_requested,
                         require_allow=False,
+                        traceparent=exec_traceparent,
                     )
                     result = _finish_platform_exec(
                         outcome,
@@ -364,6 +382,7 @@ def run_chat_stream(
                         sandbox_id=run_sandbox,
                         on_started=on_started,
                         on_cancel_requested=on_cancel_requested,
+                        traceparent=exec_traceparent,
                     )
                     result = _finish_platform_exec(
                         outcome,

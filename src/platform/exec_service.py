@@ -43,6 +43,7 @@ from src.platform.process_tree import (
     ProcessTree,
     ProcessTreeError,
 )
+from src.platform.trace_context import new_traceparent
 
 logger = logging.getLogger("personal_agent.platform")
 
@@ -133,6 +134,7 @@ class ExecOutcome:
     cleanup: str = CLEANUP_JOB_OBJECT
     duration_ms: int = 0
     cancel_requested_at: str | None = None
+    traceparent: str | None = None
 
 
 def clamp(value: int | None, default: int, maximum: int) -> int:
@@ -279,6 +281,7 @@ class Tier1Executor:
         sandbox_id: str | None = None,
         on_started: Callable[[str], None] | None = None,
         on_cancel_requested: Callable[[str], None] | None = None,
+        traceparent: str | None = None,
     ) -> ExecOutcome:
         spec: dict[str, Any] = {
             "tool": tool_name,
@@ -297,6 +300,7 @@ class Tier1Executor:
             max_output_bytes=max_output_bytes,
             on_started=on_started,
             on_cancel_requested=on_cancel_requested,
+            traceparent=traceparent,
         )
 
     def execute_command(
@@ -309,6 +313,7 @@ class Tier1Executor:
         sandbox_id: str | None = None,
         on_started: Callable[[str], None] | None = None,
         on_cancel_requested: Callable[[str], None] | None = None,
+        traceparent: str | None = None,
     ) -> ExecOutcome:
         return self._run(
             kind="command",
@@ -320,6 +325,7 @@ class Tier1Executor:
             max_output_bytes=max_output_bytes,
             on_started=on_started,
             on_cancel_requested=on_cancel_requested,
+            traceparent=traceparent,
         )
 
     def open_sandbox(self) -> str:
@@ -361,6 +367,7 @@ class Tier1Executor:
         on_started: Callable[[str], None] | None,
         on_cancel_requested: Callable[[str], None] | None,
         sandbox_id: str | None = None,
+        traceparent: str | None = None,
     ) -> ExecOutcome:
         timeout = clamp(timeout_ms, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS)
         output_limit = clamp(
@@ -372,6 +379,7 @@ class Tier1Executor:
 
         sandbox_id = sandbox_id or f"sbx_{uuid.uuid4().hex}"
         started = time.monotonic()
+        traceparent = traceparent or new_traceparent()
 
         if cancel_token is not None and cancel_token.cancelled:
             # 已经取消：不启动进程，直接给确定终态。
@@ -385,6 +393,7 @@ class Tier1Executor:
                 error_code=ERROR_CANCELLED,
                 cleanup=CLEANUP_JOB_OBJECT,
                 duration_ms=0,
+                traceparent=traceparent,
             )
 
         sandbox_dir = self.root / sandbox_id
@@ -393,7 +402,12 @@ class Tier1Executor:
         workspace.mkdir(parents=True, exist_ok=True)
         result_path = sandbox_dir / "result.json"
 
-        payload = {"schema_version": 1, "kind": kind, **spec}
+        payload = {
+            "schema_version": 1,
+            "kind": kind,
+            "traceparent": traceparent,
+            **spec,
+        }
 
         argv = [
             self.python,
@@ -597,6 +611,7 @@ class Tier1Executor:
             cleanup=cleanup_mode,
             duration_ms=duration_ms,
             cancel_requested_at=state.requested_at,
+            traceparent=traceparent,
         )
 
 

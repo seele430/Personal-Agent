@@ -36,6 +36,7 @@ from src.platform.exec_service import (
     EXEC_TIMED_OUT,
     Tier1Executor,
 )
+from src.platform.trace_context import is_valid, new_traceparent
 from src.platform.exec_store import (
     EXEC_CANCELLED as STORE_CANCELLED,
     TERMINAL_EXEC_STATES,
@@ -139,6 +140,7 @@ def _exec_body(row: dict[str, Any]) -> dict[str, Any]:
         "finished_at": row["finished_at"],
         "truncated": bool(row["truncated"]),
         "result_code": row["result_code"],
+        "traceparent": row.get("traceparent"),
     }
 
 
@@ -188,7 +190,7 @@ def _require_sandbox(sandbox_id: str, *, allow_reclaimed: bool = False):
     except SandboxNotFound:
         return None, _error(404, "SANDBOX_NOT_FOUND", "沙箱不存在")
 
-    if sandbox["state"] == "created" and _sandbox_expired(sandbox):
+    if sandbox["state"] != "reclaimed" and _sandbox_expired(sandbox):
         active_execs.cancel_for_sandbox(sandbox_id)
         sandbox = service.reclaim(sandbox_id, reason="ttl_expired")
 
@@ -204,6 +206,7 @@ def _run_exec(
     argv: list[str],
     timeout_ms: int,
     max_output_bytes: int,
+    traceparent: str | None = None,
 ) -> None:
     store = ExecStore()
     token = CancellationToken()
@@ -222,6 +225,7 @@ def _run_exec(
             timeout_ms=timeout_ms,
             max_output_bytes=max_output_bytes,
             on_started=lambda _sandbox: store.start(exec_id),
+            traceparent=traceparent,
         )
 
         store.finish(
@@ -466,7 +470,11 @@ def destroy_sandbox(sandbox_id: str):
 # ==========================================
 
 @router.post("/sandboxes/{sandbox_id}/exec", status_code=202)
-def create_exec(sandbox_id: str, payload: ExecRequest):
+def create_exec(
+    sandbox_id: str,
+    payload: ExecRequest,
+    traceparent: str | None = Header(default=None, alias="traceparent"),
+):
     sandbox, error = _require_sandbox(sandbox_id)
 
     if error is not None:
@@ -498,6 +506,10 @@ def create_exec(sandbox_id: str, payload: ExecRequest):
             400, "INVALID_ARGUMENT", "max_output_bytes 必须在 1—1048576"
         )
 
+    # D24：调用方给了合法 traceparent 就沿用（同一条 trace），否则新开一条。
+    if not is_valid(traceparent):
+        traceparent = new_traceparent()
+
     row = ExecStore().create(
         sandbox_id,
         argv=command,
@@ -505,6 +517,7 @@ def create_exec(sandbox_id: str, payload: ExecRequest):
         step_id=payload.step_id,
         timeout_ms=payload.timeout_ms,
         max_output_bytes=payload.max_output_bytes,
+        traceparent=traceparent,
     )
 
     threading.Thread(
@@ -515,6 +528,7 @@ def create_exec(sandbox_id: str, payload: ExecRequest):
             command,
             payload.timeout_ms,
             payload.max_output_bytes,
+            traceparent,
         ),
         daemon=True,
     ).start()

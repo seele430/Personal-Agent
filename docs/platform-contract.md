@@ -120,6 +120,13 @@ queued ─────────→ cancelled
 - cancel 对已经 cancelled 的 exec 幂等返回当前结果；对其他终态返回 409 `EXEC_NOT_CANCELLABLE`。竞争时以先提交的状态迁移为准。
 - 客户端取消等待不等于取消 exec：SDK 停止等待时必须显式调用 cancel，除非调用方明确选择仅停止等待。
 
+> D24（2026-11-04）：每次 exec 携带 W3C `traceparent`（版本 00）。
+> 同一条 assistant run 共用 trace-id，每次 exec 派生自己的 span-id；
+> `POST /v1/sandboxes/{id}/exec` 接受调用方传来的 `traceparent` 头（合法则沿用，
+> 非法则忽略并新生成）。值持久化在 `platform_execs.traceparent`，exec 响应与
+> trajectory 的 `exec_started` 都能看到；runner 把它放进子进程环境
+> （`TRACEPARENT`），沙箱里的进程可以直接读到。只做注入与透传，不做采集上报。
+
 ### 4.2 sandbox 状态机
 
 > D16（2026-11-03）：TTL 回收与 tombstone 已实现于 `src/platform/reaper.py`。

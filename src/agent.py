@@ -709,6 +709,7 @@ def execute_tool_on_platform(
     on_started=None,
     on_cancel_requested=None,
     require_allow: bool = True,
+    traceparent: str | None = None,
 ):
     """把一次工具调用交给 tier1 平台执行层。
 
@@ -771,6 +772,7 @@ def execute_tool_on_platform(
                 on_started=on_started,
                 on_cancel_requested=on_cancel_requested,
                 sandbox_id=sandbox_id,
+                traceparent=traceparent,
                 **limits,
             )
     finally:
