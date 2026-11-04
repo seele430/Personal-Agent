@@ -57,8 +57,41 @@ try {
         }
     }
 
-    if (-not $focused) {
-        Write-Warning "Cannot focus window '$title' (pid $($window.Id)); recording anyway. Click the window if the video looks wrong."
+    # AppActivate often fails for console windows; use Win32 directly, and
+    # require the window to actually BE the foreground window before recording.
+    # gdigrab captures a screen region, so a covered window records as black.
+    Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class G3Win32 {
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+}
+"@
+
+    $window.Refresh()
+    $hwnd = $window.MainWindowHandle
+    $foreground = $false
+
+    if ($hwnd -ne [IntPtr]::Zero) {
+        [G3Win32]::ShowWindow($hwnd, 3) | Out-Null   # SW_MAXIMIZE
+
+        $deadline = (Get-Date).AddSeconds(20)
+
+        while ((Get-Date) -lt $deadline) {
+            [G3Win32]::SetForegroundWindow($hwnd) | Out-Null
+            Start-Sleep -Milliseconds 300
+
+            if ([G3Win32]::GetForegroundWindow() -eq $hwnd) {
+                $foreground = $true
+                break
+            }
+        }
+    }
+
+    if (-not $foreground) {
+        throw "The '$title' window is not in the foreground. Click it (or press Alt+Tab to it) and run again."
     }
 
     Start-Sleep -Milliseconds 800
@@ -75,7 +108,8 @@ try {
         throw "ffmpeg failed (exit=$LASTEXITCODE)"
     }
 
-    Write-Host "Done: $output" -ForegroundColor Green
+    $size = (Get-Item $output).Length / 1MB
+    Write-Host ("Done: {0} ({1:N2} MB)" -f $output, $size) -ForegroundColor Green
 }
 finally {
     if ($window -and -not $window.HasExited) {
