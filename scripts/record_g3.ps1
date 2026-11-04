@@ -57,42 +57,65 @@ try {
         }
     }
 
-    # AppActivate often fails for console windows; use Win32 directly, and
-    # require the window to actually BE the foreground window before recording.
-    # gdigrab captures a screen region, so a covered window records as black.
+    # Console windows are owned by conhost, so the powershell process often
+    # reports MainWindowHandle = 0. Find the window by title instead, and only
+    # record once it is actually the foreground window (gdigrab captures a
+    # screen region -- a covered window records as black).
     Add-Type @"
 using System;
+using System.Text;
 using System.Runtime.InteropServices;
 public class G3Win32 {
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+
+    public static IntPtr FindByTitle(string title) {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows(delegate(IntPtr hWnd, IntPtr lParam) {
+            if (!IsWindowVisible(hWnd)) { return true; }
+            StringBuilder sb = new StringBuilder(256);
+            GetWindowText(hWnd, sb, sb.Capacity);
+            if (sb.ToString() == title) { found = hWnd; return false; }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
 }
 "@
 
-    $window.Refresh()
-    $hwnd = $window.MainWindowHandle
+    Write-Host ""
+    Write-Host "请把 'G3 Demo' 窗口点到最前面（它可能被 VS Code 挡着）。" -ForegroundColor Yellow
+    Write-Host "脚本最多等 3 分钟，检测到它在前台后自动开始录制。" -ForegroundColor Yellow
+    Write-Host ""
+
+    $hwnd = [IntPtr]::Zero
     $foreground = $false
+    $deadline = (Get-Date).AddSeconds(180)
 
-    if ($hwnd -ne [IntPtr]::Zero) {
-        [G3Win32]::ShowWindow($hwnd, 3) | Out-Null   # SW_MAXIMIZE
+    while ((Get-Date) -lt $deadline) {
+        if ($hwnd -eq [IntPtr]::Zero) {
+            $hwnd = [G3Win32]::FindByTitle($title)
 
-        Write-Host ""
-        Write-Host "请把 'G3 Demo' 窗口点到最前面（它可能被 VS Code 挡着）。" -ForegroundColor Yellow
-        Write-Host "脚本会最多等 3 分钟，检测到它在前台后自动开始录制。" -ForegroundColor Yellow
-        Write-Host ""
+            if ($hwnd -ne [IntPtr]::Zero) {
+                [G3Win32]::ShowWindow($hwnd, 3) | Out-Null   # SW_MAXIMIZE
+            }
+        }
 
-        $deadline = (Get-Date).AddSeconds(180)
-
-        while ((Get-Date) -lt $deadline) {
+        if ($hwnd -ne [IntPtr]::Zero) {
             [G3Win32]::SetForegroundWindow($hwnd) | Out-Null
-            Start-Sleep -Milliseconds 300
 
             if ([G3Win32]::GetForegroundWindow() -eq $hwnd) {
                 $foreground = $true
                 break
             }
         }
+
+        Start-Sleep -Milliseconds 300
     }
 
     if (-not $foreground) {
