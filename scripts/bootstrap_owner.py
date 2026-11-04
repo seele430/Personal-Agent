@@ -79,6 +79,14 @@ def main() -> int:
         user = store.bootstrap_owner(args.username, password)
     except AuthError as exc:
         print(f"创建失败：{exc}", file=sys.stderr)
+
+        if "12" in str(exc) and "字节" in str(exc):
+            print(
+                f"当前密码 {len(password.encode('utf-8'))} 字节；"
+                "需要至少 12 字节（一个汉字通常算 3 字节）",
+                file=sys.stderr,
+            )
+
         return 1
 
     print(f"created owner {user['username']} in {config.paths.auth_users_db}")
