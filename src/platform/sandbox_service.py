@@ -34,9 +34,6 @@ SUPPORTED_TIERS = ("tier1",)
 DEFAULT_TTL_SECONDS = 600
 MAX_TTL_SECONDS = 86_400
 
-SANDBOX_CREATED = "created"
-SANDBOX_RECLAIMED = "reclaimed"
-
 
 class PlatformError(RuntimeError):
     """带稳定错误码的平台异常；HTTP 层直接映射 code 与 status。"""
@@ -65,6 +62,54 @@ class SandboxNotFound(PlatformError):
     http_status = 404
 
 
+class InvalidTransition(PlatformError):
+    code = "INVALID_STATE_TRANSITION"
+    http_status = 409
+
+
+SANDBOX_CREATED = "created"
+SANDBOX_RUNNING = "running"
+SANDBOX_IDLE = "idle"
+SANDBOX_FAILED = "failed"
+SANDBOX_RECLAIMED = "reclaimed"
+
+SANDBOX_STATES = (
+    SANDBOX_CREATED,
+    SANDBOX_RUNNING,
+    SANDBOX_IDLE,
+    SANDBOX_FAILED,
+    SANDBOX_RECLAIMED,
+)
+
+# 契约 4.2 的状态图；reclaimed 是终态，没有出边。
+LEGAL_TRANSITIONS = {
+    SANDBOX_CREATED: {SANDBOX_RUNNING, SANDBOX_FAILED, SANDBOX_RECLAIMED},
+    SANDBOX_RUNNING: {SANDBOX_IDLE, SANDBOX_FAILED, SANDBOX_RECLAIMED},
+    SANDBOX_IDLE: {SANDBOX_RUNNING, SANDBOX_FAILED, SANDBOX_RECLAIMED},
+    SANDBOX_FAILED: {SANDBOX_RECLAIMED},
+    SANDBOX_RECLAIMED: set(),
+}
+
+DEFAULT_NODE_PLACEHOLDER = "node_local"
+
+_CREATE_SANDBOXES_SQL = """
+CREATE TABLE IF NOT EXISTS agent_sandboxes (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    tier TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (
+        state IN ('created', 'running', 'idle', 'failed', 'reclaimed')
+    ),
+    ttl_seconds INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    reclaimed_at TEXT,
+    reclaim_reason TEXT,
+    node_id TEXT
+)
+"""
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -72,20 +117,8 @@ def utc_now() -> str:
 def init_platform_schema(conn: sqlite3.Connection) -> None:
     """平台控制面表；只建不删，可重复执行。"""
 
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS agent_sandboxes (
-            id TEXT PRIMARY KEY,
-            workspace_id TEXT NOT NULL,
-            tier TEXT NOT NULL,
-            state TEXT NOT NULL CHECK (state IN ('created', 'reclaimed')),
-            ttl_seconds INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            expires_at TEXT NOT NULL,
-            reclaimed_at TEXT
-        )
-        """
-    )
+    _ensure_sandboxes_table(conn)
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS sandbox_idempotency (
@@ -103,17 +136,106 @@ def init_platform_schema(conn: sqlite3.Connection) -> None:
         """
     )
 
-    # D16：回收原因（manual / ttl_expired / reaper）。旧库补列，幂等。
-    columns = {
-        row[1] for row in conn.execute("PRAGMA table_info(agent_sandboxes)")
-    }
 
-    if "reclaim_reason" not in columns:
-        conn.execute("ALTER TABLE agent_sandboxes ADD COLUMN reclaim_reason TEXT")
+def _ensure_sandboxes_table(conn: sqlite3.Connection) -> None:
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+        ("agent_sandboxes",),
+    ).fetchone()
 
-    # D19：沙箱归属节点（cordon / drain 需要按节点统计存量）。旧库补列。
-    if "node_id" not in columns:
-        conn.execute("ALTER TABLE agent_sandboxes ADD COLUMN node_id TEXT")
+    if row is None:
+        conn.execute(_CREATE_SANDBOXES_SQL)
+        return
+
+    sql = row[0] or ""
+
+    if "'running'" in sql:
+        # 表结构已经是 D20 版本：只需要补历史数据。
+        conn.execute(
+            """
+            UPDATE agent_sandboxes SET node_id = ?
+            WHERE node_id IS NULL
+            """,
+            (DEFAULT_NODE_PLACEHOLDER,),
+        )
+        return
+
+    _rebuild_sandboxes_for_states(conn)
+
+
+def _rebuild_sandboxes_for_states(conn: sqlite3.Connection) -> None:
+    """D20：把只允许 created/reclaimed 的旧表重建为完整状态机。
+
+    步骤刻意分成「建新表 → 拷贝 → 删旧表 → 改名」：SQLite 在 rename 时会重写
+    其它表里指向被改名表的 REFERENCES，先改名会把 idempotency 的外键指到
+    legacy 表上，所以必须先删后改名。
+    """
+
+    # PRAGMA foreign_keys 不能在事务里切换，所以先关、再开。
+    conn.execute("PRAGMA foreign_keys = OFF")
+
+    try:
+        conn.execute("BEGIN")
+        conn.execute(
+            """
+            CREATE TABLE agent_sandboxes__d20 (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                tier TEXT NOT NULL,
+                state TEXT NOT NULL CHECK (
+                    state IN ('created', 'running', 'idle', 'failed', 'reclaimed')
+                ),
+                ttl_seconds INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                reclaimed_at TEXT,
+                reclaim_reason TEXT,
+                node_id TEXT
+            )
+            """
+        )
+
+        # 旧库可能来自 D15（没有 reclaim_reason / node_id），按实际列拼 SELECT。
+        existing = {
+            row[1] for row in conn.execute("PRAGMA table_info(agent_sandboxes)")
+        }
+        reason_expr = (
+            "reclaim_reason" if "reclaim_reason" in existing else "NULL"
+        )
+        node_expr = (
+            "COALESCE(node_id, ?)"
+            if "node_id" in existing
+            else "?"
+        )
+
+        conn.execute(
+            f"""
+            INSERT INTO agent_sandboxes__d20(
+                id, workspace_id, tier, state, ttl_seconds,
+                created_at, expires_at, reclaimed_at, reclaim_reason, node_id
+            )
+            SELECT
+                id, workspace_id, tier,
+                CASE
+                    WHEN state IN ('created', 'reclaimed') THEN state
+                    ELSE 'created'
+                END,
+                ttl_seconds, created_at, expires_at, reclaimed_at,
+                {reason_expr}, {node_expr}
+            FROM agent_sandboxes
+            """,
+            (DEFAULT_NODE_PLACEHOLDER,),
+        )
+        conn.execute("DROP TABLE agent_sandboxes")
+        conn.execute(
+            "ALTER TABLE agent_sandboxes__d20 RENAME TO agent_sandboxes"
+        )
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
 
 
 class SandboxService:
@@ -307,7 +429,16 @@ class SandboxService:
                 if row is None:
                     raise SandboxNotFound(sandbox_id)
 
-                if row["state"] != SANDBOX_RECLAIMED:
+                if row["state"] == SANDBOX_RECLAIMED:
+                    conn.commit()
+                else:
+                    if SANDBOX_RECLAIMED not in LEGAL_TRANSITIONS.get(
+                        row["state"], set()
+                    ):
+                        raise InvalidTransition(
+                            f"{row['state']} → reclaimed 非法"
+                        )
+
                     conn.execute(
                         """
                         UPDATE agent_sandboxes
@@ -317,8 +448,7 @@ class SandboxService:
                         """,
                         (utc_now(), reason, sandbox_id),
                     )
-
-                conn.commit()
+                    conn.commit()
             except BaseException:
                 conn.rollback()
                 raise
@@ -327,14 +457,102 @@ class SandboxService:
 
         return self.get(sandbox_id)
 
+    # ------------------------------------------------------------------
+    # D20 状态机
+    # ------------------------------------------------------------------
+
+    def transition(
+        self,
+        sandbox_id: str,
+        to_state: str,
+        *,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
+        """按契约状态图迁移；非法迁移一律 409 ``INVALID_STATE_TRANSITION``。"""
+
+        if to_state not in SANDBOX_STATES:
+            raise ValueError(f"未知沙箱状态：{to_state}")
+
+        with closing(self.connect()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+
+            try:
+                row = conn.execute(
+                    "SELECT * FROM agent_sandboxes WHERE id = ?", (sandbox_id,)
+                ).fetchone()
+
+                if row is None:
+                    raise SandboxNotFound(sandbox_id)
+
+                current = row["state"]
+
+                if current == to_state:
+                    conn.commit()
+                    return self._row(conn, sandbox_id)
+
+                if to_state not in LEGAL_TRANSITIONS.get(current, set()):
+                    raise InvalidTransition(
+                        f"{current} → {to_state} 非法"
+                    )
+
+                if to_state == SANDBOX_RECLAIMED:
+                    conn.execute(
+                        """
+                        UPDATE agent_sandboxes
+                        SET state = ?, reclaimed_at = ?, reclaim_reason = ?
+                        WHERE id = ?
+                        """,
+                        (to_state, utc_now(), reason, sandbox_id),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE agent_sandboxes SET state = ? WHERE id = ?",
+                        (to_state, sandbox_id),
+                    )
+
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+
+        return self.get(sandbox_id)
+
+    def begin_exec(self, sandbox_id: str) -> dict[str, Any]:
+        """有 exec 开始跑：created/idle → running；已经在 running 说明是并发 exec。"""
+
+        row = self.get(sandbox_id)
+
+        if row["state"] in (SANDBOX_CREATED, SANDBOX_IDLE):
+            return self.transition(sandbox_id, SANDBOX_RUNNING)
+
+        if row["state"] == SANDBOX_RUNNING:
+            return row
+
+        raise InvalidTransition(
+            f"{row['state']} 状态不接受新的 exec"
+        )
+
+    def end_exec(self, sandbox_id: str, *, active_execs: int) -> dict[str, Any]:
+        """exec 结束：没有活动 exec 时 running → idle。"""
+
+        row = self.get(sandbox_id)
+
+        if row["state"] == SANDBOX_RUNNING and active_execs == 0:
+            return self.transition(sandbox_id, SANDBOX_IDLE)
+
+        return row
+
+    def mark_failed(self, sandbox_id: str, reason: str) -> dict[str, Any]:
+        return self.transition(sandbox_id, SANDBOX_FAILED, reason=reason)
+
     def count_active(self, node_id: str) -> int:
-        """某节点上还没回收的沙箱数（drain / remove 判断用）。"""
+        """某节点上还没回收的沙箱数（created/running/idle/failed 都算）。"""
 
         with closing(self.connect()) as conn:
             row = conn.execute(
                 """
                 SELECT COUNT(*) FROM agent_sandboxes
-                WHERE state = 'created' AND node_id = ?
+                WHERE state != 'reclaimed' AND node_id = ?
                 """,
                 (node_id,),
             ).fetchone()
@@ -350,7 +568,7 @@ class SandboxService:
             rows = conn.execute(
                 """
                 SELECT * FROM agent_sandboxes
-                WHERE state = 'created' AND expires_at <= ?
+                WHERE state != 'reclaimed' AND expires_at <= ?
                 ORDER BY expires_at
                 """,
                 (moment.isoformat(),),

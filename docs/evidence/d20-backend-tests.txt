@@ -1,0 +1,943 @@
+# D20 全量后端回归（受保护运行器）
+> 命令：.venv/Scripts/python.exe scripts/run_guarded_tests.py backend
+> 时间：2026-11-04T08:25:20.5066935+08:00
+> 结果：75 个测试文件 / 694 个用例 PASS，212.02 秒（D19 基线 74 / 686，187.92 秒）。
+
+
+================================================
+Personal Agent Protected Test Runner
+================================================
+Layer: backend
+Python SQLite guard: enabled
+Python socket guard: enabled
+Real model API key: replaced
+Provider / model / ntfy settings: replaced with fake values
+Data directory: C:\Users\123\Documents\deepseek-harness\default-workspace\d11-tmp\personal-agent-test-data-srgg2yk5
+
+Note: this is a Python runtime guard, not a complete system sandbox.
+================================================
+
+
+Personal Agent Test Execution
+================================================
+Layer: backend
+Files: 75
+Cases: 694
+
+Test case distribution:
+  unit           98
+  integration    452
+  api            133
+  legacy         11
+================================================
+
+2026-11-04 08:21:39,212 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:39,287 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/d13_api_request/approvals "HTTP/1.1 200 OK"
+.2026-11-04 08:21:39,401 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:39,453 | INFO | httpx2 | HTTP Request: POST http://testserver/chat/requests/d13_api_request/approvals/appr_3695158b767f4661aebb89c98456d4d9 "HTTP/1.1 404 Not Found"
+.2026-11-04 08:21:39,568 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:39,630 | INFO | httpx2 | HTTP Request: POST http://testserver/chat/requests/d13_api_request/approvals/appr_25045314b0594acdba156689de801f19 "HTTP/1.1 202 Accepted"
+.2026-11-04 08:21:39,743 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:39,807 | INFO | httpx2 | HTTP Request: POST http://testserver/chat/requests/d13_api_request/approvals/appr_d54d023188834c5f860f84169a4cc906 "HTTP/1.1 202 Accepted"
+2026-11-04 08:21:39,829 | INFO | httpx2 | HTTP Request: POST http://testserver/chat/requests/d13_api_request/approvals/appr_d54d023188834c5f860f84169a4cc906 "HTTP/1.1 409 Conflict"
+..........2026-11-04 08:21:44,986 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:45,099 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:21:45,136 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_84be5722a9b94c119ac5ba11e20b9c22/exec "HTTP/1.1 202 Accepted"
+2026-11-04 08:21:45,154 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_e9865b7af61e4489890f6921fddf8aeb "HTTP/1.1 200 OK"
+2026-11-04 08:21:45,315 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_e9865b7af61e4489890f6921fddf8aeb "HTTP/1.1 200 OK"
+2026-11-04 08:21:45,329 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/exec/exec_e9865b7af61e4489890f6921fddf8aeb/cancel "HTTP/1.1 202 Accepted"
+2026-11-04 08:21:45,350 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_e9865b7af61e4489890f6921fddf8aeb "HTTP/1.1 200 OK"
+.2026-11-04 08:21:45,368 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:45,474 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:21:45,493 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+.2026-11-04 08:21:45,515 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:45,630 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:21:45,658 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_0e1ab32833f143179976b43ad5a3bef2/destroy "HTTP/1.1 200 OK"
+2026-11-04 08:21:45,674 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/sandboxes/sbx_0e1ab32833f143179976b43ad5a3bef2 "HTTP/1.1 410 Gone"
+2026-11-04 08:21:45,690 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_0e1ab32833f143179976b43ad5a3bef2/exec "HTTP/1.1 410 Gone"
+2026-11-04 08:21:45,707 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_0e1ab32833f143179976b43ad5a3bef2/destroy "HTTP/1.1 200 OK"
+.2026-11-04 08:21:45,735 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:45,851 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:21:45,864 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_dfb5c94893e543bca12e5d3fa1197f1d/exec "HTTP/1.1 400 Bad Request"
+.2026-11-04 08:21:45,889 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:46,002 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:21:46,043 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_87e9dacb18a54f4086c8dcfae76592e9/exec "HTTP/1.1 202 Accepted"
+2026-11-04 08:21:46,065 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_55538d078eb848e6981321a56d1054ab "HTTP/1.1 200 OK"
+2026-11-04 08:21:46,136 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_55538d078eb848e6981321a56d1054ab "HTTP/1.1 200 OK"
+2026-11-04 08:21:46,197 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_55538d078eb848e6981321a56d1054ab "HTTP/1.1 200 OK"
+2026-11-04 08:21:46,267 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_55538d078eb848e6981321a56d1054ab "HTTP/1.1 200 OK"
+2026-11-04 08:21:46,331 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_55538d078eb848e6981321a56d1054ab "HTTP/1.1 200 OK"
+.2026-11-04 08:21:46,353 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:46,462 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:21:46,496 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_433d93c291954e28a7b37910e9f7d843/exec "HTTP/1.1 202 Accepted"
+2026-11-04 08:21:46,518 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_9d7f9343dd17477c808e18a4de85b873 "HTTP/1.1 200 OK"
+2026-11-04 08:21:46,580 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_9d7f9343dd17477c808e18a4de85b873 "HTTP/1.1 200 OK"
+2026-11-04 08:21:46,647 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_9d7f9343dd17477c808e18a4de85b873 "HTTP/1.1 200 OK"
+2026-11-04 08:21:46,718 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_9d7f9343dd17477c808e18a4de85b873 "HTTP/1.1 200 OK"
+2026-11-04 08:21:46,779 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_9d7f9343dd17477c808e18a4de85b873 "HTTP/1.1 200 OK"
+2026-11-04 08:21:46,848 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_9d7f9343dd17477c808e18a4de85b873 "HTTP/1.1 200 OK"
+2026-11-04 08:21:46,911 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_9d7f9343dd17477c808e18a4de85b873 "HTTP/1.1 200 OK"
+2026-11-04 08:21:46,975 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_9d7f9343dd17477c808e18a4de85b873 "HTTP/1.1 200 OK"
+2026-11-04 08:21:47,039 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_9d7f9343dd17477c808e18a4de85b873 "HTTP/1.1 200 OK"
+2026-11-04 08:21:47,109 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_9d7f9343dd17477c808e18a4de85b873 "HTTP/1.1 200 OK"
+2026-11-04 08:21:47,172 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_9d7f9343dd17477c808e18a4de85b873 "HTTP/1.1 200 OK"
+.2026-11-04 08:21:47,191 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:47,277 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 400 Bad Request"
+.2026-11-04 08:21:47,297 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:47,399 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:21:47,415 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 409 Conflict"
+.2026-11-04 08:21:47,437 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:47,496 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/sandboxes/sbx_00000000000000000000000000000000 "HTTP/1.1 404 Not Found"
+2026-11-04 08:21:47,521 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_missing "HTTP/1.1 404 Not Found"
+....2026-11-04 08:21:50,114 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:50,195 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:21:53,635 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_api/heartbeat "HTTP/1.1 202 Accepted"
+.2026-11-04 08:21:53,653 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:53,726 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:21:57,157 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/nodes "HTTP/1.1 200 OK"
+......2026-11-04 08:21:57,375 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:57,452 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:21:57,488 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:21:57,510 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:21:57,528 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/nodes "HTTP/1.1 200 OK"
+2026-11-04 08:21:57,551 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_7734e0d303d94355b9e8507b19f20b3f/destroy "HTTP/1.1 200 OK"
+2026-11-04 08:21:57,566 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/nodes "HTTP/1.1 200 OK"
+.2026-11-04 08:21:57,586 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:57,661 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:21:57,700 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:21:57,728 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_local/cordon "HTTP/1.1 202 Accepted"
+2026-11-04 08:21:57,742 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 429 Too Many Requests"
+.2026-11-04 08:21:57,762 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:57,837 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:21:57,876 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:21:57,911 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_77d989ecd47047548ddcf78891041d0a/exec "HTTP/1.1 202 Accepted"
+2026-11-04 08:21:57,954 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_local/cordon "HTTP/1.1 202 Accepted"
+2026-11-04 08:21:57,970 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,032 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,098 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,160 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,223 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,292 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,357 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,421 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,488 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,551 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,612 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,676 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,740 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,804 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,868 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,931 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:58,994 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:59,059 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:59,125 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+2026-11-04 08:21:59,191 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_a8eec665fb64435f9893c7bf2949f530 "HTTP/1.1 200 OK"
+.2026-11-04 08:21:59,211 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:59,284 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:21:59,324 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_local/cordon "HTTP/1.1 202 Accepted"
+2026-11-04 08:21:59,340 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_local/cordon "HTTP/1.1 202 Accepted"
+.2026-11-04 08:21:59,360 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:59,440 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:21:59,475 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:21:59,496 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_local/drain "HTTP/1.1 202 Accepted"
+2026-11-04 08:21:59,510 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 429 Too Many Requests"
+2026-11-04 08:21:59,527 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_local/remove "HTTP/1.1 409 Conflict"
+2026-11-04 08:21:59,551 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_45fe7d06367b4c1e9acaaa1de6861062/destroy "HTTP/1.1 200 OK"
+2026-11-04 08:21:59,576 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_local/remove "HTTP/1.1 200 OK"
+.2026-11-04 08:21:59,599 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:59,674 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:21:59,691 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_local/remove "HTTP/1.1 409 Conflict"
+.2026-11-04 08:21:59,710 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:59,786 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:21:59,826 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_local/drain "HTTP/1.1 202 Accepted"
+2026-11-04 08:21:59,852 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_local/remove "HTTP/1.1 200 OK"
+2026-11-04 08:21:59,864 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_local/heartbeat "HTTP/1.1 409 Conflict"
+2026-11-04 08:21:59,877 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_local/cordon "HTTP/1.1 409 Conflict"
+.2026-11-04 08:21:59,903 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:21:59,974 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/nodes "HTTP/1.1 200 OK"
+2026-11-04 08:22:00,021 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:22:00,037 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/nodes "HTTP/1.1 200 OK"
+.2026-11-04 08:22:00,056 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:00,126 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_missing/heartbeat "HTTP/1.1 404 Not Found"
+.2026-11-04 08:22:00,148 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:00,228 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:22:00,285 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_test/heartbeat "HTTP/1.1 202 Accepted"
+.2026-11-04 08:22:00,305 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:00,372 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 400 Bad Request"
+.2026-11-04 08:22:00,392 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:00,478 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:22:00,500 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:22:00,531 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/nodes "HTTP/1.1 200 OK"
+.2026-11-04 08:22:00,554 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:00,629 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+.2026-11-04 08:22:00,650 | INFO | personal_agent.chat | Chat request storage ready
+.2026-11-04 08:22:00,732 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:00,808 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:22:00,828 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+.2026-11-04 08:22:00,848 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:00,927 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:22:00,952 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes "HTTP/1.1 201 Created"
+2026-11-04 08:22:00,967 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/nodes/node_test/heartbeat "HTTP/1.1 409 Conflict"
+.2026-11-04 08:22:00,990 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:01,092 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:22:02,321 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/sandboxes/sbx_613d258e43464d43bcccd6b6d54c55ec "HTTP/1.1 410 Gone"
+.2026-11-04 08:22:02,341 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:02,438 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:22:02,477 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_8d66291d897a4ac68f7b23b1fe2e4462/exec "HTTP/1.1 202 Accepted"
+2026-11-04 08:22:02,495 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_9448b115ab4a4e18a88399995767d032 "HTTP/1.1 200 OK"
+2026-11-04 08:22:02,530 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_9448b115ab4a4e18a88399995767d032 "HTTP/1.1 200 OK"
+2026-11-04 08:22:02,544 | INFO | personal_agent.platform.reaper | reaper: reclaimed=1 cancelled_execs=1 tombstones_cleared=0
+2026-11-04 08:22:02,570 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_9448b115ab4a4e18a88399995767d032 "HTTP/1.1 200 OK"
+.2026-11-04 08:22:02,588 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:02,694 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:22:02,727 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_ffbbe90422b94d97935670c543252b4c/destroy "HTTP/1.1 200 OK"
+.2026-11-04 08:22:02,749 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:02,858 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:22:02,873 | INFO | personal_agent.platform.reaper | reaper: reclaimed=1 cancelled_execs=0 tombstones_cleared=0
+.2026-11-04 08:22:02,898 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:03,018 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:22:03,031 | INFO | personal_agent.platform.reaper | reaper: reclaimed=1 cancelled_execs=0 tombstones_cleared=0
+2026-11-04 08:22:03,050 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/sandboxes/sbx_b80b00490c9e4f76a30fe874909be521 "HTTP/1.1 410 Gone"
+.2026-11-04 08:22:03,072 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:03,191 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:22:03,219 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_d92d6374efd246a8ae3b290d9016280e/destroy "HTTP/1.1 200 OK"
+2026-11-04 08:22:03,238 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:22:03,249 | INFO | personal_agent.platform.reaper | reaper: reclaimed=0 cancelled_execs=0 tombstones_cleared=1
+2026-11-04 08:22:03,267 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/sandboxes/sbx_d92d6374efd246a8ae3b290d9016280e "HTTP/1.1 404 Not Found"
+2026-11-04 08:22:03,288 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+..................................2026-11-04 08:22:04,748 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:04,862 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:22:04,901 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_4907b298594942d3a01dfd62b366ef5d/exec "HTTP/1.1 202 Accepted"
+2026-11-04 08:22:04,917 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/sandboxes/sbx_4907b298594942d3a01dfd62b366ef5d "HTTP/1.1 200 OK"
+2026-11-04 08:22:04,939 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_70c04f95958d48f7ac531d9818c68c70 "HTTP/1.1 200 OK"
+2026-11-04 08:22:05,003 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_70c04f95958d48f7ac531d9818c68c70 "HTTP/1.1 200 OK"
+2026-11-04 08:22:05,067 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_70c04f95958d48f7ac531d9818c68c70 "HTTP/1.1 200 OK"
+2026-11-04 08:22:05,135 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_70c04f95958d48f7ac531d9818c68c70 "HTTP/1.1 200 OK"
+2026-11-04 08:22:05,197 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_70c04f95958d48f7ac531d9818c68c70 "HTTP/1.1 200 OK"
+2026-11-04 08:22:05,265 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_70c04f95958d48f7ac531d9818c68c70 "HTTP/1.1 200 OK"
+2026-11-04 08:22:05,328 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_70c04f95958d48f7ac531d9818c68c70 "HTTP/1.1 200 OK"
+2026-11-04 08:22:05,395 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_70c04f95958d48f7ac531d9818c68c70 "HTTP/1.1 200 OK"
+2026-11-04 08:22:05,461 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_70c04f95958d48f7ac531d9818c68c70 "HTTP/1.1 200 OK"
+2026-11-04 08:22:05,528 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_70c04f95958d48f7ac531d9818c68c70 "HTTP/1.1 200 OK"
+2026-11-04 08:22:05,594 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_70c04f95958d48f7ac531d9818c68c70 "HTTP/1.1 200 OK"
+2026-11-04 08:22:05,660 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_70c04f95958d48f7ac531d9818c68c70 "HTTP/1.1 200 OK"
+2026-11-04 08:22:05,727 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_70c04f95958d48f7ac531d9818c68c70 "HTTP/1.1 200 OK"
+2026-11-04 08:22:05,793 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/exec/exec_70c04f95958d48f7ac531d9818c68c70 "HTTP/1.1 200 OK"
+2026-11-04 08:22:05,831 | INFO | httpx2 | HTTP Request: GET http://testserver/v1/sandboxes/sbx_4907b298594942d3a01dfd62b366ef5d "HTTP/1.1 200 OK"
+.2026-11-04 08:22:05,853 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:22:05,958 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes "HTTP/1.1 201 Created"
+2026-11-04 08:22:05,983 | INFO | httpx2 | HTTP Request: POST http://testserver/v1/sandboxes/sbx_3cd95e8fe3184ab382b339e5df5a3f6f/exec "HTTP/1.1 409 Conflict"
+.....................................................2026-11-04 08:23:28,507 | INFO | personal_agent.history | 任务开始 task_id=rss_a0adff3079f6425ca0cb50d53fd3fdf9 run_id=run_6210095fcacc4f3cb20a46c7a6292c65
+2026-11-04 08:23:28,507 | INFO | personal_agent.dispatcher | 执行 RSS 任务 rss_a0adff3079f6425ca0cb50d53fd3fdf9，run_id=run_6210095fcacc4f3cb20a46c7a6292c65
+2026-11-04 08:23:28,507 | ERROR | personal_agent.dispatcher | 任务 rss_a0adff3079f6425ca0cb50d53fd3fdf9 执行失败
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\deepseek-harness\default-workspace\personal-agent-d11\src\core\monitor_dispatcher.py", line 679, in run_due_monitor_tasks
+    count = run_source(
+            ^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1198, in _execute_mock_call
+    raise effect
+requests.exceptions.HTTPError: HTTP 403
+2026-11-04 08:23:28,541 | INFO | personal_agent.history | 任务结束 run_id=run_6210095fcacc4f3cb20a46c7a6292c65 status=failed duration_ms=34 new_items=0
+2026-11-04 08:23:28,541 | WARNING | personal_agent.dispatcher | 任务 rss_a0adff3079f6425ca0cb50d53fd3fdf9 失败，pause=True，重试延迟=None
+.2026-11-04 08:23:28,625 | INFO | personal_agent.history | 任务开始 task_id=rss_84204c91695e46df8c8ce8e3b084cee7 run_id=run_8cc4da1cf51b4adb9ad4c96f3f6463f3
+2026-11-04 08:23:28,625 | INFO | personal_agent.dispatcher | 执行 RSS 任务 rss_84204c91695e46df8c8ce8e3b084cee7，run_id=run_8cc4da1cf51b4adb9ad4c96f3f6463f3
+2026-11-04 08:23:28,625 | ERROR | personal_agent.dispatcher | 任务 rss_84204c91695e46df8c8ce8e3b084cee7 执行失败
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\deepseek-harness\default-workspace\personal-agent-d11\src\core\monitor_dispatcher.py", line 679, in run_due_monitor_tasks
+    count = run_source(
+            ^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1198, in _execute_mock_call
+    raise effect
+requests.exceptions.HTTPError: HTTP 429
+2026-11-04 08:23:28,638 | INFO | personal_agent.history | 任务结束 run_id=run_8cc4da1cf51b4adb9ad4c96f3f6463f3 status=failed duration_ms=13 new_items=0
+2026-11-04 08:23:28,638 | WARNING | personal_agent.dispatcher | 任务 rss_84204c91695e46df8c8ce8e3b084cee7 失败，pause=False，重试延迟=600
+.2026-11-04 08:23:28,726 | INFO | personal_agent.history | 任务开始 task_id=rss_ac8dba7260024140aef98e5ab518a776 run_id=run_c5d0e69392834ce79f1575b059171d51
+2026-11-04 08:23:28,727 | INFO | personal_agent.dispatcher | 执行 RSS 任务 rss_ac8dba7260024140aef98e5ab518a776，run_id=run_c5d0e69392834ce79f1575b059171d51
+2026-11-04 08:23:28,727 | ERROR | personal_agent.dispatcher | 任务 rss_ac8dba7260024140aef98e5ab518a776 执行失败
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\deepseek-harness\default-workspace\personal-agent-d11\src\core\monitor_dispatcher.py", line 679, in run_due_monitor_tasks
+    count = run_source(
+            ^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1198, in _execute_mock_call
+    raise effect
+requests.exceptions.HTTPError: HTTP 503
+2026-11-04 08:23:28,743 | INFO | personal_agent.history | 任务结束 run_id=run_c5d0e69392834ce79f1575b059171d51 status=failed duration_ms=19 new_items=0
+2026-11-04 08:23:28,743 | WARNING | personal_agent.dispatcher | 任务 rss_ac8dba7260024140aef98e5ab518a776 失败，pause=False，重试延迟=60
+.2026-11-04 08:23:28,834 | INFO | personal_agent.history | 任务开始 task_id=http_text_c53e4420fc394371ae37e0056560a41d run_id=run_cb520e3b063e4e0ba016d6c68ddc210b
+2026-11-04 08:23:28,834 | INFO | personal_agent.dispatcher | 执行 RSS 任务 http_text_c53e4420fc394371ae37e0056560a41d，run_id=run_cb520e3b063e4e0ba016d6c68ddc210b
+2026-11-04 08:23:28,845 | INFO | personal_agent.history | 任务结束 run_id=run_cb520e3b063e4e0ba016d6c68ddc210b status=success duration_ms=13 new_items=0
+2026-11-04 08:23:28,845 | INFO | personal_agent.dispatcher | 任务 http_text_c53e4420fc394371ae37e0056560a41d 成功，新增 0 篇
+2026-11-04 08:23:28,852 | INFO | personal_agent.history | 任务开始 task_id=rss_ced9d56fb6864715810798d09f446838 run_id=run_4d062988fc6d412d9141ce71d38a2918
+2026-11-04 08:23:28,852 | INFO | personal_agent.dispatcher | 执行 RSS 任务 rss_ced9d56fb6864715810798d09f446838，run_id=run_4d062988fc6d412d9141ce71d38a2918
+2026-11-04 08:23:28,869 | INFO | personal_agent.history | 任务结束 run_id=run_4d062988fc6d412d9141ce71d38a2918 status=success duration_ms=16 new_items=0
+2026-11-04 08:23:28,870 | INFO | personal_agent.dispatcher | 任务 rss_ced9d56fb6864715810798d09f446838 成功，新增 0 篇
+.2026-11-04 08:23:28,944 | INFO | personal_agent.history | 任务开始 task_id=rss_096adac5e14f452e895503a391ddbdf6 run_id=run_944c22b9eba14b07bec2919199135fa9
+2026-11-04 08:23:28,959 | INFO | personal_agent.history | 任务结束 run_id=run_944c22b9eba14b07bec2919199135fa9 status=failed duration_ms=14 new_items=0
+..2026-11-04 08:23:29,135 | INFO | personal_agent.history | 任务开始 task_id=rss_0b4f8e29907e4e29ab7061a757f30261 run_id=run_bad747e658e449fd988c297b0e9dd01b
+2026-11-04 08:23:29,135 | INFO | personal_agent.dispatcher | 执行 RSS 任务 rss_0b4f8e29907e4e29ab7061a757f30261，run_id=run_bad747e658e449fd988c297b0e9dd01b
+2026-11-04 08:23:29,135 | ERROR | personal_agent.dispatcher | 任务 rss_0b4f8e29907e4e29ab7061a757f30261 执行失败
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\deepseek-harness\default-workspace\personal-agent-d11\src\core\monitor_dispatcher.py", line 679, in run_due_monitor_tasks
+    count = run_source(
+            ^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1198, in _execute_mock_call
+    raise effect
+requests.exceptions.HTTPError: HTTP 503
+2026-11-04 08:23:29,152 | INFO | personal_agent.history | 任务结束 run_id=run_bad747e658e449fd988c297b0e9dd01b status=failed duration_ms=18 new_items=0
+2026-11-04 08:23:29,153 | WARNING | personal_agent.dispatcher | 任务 rss_0b4f8e29907e4e29ab7061a757f30261 失败，pause=False，重试延迟=60
+2026-11-04 08:23:29,178 | INFO | personal_agent.history | 任务开始 task_id=rss_0b4f8e29907e4e29ab7061a757f30261 run_id=run_a82a45d0f9264538bb3f8dd228d74b67
+2026-11-04 08:23:29,180 | INFO | personal_agent.dispatcher | 执行 RSS 任务 rss_0b4f8e29907e4e29ab7061a757f30261，run_id=run_a82a45d0f9264538bb3f8dd228d74b67
+2026-11-04 08:23:29,180 | ERROR | personal_agent.dispatcher | 任务 rss_0b4f8e29907e4e29ab7061a757f30261 执行失败
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\deepseek-harness\default-workspace\personal-agent-d11\src\core\monitor_dispatcher.py", line 679, in run_due_monitor_tasks
+    count = run_source(
+            ^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1198, in _execute_mock_call
+    raise effect
+requests.exceptions.HTTPError: HTTP 503
+2026-11-04 08:23:29,196 | INFO | personal_agent.history | 任务结束 run_id=run_a82a45d0f9264538bb3f8dd228d74b67 status=failed duration_ms=16 new_items=0
+2026-11-04 08:23:29,197 | WARNING | personal_agent.dispatcher | 任务 rss_0b4f8e29907e4e29ab7061a757f30261 失败，pause=False，重试延迟=120
+.2026-11-04 08:23:29,285 | INFO | personal_agent.history | 任务开始 task_id=rss_57f154c07cea40e5acbca96c6c475baa run_id=run_d29314b1f52a4e60928fd362d3b80b38
+2026-11-04 08:23:29,285 | INFO | personal_agent.dispatcher | 执行 RSS 任务 rss_57f154c07cea40e5acbca96c6c475baa，run_id=run_d29314b1f52a4e60928fd362d3b80b38
+2026-11-04 08:23:29,298 | INFO | personal_agent.history | 任务结束 run_id=run_d29314b1f52a4e60928fd362d3b80b38 status=success duration_ms=15 new_items=0
+2026-11-04 08:23:29,298 | INFO | personal_agent.dispatcher | 任务 rss_57f154c07cea40e5acbca96c6c475baa 成功，新增 0 篇
+2026-11-04 08:23:29,323 | INFO | personal_agent.dispatcher | 任务 rss_57f154c07cea40e5acbca96c6c475baa 顺延 299 秒：主机 blog.python.org 刚抓过
+.2026-11-04 08:23:29,423 | INFO | personal_agent.history | 任务开始 task_id=rss_8e69598624294053be85c239cb9dc63a run_id=run_ca0a3af6d5694dae9e86c5efef462e9c
+2026-11-04 08:23:29,423 | INFO | personal_agent.dispatcher | 执行 RSS 任务 rss_8e69598624294053be85c239cb9dc63a，run_id=run_ca0a3af6d5694dae9e86c5efef462e9c
+2026-11-04 08:23:29,435 | INFO | personal_agent.history | 任务结束 run_id=run_ca0a3af6d5694dae9e86c5efef462e9c status=success duration_ms=13 new_items=0
+2026-11-04 08:23:29,436 | INFO | personal_agent.dispatcher | 任务 rss_8e69598624294053be85c239cb9dc63a 成功，新增 0 篇
+.2026-11-04 08:23:29,519 | INFO | personal_agent.history | 任务开始 task_id=rss_809d2df263784ed4b3cb527d4e086cff run_id=run_a6b4a330f4924e7997bc0661fb14487f
+2026-11-04 08:23:29,519 | INFO | personal_agent.dispatcher | 执行 RSS 任务 rss_809d2df263784ed4b3cb527d4e086cff，run_id=run_a6b4a330f4924e7997bc0661fb14487f
+2026-11-04 08:23:29,519 | ERROR | personal_agent.dispatcher | 任务 rss_809d2df263784ed4b3cb527d4e086cff 执行失败
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\deepseek-harness\default-workspace\personal-agent-d11\src\core\monitor_dispatcher.py", line 679, in run_due_monitor_tasks
+    count = run_source(
+            ^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1198, in _execute_mock_call
+    raise effect
+TimeoutError: Simulated RSS timeout
+2026-11-04 08:23:29,535 | INFO | personal_agent.history | 任务结束 run_id=run_a6b4a330f4924e7997bc0661fb14487f status=failed duration_ms=16 new_items=0
+2026-11-04 08:23:29,535 | WARNING | personal_agent.dispatcher | 任务 rss_809d2df263784ed4b3cb527d4e086cff 失败，pause=False，重试延迟=60
+.2026-11-04 08:23:29,576 | WARNING | personal_agent.admin_alerts | 新增管理员待处理告警：1 条
+.2026-11-04 08:23:29,612 | WARNING | personal_agent.admin_alerts | 新增管理员待处理告警：1 条
+2026-11-04 08:23:29,638 | WARNING | personal_agent.admin_alerts | 新增管理员待处理告警：1 条
+.2026-11-04 08:23:29,673 | WARNING | personal_agent.admin_alerts | 新增管理员待处理告警：2 条
+.2026-11-04 08:23:29,708 | WARNING | personal_agent.admin_alerts | 新增管理员待处理告警：1 条
+.2026-11-04 08:23:29,741 | WARNING | personal_agent.admin_alerts | 新增管理员待处理告警：1 条
+.2026-11-04 08:23:29,851 | WARNING | personal_agent.admin_alerts | 新增管理员待处理告警：1 条
+.....................................................................................2026-11-04 08:23:36,129 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:36,599 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:23:36,624 | INFO | httpx2 | HTTP Request: GET http://testserver/auth/me "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:23:37,069 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:37,126 | INFO | httpx2 | HTTP Request: GET http://testserver/health "HTTP/1.1 200 OK"
+.2026-11-04 08:23:37,618 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:38,073 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:23:38,096 | INFO | httpx2 | HTTP Request: GET http://testserver/auth/me "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:23:38,527 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:38,577 | INFO | httpx2 | HTTP Request: GET http://testserver/auth/me "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:23:39,019 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:39,479 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:23:39,495 | INFO | httpx2 | HTTP Request: GET http://testserver/auth/me "HTTP/1.1 200 OK"
+2026-11-04 08:23:39,513 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/logout "HTTP/1.1 200 OK"
+2026-11-04 08:23:39,531 | INFO | httpx2 | HTTP Request: GET http://testserver/auth/me "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:23:39,976 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:40,853 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:23:40,870 | INFO | httpx2 | HTTP Request: GET http://testserver/auth/me "HTTP/1.1 200 OK"
+.2026-11-04 08:23:41,308 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:41,357 | INFO | httpx2 | HTTP Request: GET http://testserver/auth/me "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:23:41,369 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/logout "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:23:41,809 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:42,278 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+.2026-11-04 08:23:42,728 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:43,174 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+..................2026-11-04 08:23:54,065 | INFO | httpx2 | HTTP Request: POST http://testserver/bots "HTTP/1.1 200 OK"
+2026-11-04 08:23:54,074 | INFO | httpx2 | HTTP Request: PATCH http://testserver/bots/1 "HTTP/1.1 404 Not Found"
+.2026-11-04 08:23:54,114 | INFO | httpx2 | HTTP Request: POST http://testserver/bots "HTTP/1.1 200 OK"
+.2026-11-04 08:23:54,159 | INFO | httpx2 | HTTP Request: POST http://testserver/bots "HTTP/1.1 200 OK"
+2026-11-04 08:23:54,168 | INFO | httpx2 | HTTP Request: POST http://testserver/bots "HTTP/1.1 200 OK"
+2026-11-04 08:23:54,182 | INFO | httpx2 | HTTP Request: POST http://testserver/bots "HTTP/1.1 200 OK"
+2026-11-04 08:23:54,191 | INFO | httpx2 | HTTP Request: POST http://testserver/bots "HTTP/1.1 422 Unprocessable Content"
+.2026-11-04 08:23:54,231 | INFO | httpx2 | HTTP Request: POST http://testserver/bots "HTTP/1.1 200 OK"
+.2026-11-04 08:23:54,274 | INFO | httpx2 | HTTP Request: POST http://testserver/bots "HTTP/1.1 200 OK"
+2026-11-04 08:23:54,285 | INFO | httpx2 | HTTP Request: POST http://testserver/bots/1/disable "HTTP/1.1 200 OK"
+2026-11-04 08:23:54,301 | INFO | httpx2 | HTTP Request: POST http://testserver/bots/1/enable "HTTP/1.1 200 OK"
+.2026-11-04 08:23:54,335 | INFO | httpx2 | HTTP Request: POST http://testserver/bots "HTTP/1.1 422 Unprocessable Content"
+.2026-11-04 08:23:54,367 | INFO | httpx2 | HTTP Request: GET http://testserver/bots "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:23:54,416 | INFO | httpx2 | HTTP Request: POST http://testserver/bots "HTTP/1.1 200 OK"
+2026-11-04 08:23:54,425 | INFO | httpx2 | HTTP Request: GET http://testserver/bots "HTTP/1.1 200 OK"
+.2026-11-04 08:23:54,465 | INFO | httpx2 | HTTP Request: POST http://testserver/bots "HTTP/1.1 200 OK"
+2026-11-04 08:23:54,466 | INFO | httpx2 | HTTP Request: PATCH http://testserver/bots/1 "HTTP/1.1 422 Unprocessable Content"
+.2026-11-04 08:23:54,512 | INFO | httpx2 | HTTP Request: POST http://testserver/bots "HTTP/1.1 200 OK"
+2026-11-04 08:23:54,523 | INFO | httpx2 | HTTP Request: PATCH http://testserver/bots/1 "HTTP/1.1 200 OK"
+................................................2026-11-04 08:23:56,926 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:56,998 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,014 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:23:57,035 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:57,106 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,141 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,175 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,217 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,252 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,293 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,327 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,362 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,399 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,437 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,471 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,508 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,542 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,578 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,618 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,660 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,698 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,738 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,774 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,808 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:57,824 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 429 Too Many Requests"
+.2026-11-04 08:23:57,845 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:57,889 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 413 Content Too Large"
+.2026-11-04 08:23:57,912 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:57,988 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:23:58,011 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:58,079 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 502 Bad Gateway"
+.2026-11-04 08:23:58,101 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:58,156 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 429 Too Many Requests"
+.2026-11-04 08:23:58,180 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:58,259 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:58,273 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 429 Too Many Requests"
+.2026-11-04 08:23:58,293 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:58,300 | INFO | personal_agent.chat | Chat request storage ready
+.2026-11-04 08:23:58,318 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:58,332 | INFO | personal_agent.chat | Chat request storage ready
+...............................2026-11-04 08:23:59,521 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:59,613 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 429 Too Many Requests"
+2026-11-04 08:23:59,634 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:59,659 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:23:59,678 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:59,744 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:59,784 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:59,804 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 429 Too Many Requests"
+.2026-11-04 08:23:59,825 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:23:59,898 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:59,938 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:23:59,953 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:23:59,977 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:00,014 | ERROR | personal_agent.chat | Model failed request_id=quota_1939615bff214ae6a0057456d9af7368
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\deepseek-harness\default-workspace\personal-agent-d11\src\chat_secure_api.py", line 723, in chat_endpoint
+    reply = legacy_chat.chat(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1202, in _execute_mock_call
+    raise result
+TimeoutError: 模拟超时
+2026-11-04 08:24:00,055 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 502 Bad Gateway"
+2026-11-04 08:24:00,096 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:00,113 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 429 Too Many Requests"
+.2026-11-04 08:24:00,131 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:00,201 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:00,241 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:00,287 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:00,306 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 429 Too Many Requests"
+.2026-11-04 08:24:00,325 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:00,410 | INFO | httpx2 | HTTP Request: GET http://testserver/usage/summary "HTTP/1.1 200 OK"
+.2026-11-04 08:24:00,429 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:00,478 | INFO | httpx2 | HTTP Request: GET http://testserver/usage/summary "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:24:00,498 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:00,548 | INFO | httpx2 | HTTP Request: GET http://testserver/usage/summary "HTTP/1.1 200 OK"
+.2026-11-04 08:24:00,572 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:00,619 | INFO | httpx2 | HTTP Request: GET http://testserver/usage/summary "HTTP/1.1 403 Forbidden"
+.2026-11-04 08:24:00,657 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:00,798 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:00,815 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:00,856 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:00,991 | WARNING | personal_agent.chat | Incomplete usage; budget retained request_id=reconcile_a6604e1d0295436a956717620a621861
+2026-11-04 08:24:01,001 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:01,047 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:01,178 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 502 Bad Gateway"
+.2026-11-04 08:24:01,224 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:01,374 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:01,415 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:01,564 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:01,605 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:01,908 | WARNING | personal_agent.chat | Incomplete usage; budget retained request_id=reconcile_b6fda0c65349456ca383e4cf870671fe
+2026-11-04 08:24:01,916 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:01,942 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:01,991 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 400 Bad Request"
+.2026-11-04 08:24:02,840 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:03,301 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:03,731 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:03,776 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:03,786 | INFO | httpx2 | HTTP Request: GET http://testserver/auth/me "HTTP/1.1 200 OK"
+2026-11-04 08:24:03,807 | INFO | httpx2 | HTTP Request: POST http://testserver/chat/requests/secure_c1fb83745e6d4610afdacb3752664298/cancel "HTTP/1.1 202 Accepted"
+2026-11-04 08:24:03,820 | INFO | httpx2 | HTTP Request: POST http://testserver/chat/requests/secure_c1fb83745e6d4610afdacb3752664298/cancel "HTTP/1.1 404 Not Found"
+.2026-11-04 08:24:04,672 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:05,126 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:05,550 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:05,584 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 202 Accepted"
+2026-11-04 08:24:05,611 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:06,489 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:06,966 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:07,377 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:07,394 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:07,411 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/secure_36c08226e0494ca980bfba90a84d6b35 "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:24:08,238 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:08,702 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:09,121 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:09,150 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/secure_f1e30cb867114c2493c93032f878d855 "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:09,165 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/secure_f1e30cb867114c2493c93032f878d855 "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:09,182 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 404 Not Found"
+.2026-11-04 08:24:10,010 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:10,468 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:10,877 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:10,896 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/logout "HTTP/1.1 200 OK"
+2026-11-04 08:24:10,911 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:10,924 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/secure_3394e85e11df4c49bdf587905acca8eb "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:24:11,748 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:12,205 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:12,639 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:12,650 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:12,662 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/secure_b84ebb28d5b24e96a63ad2a44c743791 "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:24:13,492 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:13,945 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:14,361 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:14,399 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:14,419 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/secure_cbb0bf44bb0a4d8d8c576a19ec16fb3d "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:14,434 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 404 Not Found"
+.2026-11-04 08:24:15,273 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:15,728 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:16,148 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:16,195 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:16,210 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:16,227 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/secure_7ef7d755c6c54d84923bac3fb0b4c56f "HTTP/1.1 200 OK"
+.2026-11-04 08:24:17,056 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:17,506 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:17,931 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:17,968 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:17,985 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 409 Conflict"
+.2026-11-04 08:24:18,811 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:19,250 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:19,677 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:19,722 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:19,739 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/secure_d62e9c6cd89149b3849a6ab59295f65c "HTTP/1.1 200 OK"
+.2026-11-04 08:24:20,579 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:21,030 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:21,445 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:21,459 | ERROR | personal_agent.chat | Model failed request_id=secure_66bc02b137e64d5db264c089c8781e46
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\deepseek-harness\default-workspace\personal-agent-d11\src\chat_secure_api.py", line 723, in chat_endpoint
+    reply = legacy_chat.chat(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1198, in _execute_mock_call
+    raise effect
+TimeoutError: 模拟超时
+2026-11-04 08:24:21,485 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 502 Bad Gateway"
+2026-11-04 08:24:21,503 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 409 Conflict"
+2026-11-04 08:24:21,519 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/secure_66bc02b137e64d5db264c089c8781e46 "HTTP/1.1 200 OK"
+.2026-11-04 08:24:22,362 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:22,802 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:23,264 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:23,302 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:23,341 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:23,356 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/secure_2ab6ac19207349fea00099a5ec3b0dd3 "HTTP/1.1 200 OK"
+2026-11-04 08:24:23,368 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/secure_b721dec794c241dda6d1bbb444383513 "HTTP/1.1 200 OK"
+2026-11-04 08:24:23,383 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/secure_b721dec794c241dda6d1bbb444383513 "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:23,399 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/secure_2ab6ac19207349fea00099a5ec3b0dd3 "HTTP/1.1 404 Not Found"
+.2026-11-04 08:24:23,429 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:23,537 | WARNING | personal_agent.chat | Incomplete usage; budget retained request_id=usage_d48731f6c6b2472c83a43447a0e35736
+2026-11-04 08:24:23,547 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:23,584 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:23,700 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 502 Bad Gateway"
+.2026-11-04 08:24:23,739 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:23,865 | WARNING | personal_agent.chat | Incomplete usage; budget retained request_id=usage_b23560d228074ba0aefb2a66ad8bdaa8
+2026-11-04 08:24:23,876 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:23,891 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:23,928 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:24,060 | WARNING | personal_agent.chat | Incomplete usage; budget retained request_id=usage_d2e401ef4b214cffbbde599fc5031638
+2026-11-04 08:24:24,068 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:24,109 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:24,229 | WARNING | personal_agent.chat | Incomplete usage; budget retained request_id=usage_c32f17f49b074f6e9ebf4fdddda3d8a7
+2026-11-04 08:24:24,237 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:24,285 | WARNING | personal_agent.chat | Incomplete usage; budget retained request_id=usage_668b398dc11940dcb04dbfd2235a0da5
+2026-11-04 08:24:24,296 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:24,314 | INFO | httpx2 | HTTP Request: GET http://testserver/chat/requests/usage_c32f17f49b074f6e9ebf4fdddda3d8a7 "HTTP/1.1 404 Not Found"
+.2026-11-04 08:24:24,406 | INFO | personal_agent.history | 任务开始 task_id=rss_a3ad7d664c8247e5af0ddbba68738b93 run_id=run_d04faf4322424b589660adeb40710cf5
+2026-11-04 08:24:24,408 | INFO | personal_agent.dispatcher | 执行 RSS 任务 rss_a3ad7d664c8247e5af0ddbba68738b93，run_id=run_d04faf4322424b589660adeb40710cf5
+2026-11-04 08:24:24,408 | ERROR | personal_agent.dispatcher | 任务 rss_a3ad7d664c8247e5af0ddbba68738b93 执行失败
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\deepseek-harness\default-workspace\personal-agent-d11\src\core\monitor_dispatcher.py", line 679, in run_due_monitor_tasks
+    count = run_source(
+            ^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\AppData\Local\Programs\Python\Python312\Lib\unittest\mock.py", line 1198, in _execute_mock_call
+    raise effect
+TimeoutError: Simulated RSS timeout
+2026-11-04 08:24:24,423 | INFO | personal_agent.history | 任务结束 run_id=run_d04faf4322424b589660adeb40710cf5 status=failed duration_ms=15 new_items=0
+2026-11-04 08:24:24,424 | WARNING | personal_agent.dispatcher | 任务 rss_a3ad7d664c8247e5af0ddbba68738b93 失败，pause=False，重试延迟=60
+.2026-11-04 08:24:24,513 | INFO | personal_agent.history | 任务开始 task_id=rss_cd6179ba063f468ca1e2614d4b7144db run_id=run_6bada90aa46c4ab6bd0bb5a8472d52f7
+2026-11-04 08:24:24,513 | INFO | personal_agent.dispatcher | 执行 RSS 任务 rss_cd6179ba063f468ca1e2614d4b7144db，run_id=run_6bada90aa46c4ab6bd0bb5a8472d52f7
+2026-11-04 08:24:24,528 | INFO | personal_agent.history | 任务结束 run_id=run_6bada90aa46c4ab6bd0bb5a8472d52f7 status=success duration_ms=15 new_items=2
+2026-11-04 08:24:24,528 | INFO | personal_agent.dispatcher | 任务 rss_cd6179ba063f468ca1e2614d4b7144db 成功，新增 2 篇
+.2026-11-04 08:24:24,596 | INFO | httpx2 | HTTP Request: POST http://testserver/inbox/monitor/1/ack "HTTP/1.1 200 OK"
+2026-11-04 08:24:24,624 | INFO | httpx2 | HTTP Request: GET http://testserver/inbox "HTTP/1.1 200 OK"
+.2026-11-04 08:24:24,688 | INFO | httpx2 | HTTP Request: POST http://testserver/inbox/reminder/1/ack "HTTP/1.1 200 OK"
+2026-11-04 08:24:24,696 | INFO | httpx2 | HTTP Request: GET http://testserver/inbox "HTTP/1.1 200 OK"
+.2026-11-04 08:24:24,766 | INFO | httpx2 | HTTP Request: GET http://testserver/inbox "HTTP/1.1 200 OK"
+.2026-11-04 08:24:24,835 | INFO | httpx2 | HTTP Request: POST http://testserver/inbox/monitor/1/ack "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:24,847 | INFO | httpx2 | HTTP Request: POST http://testserver/inbox/reminder/1/ack "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:24,856 | INFO | httpx2 | HTTP Request: GET http://testserver/inbox "HTTP/1.1 200 OK"
+.2026-11-04 08:24:24,917 | INFO | httpx2 | HTTP Request: GET http://testserver/inbox "HTTP/1.1 200 OK"
+.2026-11-04 08:24:24,983 | INFO | httpx2 | HTTP Request: GET http://testserver/inbox "HTTP/1.1 200 OK"
+.2026-11-04 08:24:25,014 | INFO | httpx2 | HTTP Request: GET http://testserver/inbox "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:24:25,049 | INFO | httpx2 | HTTP Request: POST http://testserver/inbox/monitor/99999/ack "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:25,070 | INFO | httpx2 | HTTP Request: POST http://testserver/inbox/reminder/99999/ack "HTTP/1.1 404 Not Found"
+.2026-11-04 08:24:25,108 | INFO | httpx2 | HTTP Request: POST http://testserver/inbox/ghost/1/ack "HTTP/1.1 422 Unprocessable Content"
+.2026-11-04 08:24:25,167 | INFO | httpx2 | HTTP Request: GET http://testserver/inbox "HTTP/1.1 200 OK"
+..................................................................................2026-11-04 08:24:29,876 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:29,887 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:29,896 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:29,904 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:29,916 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:29,928 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:29,939 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:29,947 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:29,958 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:29,972 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:29,986 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:29,997 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,007 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,016 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,028 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,036 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,047 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,057 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,065 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,077 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,087 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,098 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,109 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,118 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,128 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,140 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,148 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,158 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,168 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,180 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,192 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,199 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,210 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,218 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,230 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,238 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,251 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,262 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,272 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,282 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,286 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 429 Too Many Requests"
+.2026-11-04 08:24:30,724 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,732 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,744 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,751 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,763 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,773 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,781 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,792 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:30,801 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 429 Too Many Requests"
+.1970-01-12 21:46:40,000 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+1970-01-12 21:46:40,000 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+1970-01-12 21:46:40,000 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+1970-01-12 21:46:40,000 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+1970-01-12 21:46:40,000 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+1970-01-12 21:46:40,000 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+1970-01-12 21:46:40,000 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+1970-01-12 21:46:40,000 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+1970-01-12 21:46:40,000 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 429 Too Many Requests"
+1970-01-12 21:56:41,000 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:24:31,868 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:31,882 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:31,894 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:31,902 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:31,914 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:31,929 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:31,943 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:31,950 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:31,956 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 429 Too Many Requests"
+.2026-11-04 08:24:32,387 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:32,396 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:32,405 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:32,817 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 200 OK"
+2026-11-04 08:24:32,827 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:32,834 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:32,846 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:32,854 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:32,862 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:32,872 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:32,884 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:32,896 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:32,900 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 429 Too Many Requests"
+.2026-11-04 08:24:33,336 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:33,347 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:33,358 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:33,366 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:33,375 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:33,385 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:33,396 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:33,402 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:33,412 | INFO | httpx2 | HTTP Request: POST http://testserver/auth/login "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:24:33,449 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 201 Created"
+2026-11-04 08:24:33,458 | INFO | httpx2 | HTTP Request: GET http://testserver/monitors "HTTP/1.1 200 OK"
+2026-11-04 08:24:33,462 | INFO | httpx2 | HTTP Request: GET http://testserver/monitors "HTTP/1.1 200 OK"
+.2026-11-04 08:24:33,518 | INFO | httpx2 | HTTP Request: DELETE http://testserver/monitors/rss_75b9c61ed8804d67a734177f5f10c93a "HTTP/1.1 200 OK"
+2026-11-04 08:24:33,525 | INFO | httpx2 | HTTP Request: GET http://testserver/monitors "HTTP/1.1 200 OK"
+.2026-11-04 08:24:33,563 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors/rss_709bb5a38a1a404bac751bc94c5089c0/pause "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:33,569 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors/rss_709bb5a38a1a404bac751bc94c5089c0/resume "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:33,667 | INFO | httpx2 | HTTP Request: DELETE http://testserver/monitors/rss_709bb5a38a1a404bac751bc94c5089c0 "HTTP/1.1 404 Not Found"
+.2026-11-04 08:24:33,716 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors/rss_72e3ec0c1575439e855a4a0143e1f10c/check "HTTP/1.1 200 OK"
+2026-11-04 08:24:33,723 | INFO | httpx2 | HTTP Request: GET http://testserver/monitors "HTTP/1.1 200 OK"
+.2026-11-04 08:24:33,750 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors/rss_1a66c1cecdee4b9e9950066a399d459f/check "HTTP/1.1 404 Not Found"
+.2026-11-04 08:24:33,790 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors/rss_c3665e8bcead4feba565f3b14571d9fe/pause "HTTP/1.1 200 OK"
+2026-11-04 08:24:33,796 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors/rss_c3665e8bcead4feba565f3b14571d9fe/check "HTTP/1.1 409 Conflict"
+.2026-11-04 08:24:33,849 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors/rss_d7e12d9879f64c58873668cf13491c50/check "HTTP/1.1 200 OK"
+.2026-11-04 08:24:33,863 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 422 Unprocessable Content"
+2026-11-04 08:24:33,864 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 422 Unprocessable Content"
+2026-11-04 08:24:33,866 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 422 Unprocessable Content"
+2026-11-04 08:24:33,868 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 422 Unprocessable Content"
+2026-11-04 08:24:33,869 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 422 Unprocessable Content"
+2026-11-04 08:24:33,873 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 422 Unprocessable Content"
+2026-11-04 08:24:33,890 | INFO | httpx2 | HTTP Request: GET http://testserver/monitors "HTTP/1.1 200 OK"
+.2026-11-04 08:24:33,901 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 422 Unprocessable Content"
+2026-11-04 08:24:33,903 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 422 Unprocessable Content"
+2026-11-04 08:24:33,904 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 422 Unprocessable Content"
+2026-11-04 08:24:33,908 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 422 Unprocessable Content"
+2026-11-04 08:24:33,923 | INFO | httpx2 | HTTP Request: GET http://testserver/monitors "HTTP/1.1 200 OK"
+.2026-11-04 08:24:33,963 | INFO | httpx2 | HTTP Request: GET http://testserver/monitors "HTTP/1.1 200 OK"
+2026-11-04 08:24:33,967 | INFO | httpx2 | HTTP Request: GET http://testserver/monitors "HTTP/1.1 200 OK"
+.2026-11-04 08:24:33,980 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 403 Forbidden"
+2026-11-04 08:24:33,995 | INFO | httpx2 | HTTP Request: GET http://testserver/monitors "HTTP/1.1 200 OK"
+.2026-11-04 08:24:34,006 | INFO | httpx2 | HTTP Request: GET http://testserver/monitors "HTTP/1.1 403 Forbidden"
+2026-11-04 08:24:34,008 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 403 Forbidden"
+.2026-11-04 08:24:34,033 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 201 Created"
+2026-11-04 08:24:34,038 | INFO | httpx2 | HTTP Request: GET http://testserver/monitors "HTTP/1.1 200 OK"
+.2026-11-04 08:24:34,082 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors/rss_60c33aecf08c437f8098feab551f8b65/pause "HTTP/1.1 200 OK"
+2026-11-04 08:24:34,096 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors/rss_60c33aecf08c437f8098feab551f8b65/resume "HTTP/1.1 200 OK"
+.2026-11-04 08:24:34,109 | INFO | httpx2 | HTTP Request: GET http://testserver/monitors "HTTP/1.1 401 Unauthorized"
+2026-11-04 08:24:34,110 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:24:34,133 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors/rss_missing/pause "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:34,139 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors/rss_missing/resume "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:34,143 | INFO | httpx2 | HTTP Request: POST http://testserver/monitors/rss_missing/check "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:34,168 | INFO | httpx2 | HTTP Request: DELETE http://testserver/monitors/rss_missing "HTTP/1.1 404 Not Found"
+.2026-11-04 08:24:34,253 | WARNING | personal_agent.dispatcher | 任务 rss_4dd5287b7b6d4a4fb6674ebedec231a3 未能更新：租约失效或任务已停止
+..2026-11-04 08:24:34,378 | INFO | httpx2 | HTTP Request: POST http://testserver/notifications/1/ack "HTTP/1.1 200 OK"
+.2026-11-04 08:24:34,429 | INFO | httpx2 | HTTP Request: POST http://testserver/notifications/1/ack "HTTP/1.1 200 OK"
+2026-11-04 08:24:34,439 | INFO | httpx2 | HTTP Request: GET http://testserver/notifications "HTTP/1.1 200 OK"
+.2026-11-04 08:24:34,484 | INFO | httpx2 | HTTP Request: POST http://testserver/notifications/1/ack "HTTP/1.1 404 Not Found"
+.2026-11-04 08:24:34,519 | INFO | httpx2 | HTTP Request: POST http://testserver/notifications/abc/ack "HTTP/1.1 422 Unprocessable Content"
+2026-11-04 08:24:34,522 | INFO | httpx2 | HTTP Request: POST http://testserver/notifications/0/ack "HTTP/1.1 422 Unprocessable Content"
+2026-11-04 08:24:34,524 | INFO | httpx2 | HTTP Request: POST http://testserver/notifications/-1/ack "HTTP/1.1 422 Unprocessable Content"
+.2026-11-04 08:24:34,598 | INFO | httpx2 | HTTP Request: GET http://testserver/notifications "HTTP/1.1 200 OK"
+.2026-11-04 08:24:34,632 | INFO | httpx2 | HTTP Request: GET http://testserver/notifications "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:24:34,668 | INFO | httpx2 | HTTP Request: POST http://testserver/notifications/99999/ack "HTTP/1.1 404 Not Found"
+.................2026-11-04 08:24:35,451 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders/in-app/due "HTTP/1.1 200 OK"
+.2026-11-04 08:24:35,486 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders/in-app/due "HTTP/1.1 200 OK"
+.2026-11-04 08:24:35,538 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders/in-app/due "HTTP/1.1 200 OK"
+.2026-11-04 08:24:35,585 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders/in-app/due "HTTP/1.1 200 OK"
+.2026-11-04 08:24:35,603 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders/in-app/due "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:24:35,653 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders/in-app/due?user_id=alice "HTTP/1.1 200 OK"
+.2026-11-04 08:24:35,699 | INFO | httpx2 | HTTP Request: POST http://testserver/reminders/1/ack "HTTP/1.1 200 OK"
+.2026-11-04 08:24:35,744 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders/in-app/due "HTTP/1.1 200 OK"
+2026-11-04 08:24:35,756 | INFO | httpx2 | HTTP Request: POST http://testserver/reminders/1/ack "HTTP/1.1 200 OK"
+2026-11-04 08:24:35,762 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders/in-app/due "HTTP/1.1 200 OK"
+.2026-11-04 08:24:35,813 | INFO | httpx2 | HTTP Request: DELETE http://testserver/reminders/1 "HTTP/1.1 200 OK"
+2026-11-04 08:24:35,819 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders "HTTP/1.1 200 OK"
+.2026-11-04 08:24:35,865 | INFO | httpx2 | HTTP Request: DELETE http://testserver/reminders/1 "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:35,870 | INFO | httpx2 | HTTP Request: PATCH http://testserver/reminders/1 "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:35,878 | INFO | httpx2 | HTTP Request: POST http://testserver/reminders/1/ack "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:35,883 | INFO | httpx2 | HTTP Request: DELETE http://testserver/reminders/1 "HTTP/1.1 404 Not Found"
+2026-11-04 08:24:35,889 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders "HTTP/1.1 200 OK"
+.2026-11-04 08:24:35,902 | INFO | httpx2 | HTTP Request: DELETE http://testserver/reminders/abc "HTTP/1.1 422 Unprocessable Content"
+2026-11-04 08:24:35,924 | INFO | httpx2 | HTTP Request: DELETE http://testserver/reminders/0 "HTTP/1.1 422 Unprocessable Content"
+2026-11-04 08:24:35,930 | INFO | httpx2 | HTTP Request: DELETE http://testserver/reminders/-1 "HTTP/1.1 422 Unprocessable Content"
+.2026-11-04 08:24:35,964 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders "HTTP/1.1 200 OK"
+.2026-11-04 08:24:35,979 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders?status=unknown "HTTP/1.1 422 Unprocessable Content"
+.2026-11-04 08:24:35,989 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:24:36,046 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders "HTTP/1.1 200 OK"
+.2026-11-04 08:24:36,096 | INFO | httpx2 | HTTP Request: DELETE http://testserver/reminders/1 "HTTP/1.1 200 OK"
+2026-11-04 08:24:36,106 | INFO | httpx2 | HTTP Request: PATCH http://testserver/reminders/1 "HTTP/1.1 409 Conflict"
+.2026-11-04 08:24:36,157 | INFO | httpx2 | HTTP Request: PATCH http://testserver/reminders/1 "HTTP/1.1 422 Unprocessable Content"
+.2026-11-04 08:24:36,208 | INFO | httpx2 | HTTP Request: PATCH http://testserver/reminders/1 "HTTP/1.1 200 OK"
+2026-11-04 08:24:36,215 | INFO | httpx2 | HTTP Request: GET http://testserver/reminders "HTTP/1.1 200 OK"
+.2026-11-04 08:24:36,248 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:39,034 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:39,068 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:42,146 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:42,185 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:45,404 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:45,460 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:48,380 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:48,395 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:48,431 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:51,624 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:51,658 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:54,590 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:24:54,625 | INFO | personal_agent.chat | Chat request storage ready
+.2026-11-04 08:24:54,680 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:24:57,501 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+2026-11-04 08:24:57,519 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 404 Not Found"
+.2026-11-04 08:24:57,557 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:25:00,833 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:25:00,893 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:25:01,097 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 502 Bad Gateway"
+.2026-11-04 08:25:01,154 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:25:01,235 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 401 Unauthorized"
+.2026-11-04 08:25:01,295 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:25:01,577 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:25:01,643 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:25:04,558 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.2026-11-04 08:25:04,598 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:25:07,389 | INFO | httpx2 | HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+.............2026-11-04 08:25:07,839 | INFO | personal_agent.scheduler | 提醒 1 已提交到 ntfy（用户 owner_001）
+.2026-11-04 08:25:07,894 | INFO | personal_agent.scheduler | 历史提醒 1 已提交到 ntfy
+..2026-11-04 08:25:08,002 | INFO | personal_agent.scheduler | 提醒 1 已提交到 ntfy（用户 owner_001）
+2026-11-04 08:25:08,016 | INFO | personal_agent.scheduler | 历史提醒 2 已提交到 ntfy
+.2026-11-04 08:25:08,078 | INFO | personal_agent.scheduler | 提醒 1 已提交到 ntfy（用户 owner_001）
+.2026-11-04 08:25:08,133 | INFO | personal_agent.scheduler | 提醒 1 已提交到 ntfy（用户 owner_001）
+.........................2026-11-04 08:25:09,192 | INFO | personal_agent.history | 任务开始 task_id=rss_0fa4e0f4d4a74506810345e258e4cd8d run_id=run_e7670c8df86d4a0e8a3241cdb823401f
+...2026-11-04 08:25:09,407 | INFO | personal_agent.history | 任务开始 task_id=rss_cc8e860813874669afe2db5d755cad0f run_id=run_65a59d43640f46e79d944d16b5d32a27
+..2026-11-04 08:25:09,508 | INFO | personal_agent.history | 任务开始 task_id=rss_failure run_id=run_09e56f40e3784c2889c34b2dac43b4e2
+2026-11-04 08:25:09,519 | INFO | personal_agent.history | 任务结束 run_id=run_09e56f40e3784c2889c34b2dac43b4e2 status=failed duration_ms=13 new_items=0
+.2026-11-04 08:25:09,548 | INFO | personal_agent.history | 任务开始 task_id=rss_test run_id=run_925999d076924adca8ad1d9b76d7f43f
+2026-11-04 08:25:09,556 | INFO | personal_agent.history | 任务结束 run_id=run_925999d076924adca8ad1d9b76d7f43f status=success duration_ms=13 new_items=3
+..2026-11-04 08:25:09,953 | ERROR | personal_agent.dispatch | 子任务失败 task_id=2 attempt=1
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\deepseek-harness\default-workspace\personal-agent-d11\src\core\dispatcher.py", line 341, in run_one
+    result = executor(profile, task, context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\deepseek-harness\default-workspace\personal-agent-d11\tests\test_team_dispatch.py", line 197, in executor
+    raise RuntimeError("模型超时")
+RuntimeError: 模型超时
+2026-11-04 08:25:09,968 | ERROR | personal_agent.dispatch | 子任务失败 task_id=2 attempt=2
+Traceback (most recent call last):
+  File "C:\Users\123\Documents\deepseek-harness\default-workspace\personal-agent-d11\src\core\dispatcher.py", line 341, in run_one
+    result = executor(profile, task, context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\123\Documents\deepseek-harness\default-workspace\personal-agent-d11\tests\test_team_dispatch.py", line 197, in executor
+    raise RuntimeError("模型超时")
+RuntimeError: 模型超时
+...............2026-11-04 08:25:10,691 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:25:10,745 | INFO | httpx2 | HTTP Request: GET http://testserver/api/rooms "HTTP/1.1 404 Not Found"
+2026-11-04 08:25:10,758 | INFO | httpx2 | HTTP Request: POST http://testserver/api/hands/hand-1/approve "HTTP/1.1 404 Not Found"
+2026-11-04 08:25:10,771 | INFO | httpx2 | HTTP Request: GET http://testserver/health "HTTP/1.1 200 OK"
+.2026-11-04 08:25:10,790 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:25:10,860 | INFO | httpx2 | HTTP Request: GET http://testserver/api/tts/diag "HTTP/1.1 200 OK"
+.2026-11-04 08:25:10,886 | INFO | personal_agent.chat | Chat request storage ready
+2026-11-04 08:25:10,942 | INFO | httpx2 | HTTP Request: POST http://testserver/api/tts "HTTP/1.1 200 OK"
+...........................................................
+----------------------------------------------------------------------
+Ran 694 tests in 212.020s
+
+OK
+密码输入尝试：1/3
+输入无效：密码不能为空
+密码输入尝试：2/3
+密码输入尝试：1/3
+两次密码不一致
+密码输入尝试：2/3
+密码输入尝试：1/3
+输入无效：密码不能为空
+密码输入尝试：2/3
+输入无效：密码不能为空
+密码输入尝试：3/3
+输入无效：密码不能为空
+通知 1 转站内投递（归属 admin_001）
+通知 1 已提交到 ntfy
+通知 1 已提交到 ntfy
+通知 1 转站内投递（归属 ghost）
+通知 1 发送失败：Simulated network failure
+任务状态：pending
+通知 1 发送失败：429 Too Many Requests
+任务状态：pending
+没有待发送的通知
+没有待发送的通知
+通知 1 发送失败：403 Forbidden
+任务状态：failed
+开始检查 RSS：test_rss_errors
+RSS 网络失败: Simulated connection failure
+开始检查 RSS：test_rss_errors
+RSS 网络失败: Missing HTTP response
+开始检查 RSS：test_rss_errors
+RSS HTTP失败: 认证、余额或访问权限异常，需要人工处理
+处理策略: stop
+开始检查 RSS：test_rss_errors
+RSS HTTP失败: 请求被限流，等待后重新调度
+处理策略: pause
+开始检查 RSS：test_rss_errors
+RSS HTTP失败: 服务器临时故障，允许有限重试
+处理策略: retry
+开始检查 RSS：test_rss_errors
+读取文章：2 篇
+发现新增：2 篇
+新增文章已写入 Outbox：2 条
+开始检查 RSS：test_rss_errors
+读取文章：1 篇
+发现新增：0 篇
+新增文章已写入 Outbox：0 条
+开始检查 RSS：test_rss_errors
+RSS 网络失败: Simulated RSS timeout
+
+PASS: backend, 694 tests
+Duration: 212.02s
+Result: PASS
+
+PROTECTED TEST PASS: backend

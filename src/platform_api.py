@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 
 from datetime import datetime, timezone
@@ -47,6 +48,8 @@ from src.platform.sandbox_service import (
 )
 
 router = APIRouter(prefix="/v1", tags=["沙箱平台"])
+
+logger = logging.getLogger("personal_agent.platform.api")
 
 
 def _default_node_id() -> str:
@@ -203,10 +206,14 @@ def _run_exec(
 ) -> None:
     store = ExecStore()
     token = CancellationToken()
+    service = SandboxService()
 
     active_execs.register(exec_id, sandbox_id, token)
 
     try:
+        # D20：有 exec 在跑 → 沙箱进入 running；被回收/失败时直接拒绝执行。
+        service.begin_exec(sandbox_id)
+
         outcome = Tier1Executor().execute_command(
             argv,
             sandbox_id=sandbox_id,
@@ -239,6 +246,16 @@ def _run_exec(
         )
     finally:
         active_execs.unregister(exec_id)
+
+        try:
+            # D20：没有活动 exec 了 → running 回到 idle。
+            if store.get(exec_id)["state"] in TERMINAL_EXEC_STATES:
+                service.end_exec(
+                    sandbox_id,
+                    active_execs=store.count_active(sandbox_id),
+                )
+        except (KeyError, PlatformError):
+            logger.exception("sandbox end_exec 失败 sandbox_id=%s", sandbox_id)
 
 
 # ==========================================
@@ -445,6 +462,15 @@ def create_exec(sandbox_id: str, payload: ExecRequest):
 
     if error is not None:
         return error
+
+    # D20：failed 是「运行时失去所有权」的终态，不接受新 exec；reclaimed 已在
+    # _require_sandbox 里返回 410。
+    if sandbox["state"] not in ("created", "running", "idle"):
+        return _error(
+            409,
+            "INVALID_STATE_TRANSITION",
+            f"沙箱处于 {sandbox['state']}，不接受新的 exec",
+        )
 
     command = payload.command
 

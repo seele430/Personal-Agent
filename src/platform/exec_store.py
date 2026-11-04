@@ -197,3 +197,17 @@ class ExecStore:
             ).fetchall()
 
         return [dict(row) for row in rows]
+
+    def count_active(self, sandbox_id: str) -> int:
+        """该沙箱上还在 queued / running 的 exec 数（D20 状态机用）。"""
+
+        with closing(self.connect()) as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) FROM platform_execs
+                WHERE sandbox_id = ? AND state IN ('queued', 'running')
+                """,
+                (sandbox_id,),
+            ).fetchone()
+
+        return int(row[0])

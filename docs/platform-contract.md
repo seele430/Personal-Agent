@@ -137,6 +137,13 @@ created / running / idle → reclaimed
 failed → reclaimed
 ```
 
+> D20（2026-11-04）：状态机已实现于 `SandboxService.transition()`。
+> `agent_sandboxes` 的 CHECK 从 `('created','reclaimed')` 重建为完整五态，
+> 旧库原地迁移（建新表 → 拷贝 → 删旧表 → 改名，保住 idempotency 的外键）。
+> `begin_exec` 让 created / idle → running，`end_exec` 在活动 exec 归零时
+> running → idle；`failed` 只允许回收，exec 会被拒（409）。`reclaimed` 是
+> 终态，任何出边都返回 409 `INVALID_STATE_TRANSITION`。
+
 - created 表示已分配但尚无活动 exec；running 表示至少一个活动 exec；idle 表示可复用但无活动 exec。
 - 单个命令非零退出不自动使沙箱 failed；runner 崩溃、工作区不可用或运行时失去所有权才使沙箱 failed。
 - `reclaimed` 是终态。任何复活、反向迁移或跳过清理的迁移均返回 409 `INVALID_STATE_TRANSITION`。

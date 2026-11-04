@@ -336,6 +336,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：D20 沙箱状态机（running/idle/failed、非法迁移、旧库重建）
+    "integration/test_sandbox_state.py": TestSchema(
+        layer="integration",
+        domain="platform_state",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",

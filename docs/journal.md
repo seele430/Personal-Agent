@@ -120,3 +120,9 @@
 - 验收与卡点：`tests/integration/test_platform_node_ops.py` **7 个用例全绿**（cordon 阻断新沙箱但租约仍 ready、cordon 幂等、cordon 不杀运行中的 exec（真实子进程跑到 succeeded）、remove 必须先 drain、drain 后仍有沙箱时 remove 409 且可重试、回收后 remove 200、已移除节点拒绝心跳/运维、`active_sandboxes` 计数），证据见 `docs/evidence/d19-node-ops.txt`；全量 **74 文件 / 686 用例 PASS，187.92 秒**（D18 基线 73 / 679，298.91 秒 —— 上一轮慢在整机负载，这次回到正常水平），证据见 `docs/evidence/d19-backend-tests.txt`。
 - 遗留限制：① 还没有 least-loaded 调度与容量原子占用（D20/D21），单机只有一个默认节点；② 没有 uncordon，摘流只能靠重新注册；③ remove 不做进程清理，只保证「无未回收沙箱」；④ `capacity` 仍未参与准入判断；⑤ `agent_sandboxes.node_id` 只有新行有值，D18 之前的历史行是 NULL，计数时不计入（回填留给 D20 一起做）。
 - 明天第一件事：D20 沙箱状态机（created → running ↔ idle → reclaimed/failed），非法迁移要有测试，并顺手回填历史行的 node_id。
+## D20 — 2026-11-04
+
+- 今天做了什么：实现沙箱状态机。`agent_sandboxes` 的 CHECK 从 created/reclaimed 两态重建为五态（created / running / idle / failed / reclaimed），旧库原地迁移：建新表 → 拷贝（缺失列用 NULL / `node_local` 兜底）→ 删旧表 → 改名 —— 顺序是故意的，SQLite 在 rename 时会改写其它表里指向被改名表的 REFERENCES，先改名会把 idempotency 的外键指到 legacy 表上。新增 `SandboxService.transition()` 与合法迁移表：`begin_exec`（created / idle → running）、`end_exec`（活动 exec 归零时 running → idle）、`mark_failed`；`reclaim` 也改走同一张合法表。`platform_execs` 新增 `count_active()`，API 的 exec 创建/结束接到状态机上，failed 沙箱拒绝新 exec（409）。
+- 验收与卡点：`tests/integration/test_sandbox_state.py` **8 个用例全绿**（created→running→idle→reclaimed 全链、failed 只能回收、非法迁移 409、同状态幂等、reclaimed 拒绝 begin_exec、并发 exec 保持 running、API 中 exec 让沙箱 running 再回 idle、failed 拒绝 exec、旧库重建 + node_id 回填 + 可重复迁移），证据见 `docs/evidence/d20-sandbox-state.txt`；平台相关 5 个文件一起跑 40 个用例也全绿。全量 **75 文件 / 694 用例 PASS，212.02 秒**，证据见 `docs/evidence/d20-backend-tests.txt`。
+- 遗留限制：① 还没有调度器消费 running / idle（D23）；② 没有 per-tenant 配额与容量原子占用（D21）；③ `failed` 目前只能通过服务层手动标记，执行器崩溃不会自动置 failed（需要 D22 启动对账）；④ 迁移只覆盖 agent_sandboxes，platform_execs 没有历史包袱；⑤ `list_expired` 现在也覆盖 running / idle 沙箱，到期回收会先取消活动 exec（D16 已有测试覆盖）。
+- 明天第一件事：D21 每租户并发配额 —— 超额返回 429 `CAPACITY_EXCEEDED`，回收后释放名额。
