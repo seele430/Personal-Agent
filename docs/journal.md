@@ -158,3 +158,9 @@
 - 验收与卡点：`tests/integration/test_platform_auth.py` **9 个用例全绿**（缺 token 401、错误 token 401、非 Bearer 401、正确 token 201、exec 也受保护、未配置保持旧行为、`/health` 不受影响、错误信封字段、SDK 真的带上 Bearer）。全量 **80 文件 / 725 用例 PASS，272.56 秒**，证据见 `docs/evidence/d25-auth.txt`、`docs/evidence/d25-backend-tests.txt`。
 - 遗留限制：① 令牌是静态共享密钥，没有轮换、没有按用户区分、没有审计谁调了什么；② `X-Tenant-Id` 仍由调用方自报，**不能当身份**；③ 未配置令牌时 `/v1` 仍对本机所有进程开放（只打了警告），要对外必须先配令牌；④ 令牌从环境变量读，没有密钥文件 / 系统钥匙串集成；⑤ 没有限流，401 可以无限重试。
 - 明天第一件事：D26 限流与审计日志 —— 401 重试与 exec 调用都该留痕。
+## D26 — 2026-11-04
+
+- 今天做了什么：加限流与审计。`src/platform/rate_limit.py` 实现进程内令牌桶（每分钟补充数 + 桶容量，`PERSONAL_AGENT_PLATFORM_RATE_PER_MIN` 默认 600、`..._BURST` 默认 60，设为 `0` 显式关闭），`/v1/*` 超限返回 429 `RATE_LIMITED` + `Retry-After`；`src/platform/audit.py` 新建 `agent_audit` 表，记录 `auth.denied` / `rate_limited` / `sandbox.create` / `sandbox.destroy` / `exec.create` / `exec.cancel`（含 actor、sandbox_id、exec_id、code），新增 `GET /v1/audit?limit=N`。中间件顺序：限流 → 认证 → 路由；审计写入失败只记日志、不影响请求。测试侧 `isolate_paths` 默认把限流关掉（否则整个进程共用一个令牌桶，会把 733 个用例跑成 429）。
+- 验收与卡点：`tests/integration/test_platform_audit.py` **8 个用例全绿**（401 留痕、生命周期四事件、audit 接口、audit 也要令牌、429 + `Retry-After` + 留痕、`/health` 不受限、桶按注入时钟恢复、`retry_after` 为正）。全量 **81 文件 / 733 用例 PASS，241.47 秒**，证据见 `docs/evidence/d26-audit.txt`、`docs/evidence/d26-backend-tests.txt`。
+- 遗留限制：① 限流是**进程内**的，多 worker 各算各的；② 审计只记结构化事实，不记命令正文（要看命令得拿 `exec_id` 查 exec 记录）；③ 审计表没有清理 / 归档策略，会一直长；④ 只能按 limit 取最近记录，没有按事件类型 / 时间过滤；⑤ 令牌指纹（sha256 前 12 位）只用于分桶，不是身份。
+- 明天第一件事：D30 有界队列 —— 队列满 429 `QUEUE_FULL`，queued 请求可取消。

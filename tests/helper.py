@@ -88,6 +88,23 @@ def _enter(stack: ExitStack, container) -> config.Paths:
             )
         )
 
+    # D26：默认关闭 /v1 限流 —— 否则同进程的所有用例共享一个令牌桶，
+    # 跑着跑着就 429。限流用例自己设值并 reset_limiter()。
+    stack.enter_context(
+        patch.dict(
+            "os.environ",
+            {"PERSONAL_AGENT_PLATFORM_RATE_PER_MIN": "0"},
+            clear=False,
+        )
+    )
+
+    limiter_module = sys.modules.get("src.platform.rate_limit")
+
+    if limiter_module is not None:
+        stack.enter_context(
+            patch.object(limiter_module, "_limiter", None)
+        )
+
     return temporary
 
 

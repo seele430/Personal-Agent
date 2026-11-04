@@ -233,6 +233,13 @@ failed → reclaimed
 > 保持既有行为（无认证、只监听 `127.0.0.1`）并在启动时打警告。SDK
 > `PlatformClient(token=...)` 会自动带上该头。**没有令牌就不再等于“本机开放”**：
 > 想给多用户用，必须配置令牌。
+>
+> D26（2026-11-04）：限流与审计已接入。`/v1/*` 走进程内令牌桶
+> （`PERSONAL_AGENT_PLATFORM_RATE_PER_MIN` 默认 600、`..._RATE_BURST` 默认 60，
+> 设为 `0` 显式关闭），超额返回 429 `RATE_LIMITED` + `Retry-After`；
+> 拒绝路径（`auth.denied` / `rate_limited`）与关键操作（`sandbox.create` /
+> `sandbox.destroy` / `exec.create` / `exec.cancel`）都写进 `agent_audit` 表，
+> 可用 `GET /v1/audit?limit=N` 查询。**限流是进程内的**，多 worker 各算各的。
 
 ## 6. 稳定错误码
 
@@ -248,6 +255,7 @@ failed → reclaimed
 | 409 | `NODE_GENERATION_STALE` | 节点代际已过期，必须重新注册 |
 | 410 | `SANDBOX_GONE` / `EXEC_GONE` | 资源已回收或过期，需重新创建 / 查询上层状态 |
 | 429 | `CAPACITY_EXCEEDED` / `NO_READY_NODE` / `QUEUE_FULL` | 背压；只有收到有界排队语义后才可按退避策略重试 |
+| 429 | `RATE_LIMITED` | 请求过频；按 `Retry-After` 退避后重试 |
 
 内部故障使用 500 `INTERNAL_ERROR` 并保留 request_id；不得把已知超时、取消、容量和状态冲突吞成 500。网络层是否可重试仍遵守第 3 节，不能只看 `retryable` 就重放 exec。
 

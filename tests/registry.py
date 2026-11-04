@@ -396,6 +396,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：D26 审计与限流（拒绝留痕、操作留痕、429）
+    "integration/test_platform_audit.py": TestSchema(
+        layer="integration",
+        domain="platform_audit",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",

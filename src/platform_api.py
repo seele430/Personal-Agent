@@ -3,24 +3,28 @@
 接口形状与稳定错误码以 ``docs/platform-contract.md`` 和
 ``sdk/fixtures/v1/contracts.json`` 为准；SDK 用 ``UrllibTransport`` 直接打这里。
 
-尚未实现（不在本次范围）：``/v1/sandboxes/{id}/fn``、``/v1/nodes``、
-``/metrics``、TTL / reaper / 410 之外的 tombstone 语义（D16—D20、D25）。
+尚未实现（不在本次范围）：``/v1/sandboxes/{id}/fn``、``/metrics``。
+D25 起 ``/v1`` 可用 Bearer 令牌保护（中间件在 ``src/main.py``）；
+D26 增加限流与 ``GET /v1/audit``。
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
 import threading
 
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from src.core.run_control import CancellationToken
 from src.platform import active_execs
+from src.platform.audit import AuditLog
 from src.platform.node_registry import (
     InvalidNodeState,
     NodeBusy,
@@ -407,9 +411,49 @@ def remove_node(node_id: str):
 # 沙箱
 # ==========================================
 
+def _actor(request) -> str:
+    """审计里的调用方标识：优先令牌指纹，其次来源主机。"""
+
+    token = os.getenv("PERSONAL_AGENT_PLATFORM_TOKEN", "").strip()
+
+    if token:
+        return "tok:" + hashlib.sha256(token.encode("utf-8")).hexdigest()[:12]
+
+    host = request.client.host if request.client else "unknown"
+
+    return f"host:{host}"
+
+
+def _audit(
+    event: str,
+    *,
+    request,
+    outcome: str = "ok",
+    code: str | None = None,
+    sandbox_id: str | None = None,
+    exec_id: str | None = None,
+    detail: dict[str, Any] | None = None,
+) -> None:
+    """审计写入失败不能影响正常请求，只记日志。"""
+
+    try:
+        AuditLog().record(
+            event,
+            outcome=outcome,
+            code=code,
+            actor=_actor(request),
+            sandbox_id=sandbox_id,
+            exec_id=exec_id,
+            detail=detail,
+        )
+    except Exception:  # noqa: BLE001 - 审计是旁路
+        logger.exception("审计写入失败 event=%s", event)
+
+
 @router.post("/sandboxes", status_code=201)
 def create_sandbox(
     payload: CreateSandboxRequest,
+    request: Request,
     idempotency_key: str | None = Header(
         default=None, alias="Idempotency-Key"
     ),
@@ -419,6 +463,12 @@ def create_sandbox(
         node = NodeRegistry().ensure_default_node()
 
         if not node["accepting"]:
+            _audit(
+                "sandbox.create",
+                request=request,
+                outcome="denied",
+                code="NO_READY_NODE",
+            )
             return _error(
                 429,
                 "NO_READY_NODE",
@@ -435,12 +485,25 @@ def create_sandbox(
             tenant_id=tenant_id or "default",
         )
     except PlatformError as exc:
+        _audit(
+            "sandbox.create",
+            request=request,
+            outcome="denied",
+            code=exc.code,
+        )
         return _error(
             exc.http_status,
             exc.code,
             str(exc),
             retryable=bool(getattr(exc, "retryable", False)),
         )
+
+    _audit(
+        "sandbox.create",
+        request=request,
+        sandbox_id=sandbox["id"],
+        detail={"created": sandbox.get("created", True)},
+    )
 
     return JSONResponse(status_code=201, content=_sandbox_body(sandbox))
 
@@ -456,13 +519,17 @@ def get_sandbox(sandbox_id: str):
 
 
 @router.post("/sandboxes/{sandbox_id}/destroy")
-def destroy_sandbox(sandbox_id: str):
+def destroy_sandbox(sandbox_id: str, request: Request):
     sandbox, error = _require_sandbox(sandbox_id, allow_reclaimed=True)
 
     if error is not None:
         return error
 
-    return _sandbox_body(SandboxService().reclaim(sandbox_id, reason="manual"))
+    reclaimed = SandboxService().reclaim(sandbox_id, reason="manual")
+
+    _audit("sandbox.destroy", request=request, sandbox_id=sandbox_id)
+
+    return _sandbox_body(reclaimed)
 
 
 # ==========================================
@@ -473,6 +540,7 @@ def destroy_sandbox(sandbox_id: str):
 def create_exec(
     sandbox_id: str,
     payload: ExecRequest,
+    request: Request,
     traceparent: str | None = Header(default=None, alias="traceparent"),
 ):
     sandbox, error = _require_sandbox(sandbox_id)
@@ -533,6 +601,14 @@ def create_exec(
         daemon=True,
     ).start()
 
+    _audit(
+        "exec.create",
+        request=request,
+        sandbox_id=sandbox_id,
+        exec_id=row["id"],
+        detail={"argv_bytes": len(" ".join(command))},
+    )
+
     return JSONResponse(status_code=202, content=_exec_body(row))
 
 
@@ -547,7 +623,7 @@ def get_exec(exec_id: str):
 
 
 @router.post("/exec/{exec_id}/cancel", status_code=202)
-def cancel_exec(exec_id: str):
+def cancel_exec(exec_id: str, request: Request):
     try:
         row = ExecStore().get(exec_id)
     except KeyError:
@@ -562,5 +638,19 @@ def cancel_exec(exec_id: str):
 
     active_execs.cancel(exec_id)
 
+    _audit(
+        "exec.cancel",
+        request=request,
+        sandbox_id=row["sandbox_id"],
+        exec_id=exec_id,
+    )
+
     # 返回完整资源：SDK 的 cancel() 会按 ExecResult 解析，缺字段会炸。
     return JSONResponse(status_code=202, content=_exec_body(row))
+
+
+@router.get("/audit")
+def list_audit(limit: int = 100):
+    """最近的平台操作审计（新的一般在前）。"""
+
+    return {"records": AuditLog().list(limit=limit)}

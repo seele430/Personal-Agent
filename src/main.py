@@ -8,6 +8,7 @@
 
 from contextlib import asynccontextmanager, closing
 
+import hashlib
 import hmac
 import logging
 import os
@@ -23,6 +24,8 @@ from src.inbox_api import router as inbox_router
 from src.monitors_api import router as monitor_router
 from src.notifications_api import router as notification_router
 from src.platform_api import router as platform_router
+from src.platform.audit import AuditLog
+from src.platform.rate_limit import get_limiter
 from src.platform.reaper import start_reaper, stop_reaper
 from src.platform.reconcile import reconcile_startup
 from src.reminder_api import router as reminder_router
@@ -153,16 +156,65 @@ def platform_token() -> str | None:
     return os.getenv(PLATFORM_TOKEN_ENV, "").strip() or None
 
 
+def _platform_actor_key(request) -> str:
+    """限流与审计的键：令牌指纹优先，其次来源主机。"""
+
+    token = platform_token()
+
+    if token:
+        return "tok:" + hashlib.sha256(token.encode("utf-8")).hexdigest()[:12]
+
+    host = request.client.host if request.client else "unknown"
+
+    return f"host:{host}"
+
+
+def _audit_denied(request, event: str, code: str) -> None:
+    """拒绝路径的审计；写失败不影响响应。"""
+
+    try:
+        AuditLog().record(
+            event,
+            outcome="denied",
+            code=code,
+            actor=_platform_actor_key(request),
+            detail={"path": request.url.path},
+        )
+    except Exception:  # noqa: BLE001 - 审计是旁路
+        logger.exception("审计写入失败 event=%s", event)
+
+
 @app.middleware("http")
 async def _platform_auth(request, call_next):
-    """D25：/v1 的 Bearer 认证。
+    """D25/D26：/v1 的 Bearer 认证 + 进程内限流。
 
     配了 `PERSONAL_AGENT_PLATFORM_TOKEN` 就强制校验；没配则放行并在启动时
     打警告 —— 未配置意味着「只监听本机」这条边界还在生效。
+    `PERSONAL_AGENT_PLATFORM_RATE_PER_MIN=0` 显式关闭限流（测试与受控环境）。
     """
 
     if not request.url.path.startswith("/v1"):
         return await call_next(request)
+
+    key = _platform_actor_key(request)
+    limiter = get_limiter()
+
+    if limiter is not None and not limiter.allow(key):
+        _audit_denied(request, "rate_limited", "RATE_LIMITED")
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": {
+                    "code": "RATE_LIMITED",
+                    "message": "请求过于频繁，请稍后重试",
+                    "retryable": True,
+                    "request_id": None,
+                }
+            },
+            headers={
+                "Retry-After": str(limiter.retry_after_seconds(key)),
+            },
+        )
 
     token = platform_token()
 
@@ -175,6 +227,7 @@ async def _platform_auth(request, call_next):
     if scheme.lower() != "bearer" or not hmac.compare_digest(
         provided.strip(), token
     ):
+        _audit_denied(request, "auth.denied", "UNAUTHORIZED")
         return JSONResponse(
             status_code=401,
             content={
