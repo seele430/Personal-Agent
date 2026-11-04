@@ -21,6 +21,7 @@ from .errors import (
     RateLimitError,
     RequestTimeoutError,
     TransportError,
+    UnauthorizedError,
     ValidationError,
     WaitTimeoutError,
 )
@@ -105,6 +106,7 @@ class PlatformClient:
         poll_interval_seconds: float = 0.2,
         monotonic: Callable[[], float] = time.monotonic,
         sleeper: Callable[[float], None] = time.sleep,
+        token: str | None = None,
     ) -> None:
         if request_timeout_seconds <= 0:
             raise ValueError("request_timeout_seconds must be positive")
@@ -114,6 +116,7 @@ class PlatformClient:
         self.transport = transport or UrllibTransport()
         self.request_timeout_seconds = request_timeout_seconds
         self.poll_interval_seconds = poll_interval_seconds
+        self.token = token
         self._monotonic = monotonic
         self._sleep = sleeper
 
@@ -324,6 +327,8 @@ class PlatformClient:
         headers: Mapping[str, str] | None = None,
     ) -> TransportResponse:
         request_headers = {"Accept": "application/json"}
+        if self.token:
+            request_headers["Authorization"] = f"Bearer {self.token}"
         if headers:
             request_headers.update(headers)
         body = None
@@ -359,6 +364,7 @@ class PlatformClient:
             error = {}
         error_type = {
             400: ValidationError,
+            401: UnauthorizedError,
             404: NotFoundError,
             409: ConflictError,
             410: GoneError,

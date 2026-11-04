@@ -386,6 +386,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：D25 /v1 Bearer 认证（缺/错 401、SDK 带头、未配置时的行为）
+    "integration/test_platform_auth.py": TestSchema(
+        layer="integration",
+        domain="platform_auth",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：AI 预算预留、结算与并发
     "test_ai_budget.py": TestSchema(
         layer="integration",

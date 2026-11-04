@@ -152,3 +152,9 @@
 - 过程中修的一个回归：`test_agent_stream` 里的 `fake_platform` 是显式签名的替身，新增 `traceparent` 关键字后调用直接 TypeError，导致「进入工具」事件没发生、断言超时 —— 给替身补上参数后恢复。再次说明：改接缝签名要同时扫所有手写替身。
 - 遗留限制：① 只做注入与透传，不采集、不上报，没有 OpenTelemetry 依赖；② 沙箱内部再往下派生要靠子进程自己遵守规范，平台不校验；③ 只覆盖 exec 与工具调用，runner 自身启动、reaper、API 请求没有 span；④ 采样标志固定 `01`，没有 `tracestate`；⑤ assistant 的 trace-id 由 run_id 哈希得到，语义上不是随机值。
 - 明天第一件事：D25 /v1 认证 —— 那个安全边界还开着。
+## D25 — 2026-11-04
+
+- 今天做了什么：给 `/v1` 接入 Bearer 认证。新增中间件（`src/main.py::_platform_auth`）：配置 `PERSONAL_AGENT_PLATFORM_TOKEN` 后，`/v1/*` 全部要求 `Authorization: Bearer <token>`，用 `hmac.compare_digest` 做常量时间比较，缺失 / 错误返回 401 `UNAUTHORIZED` + `WWW-Authenticate: Bearer`，错误信封与其它接口一致；未配置时保持既有行为（无认证、只监听 127.0.0.1），启动时打警告。SDK 增加 `PlatformClient(token=...)` 与 `UnauthorizedError`，自动带 Authorization 头。契约补 401 错误码，威胁模型加 §12.1 说明「开关有了、但未配置时仍本机开放」。
+- 验收与卡点：`tests/integration/test_platform_auth.py` **9 个用例全绿**（缺 token 401、错误 token 401、非 Bearer 401、正确 token 201、exec 也受保护、未配置保持旧行为、`/health` 不受影响、错误信封字段、SDK 真的带上 Bearer）。全量 **80 文件 / 725 用例 PASS，272.56 秒**，证据见 `docs/evidence/d25-auth.txt`、`docs/evidence/d25-backend-tests.txt`。
+- 遗留限制：① 令牌是静态共享密钥，没有轮换、没有按用户区分、没有审计谁调了什么；② `X-Tenant-Id` 仍由调用方自报，**不能当身份**；③ 未配置令牌时 `/v1` 仍对本机所有进程开放（只打了警告），要对外必须先配令牌；④ 令牌从环境变量读，没有密钥文件 / 系统钥匙串集成；⑤ 没有限流，401 可以无限重试。
+- 明天第一件事：D26 限流与审计日志 —— 401 重试与 exec 调用都该留痕。

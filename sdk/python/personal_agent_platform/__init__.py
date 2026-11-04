@@ -11,6 +11,7 @@ from .errors import (
     RateLimitError,
     RequestTimeoutError,
     TransportError,
+    UnauthorizedError,
     ValidationError,
     WaitTimeoutError,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "Transport",
     "TransportError",
     "TransportResponse",
+    "UnauthorizedError",
     "UrllibTransport",
     "ValidationError",
     "WaitTimeoutError",

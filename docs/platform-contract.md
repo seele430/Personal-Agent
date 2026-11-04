@@ -226,6 +226,13 @@ failed → reclaimed
 > （`retryable=true`）。幂等重放不占新名额；回收后名额自动释放（按 `state !=
 > 'reclaimed'` 计数）。并发创建由 `BEGIN IMMEDIATE` 串行化，测试验证 10 并发
 > 只成功配额数个。仍缺：真实多租户身份（`/v1` 无认证）、least-loaded 调度。
+>
+> D25（2026-11-04）：`/v1` 认证已接入。配置 `PERSONAL_AGENT_PLATFORM_TOKEN`
+> 后，所有 `/v1/*` 请求必须带 `Authorization: Bearer <token>`（常量时间比较），
+> 缺失或不匹配返回 401 `UNAUTHORIZED` + `WWW-Authenticate: Bearer`；未配置时
+> 保持既有行为（无认证、只监听 `127.0.0.1`）并在启动时打警告。SDK
+> `PlatformClient(token=...)` 会自动带上该头。**没有令牌就不再等于“本机开放”**：
+> 想给多用户用，必须配置令牌。
 
 ## 6. 稳定错误码
 
@@ -233,6 +240,7 @@ failed → reclaimed
 | ---: | --- | --- |
 | 400 | `INVALID_ARGUMENT` | 参数、超时或输出限制非法；修改请求后再试 |
 | 400 | `INVALID_IDEMPOTENCY_KEY` | key 缺失或格式非法 |
+| 401 | `UNAUTHORIZED` | 缺少或错误的平台访问令牌；修正 `Authorization` 后再试 |
 | 404 | `SANDBOX_NOT_FOUND` / `EXEC_NOT_FOUND` | 资源未知或 tombstone 已清除 |
 | 409 | `IDEMPOTENCY_CONFLICT` | 同 key 不同请求体；不得自动换请求体重试 |
 | 409 | `INVALID_STATE_TRANSITION` | 非法沙箱 / exec 状态迁移 |

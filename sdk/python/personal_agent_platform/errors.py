@@ -37,6 +37,10 @@ class ValidationError(ApiError):
     pass
 
 
+class UnauthorizedError(ApiError):
+    """401：缺少或错误的平台访问令牌。"""
+
+
 class NotFoundError(ApiError):
     pass
 

@@ -8,9 +8,12 @@
 
 from contextlib import asynccontextmanager, closing
 
+import hmac
 import logging
+import os
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 from src import api as legacy_chat
 from src.auth_api import router as auth_router
@@ -56,6 +59,12 @@ async def lifespan(_app: FastAPI):
         reconcile_startup()
     except Exception:
         logger.exception("启动对账失败")
+
+    # D25：没配令牌就明确说清楚，别让人以为 /v1 已经受保护。
+    if platform_token() is None:
+        logger.warning(
+            "PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用"
+        )
 
     # D16：平台 TTL 回收线程；测试环境用 PERSONAL_AGENT_PLATFORM_REAPER=0 关闭。
     start_reaper()
@@ -133,6 +142,53 @@ async def _trace_request(request, call_next):
         response.headers["X-Trace-Id"] = trace_id
 
         return response
+
+
+PLATFORM_TOKEN_ENV = "PERSONAL_AGENT_PLATFORM_TOKEN"
+
+
+def platform_token() -> str | None:
+    """平台访问令牌；未配置返回 None（此时 /v1 保持本机可用的既有行为）。"""
+
+    return os.getenv(PLATFORM_TOKEN_ENV, "").strip() or None
+
+
+@app.middleware("http")
+async def _platform_auth(request, call_next):
+    """D25：/v1 的 Bearer 认证。
+
+    配了 `PERSONAL_AGENT_PLATFORM_TOKEN` 就强制校验；没配则放行并在启动时
+    打警告 —— 未配置意味着「只监听本机」这条边界还在生效。
+    """
+
+    if not request.url.path.startswith("/v1"):
+        return await call_next(request)
+
+    token = platform_token()
+
+    if token is None:
+        return await call_next(request)
+
+    header = request.headers.get("authorization", "")
+    scheme, _, provided = header.partition(" ")
+
+    if scheme.lower() != "bearer" or not hmac.compare_digest(
+        provided.strip(), token
+    ):
+        return JSONResponse(
+            status_code=401,
+            content={
+                "error": {
+                    "code": "UNAUTHORIZED",
+                    "message": "缺少或错误的平台访问令牌",
+                    "retryable": False,
+                    "request_id": None,
+                }
+            },
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return await call_next(request)
 
 
 @app.get("/health")
