@@ -23,7 +23,9 @@ QUICK = [sys.executable, "-c", "print('quick')"]
 
 class ExecQueueApiTest(unittest.TestCase):
     def setUp(self):
-        self.temp = TemporaryDirectory()
+        # 队列用例会真的起子进程；Windows 上被杀进程的句柄释放有延迟，
+        # 临时目录清理偶尔会撞到 WinError 32 —— 只影响清理，不影响断言。
+        self.temp = TemporaryDirectory(ignore_cleanup_errors=True)
         self.addCleanup(self.temp.cleanup)
         isolate_paths(self, self.temp)
 
@@ -109,6 +111,31 @@ class ExecQueueApiTest(unittest.TestCase):
         self.assertEqual(third.json()["error"]["code"], "QUEUE_FULL")
         self.assertTrue(third.json()["error"]["retryable"])
         self.assertEqual(len(ExecStore().list_by_sandbox(self.sandbox_id)), before)
+
+    def test_queue_full_includes_retry_after(self):
+        self.submit(SLEEP)
+        self.submit(QUICK)
+
+        full = self.submit(QUICK)
+
+        self.assertEqual(full.status_code, 429, full.text)
+        self.assertEqual(full.json()["error"]["code"], "QUEUE_FULL")
+        self.assertEqual(full.headers.get("retry-after"), "5")
+
+    def test_queue_endpoint_reports_depth(self):
+        self.submit(SLEEP)
+        first = self.submit(QUICK)
+
+        status = self.client.get("/v1/queue")
+
+        self.assertEqual(status.status_code, 200, status.text)
+        body = status.json()
+        self.assertEqual(body["active"], 1)
+        self.assertEqual(body["queued"], 1)
+        self.assertEqual(body["max_active"], 1)
+        self.assertEqual(body["max_queued"], 1)
+
+        self.client.post(f"/v1/exec/{first.json()['exec_id']}/cancel")
 
     def test_queued_exec_starts_after_slot_frees(self):
         self.submit(SLEEP)

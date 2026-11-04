@@ -253,6 +253,11 @@ failed → reclaimed
 > 429 `QUEUE_FULL`，且**不创建 exec 记录**。排队中的 exec 可以通过 cancel
 > 直接落 `cancelled`（它从未起过进程）；活跃名额释放后自动放行队首。
 > 队列与并发都是进程内的，不是全局调度。
+>
+> D30.1（2026-11-04）：`GET /v1/queue` 返回
+> `{active, queued, max_active, max_queued}`（**单进程视角**，多 worker 各报
+> 各的）；429 `QUEUE_FULL` 带 `Retry-After`（`PERSONAL_AGENT_PLATFORM_QUEUE_RETRY_AFTER`
+> 默认 5 秒）。这是**估计值**，不是精确等待时间 —— 平台没有真实的 exec 时长统计。
 
 ## 6. 稳定错误码
 

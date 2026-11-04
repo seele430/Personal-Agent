@@ -178,3 +178,10 @@
 - 修的一个真竞态：`queued` 分支取消时只摘队列、没取消 token；如果 worker 恰好处在「已出队、还没置 running」的窗口，它会带着未取消的 token 跑满整条命令（审计用例连续两次 30 秒超时暴露了它）。修法：queued 分支同时调用 `active_execs.cancel(exec_id)`，让刚出队的 worker 立刻看到取消。修后连跑 6 次稳定。
 - 遗留限制：① 队列和并发都是**进程内**的，多 worker 各算各的；② 队列不跨重启，重启时 queued 的 exec 由 D22 对账统一落 `failed / INTERRUPTED_BY_RESTART`；③ 没有优先级、没有公平性保证（FIFO 而已）；④ 没有队列深度指标暴露（只有 `GET /v1/nodes` 和日志能间接看）；⑤ 429 没有 `Retry-After`（队列满时给不出准确等待时间）。
 - 明天第一件事：D31 队列可观测性 / 背压指标，或回到 D40 演示收尾。
+## D30.1 — 2026-11-04
+
+- 今天做了什么：给队列加可观测性。新增 `GET /v1/queue`，返回 `{active, queued, max_active, max_queued}`（单进程视角）；429 `QUEUE_FULL` 现在带 `Retry-After`（`PERSONAL_AGENT_PLATFORM_QUEUE_RETRY_AFTER`，默认 5 秒），并在文档里注明这**是估计值**，不是基于真实 exec 时长的计算。
+- 验收与卡点：`tests/integration/test_platform_queue.py` 从 5 个扩到 **7 个全绿**（新增：429 带 `Retry-After: 5`、`/v1/queue` 深度与实际一致 active=1/queued=1）。全量 **82 文件 / 743 用例 PASS，208.86 秒**，证据见 `docs/evidence/d30-queue.txt`、`docs/evidence/d30-1-backend-tests.txt`。
+- 过程中的小坑：连跑整个文件时偶发 `WinError 32`（被杀的 sleep 子进程句柄释放有延迟，撞上临时目录清理）。只影响清理、不影响断言，用例的 `TemporaryDirectory` 加了 `ignore_cleanup_errors=True`，连跑 5 次稳定。
+- 遗留限制：① `/v1/queue` 只反映当前进程，多 worker 需各自查询；② `Retry-After` 是固定估计值，exec 时长差异大时会偏乐观或偏保守；③ 队列深度没有历史曲线 / 指标导出；④ 没有等待超时（排队中的 exec 可以一直等，直到被取消或平台重启）。
+- 明天第一件事：给排队加等待上限（`queue_max_wait_seconds`，超时落 `timed_out`），否则 D30 的「有界」只界了数量、没界时间。

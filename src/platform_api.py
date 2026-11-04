@@ -102,6 +102,7 @@ def _error(
     message: str,
     *,
     retryable: bool = False,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status,
@@ -113,6 +114,34 @@ def _error(
                 "request_id": None,
             }
         },
+        headers=headers,
+    )
+
+
+def _queue_retry_after() -> int:
+    """队列满时给调用方的退避提示（秒）。
+
+    没有真实的 exec 时长统计可用，所以这是一个**可配置的估计值**，
+    不是精确等待时间；文档里写清楚。
+    """
+
+    raw = os.getenv("PERSONAL_AGENT_PLATFORM_QUEUE_RETRY_AFTER", "").strip()
+
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 5
+
+    return value if value >= 1 else 5
+
+
+def _queue_full_error() -> JSONResponse:
+    return _error(
+        429,
+        "QUEUE_FULL",
+        "执行队列已满，请稍后重试",
+        retryable=True,
+        headers={"Retry-After": str(_queue_retry_after())},
     )
 
 
@@ -622,12 +651,7 @@ def create_exec(
             code="QUEUE_FULL",
             sandbox_id=sandbox_id,
         )
-        return _error(
-            429,
-            "QUEUE_FULL",
-            "执行队列已满，请稍后重试",
-            retryable=True,
-        )
+        return _queue_full_error()
 
     row = ExecStore().create(
         sandbox_id,
@@ -670,12 +694,7 @@ def create_exec(
             sandbox_id=sandbox_id,
             exec_id=row["id"],
         )
-        return _error(
-            429,
-            "QUEUE_FULL",
-            "执行队列已满，请稍后重试",
-            retryable=True,
-        )
+        return _queue_full_error()
 
     _audit(
         "exec.create",
@@ -752,6 +771,17 @@ def cancel_exec(exec_id: str, request: Request):
 
     # 返回完整资源：SDK 的 cancel() 会按 ExecResult 解析，缺字段会炸。
     return JSONResponse(status_code=202, content=_exec_body(row))
+
+
+@router.get("/queue")
+def queue_status():
+    """D30.1：执行队列深度。
+
+    **单进程视角** —— 多 worker 部署时每个进程各有自己的队列，这里只报
+    当前进程看到的数字。
+    """
+
+    return _exec_queue().snapshot()
 
 
 @router.get("/audit")
