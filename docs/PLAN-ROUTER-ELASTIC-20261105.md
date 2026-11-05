@@ -80,9 +80,9 @@ route_decided(data.analysis)
 |---|---|---|---|---|---|---|
 | **W1.1** | 路由设计：intent / 决策对象 / 风险 / 平台契约 | `docs/design-intent-router.md` | 字段与不变量定死 | 0.5 天 | — | ✅ |
 | **W1.2** | `RouteDecision` + 规则路由（5 intent + clarify） | `src/routing/` | 单测覆盖 5 类 + 澄清 + 高危 | 0.5 天 | W1.1 | ✅ |
-| **W1.3** | `route_decided` 写入轨迹 | 轨迹 schema + 测试 | 一条 run 能看到该事件 | 0.25 天 | W1.2 | ⬜ |
-| **W1.4** | CSV 垂直切片：消息 → 沙箱 → `chart.png` | `scripts/demo_route_pipeline.py` | 真实产出文件 + trace 完整 | 0.5 天 | W1.3 | ⬜ |
-| **W1.5** | 确定性审批闸门（高危 100% 审批） | `src/policy/` 或复用审批 | 高危漏审批 = 0 | 0.25 天 | W1.2 | ⬜ |
+| **W1.3** | `route_decided` 写入轨迹 | 轨迹 schema + 测试 | 一条 run 能看到该事件 | 0.25 天 | W1.2 | ✅ |
+| **W1.4** | CSV 垂直切片：消息 → 沙箱 → `chart.png` | `scripts/demo_route_pipeline.py` | 真实产出文件 + trace 完整 | 0.5 天 | W1.3 | ✅ |
+| **W1.5** | 确定性审批闸门（高危 100% 审批） | `src/policy/` 或复用审批 | 高危漏审批 = 0 | 0.25 天 | W1.2 | ✅ |
 | **W2.1** | 评估集：5 类 + 高危子集，去重，train/dev/test，冻结 test | `tests/data/router-eval.jsonl` | test 集哈希固定 | 0.5 天 | W1.2 | ⬜ |
 | **W2.2** | 评估脚本：macro-F1、各类 P/R、混淆矩阵、高危漏审批 | `scripts/eval_router.py` | 报告可复现 | 0.5 天 | W2.1 | ⬜ |
 | **W2.3** | 分类器 + 置信度校准（规则/模型分开） | `src/routing/classifier.py` | 校准曲线 + 延迟分开统计 | 1 天 | W2.1 | ⬜ |
