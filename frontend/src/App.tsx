@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import BotsView from "./BotsView";
+import PlatformView from "./PlatformView";
 
 type MessageStatus =
   | "pending"
@@ -440,6 +441,7 @@ export default function App(
     | "quota"
     | "monitors"
     | "bots"
+    | "platform"
   >("chat");
 
   // 侧栏可收起：收起后主区占满，左上角留「☰」展开。
@@ -1620,6 +1622,19 @@ export default function App(
           <button
             type="button"
             className={`nav-item ${
+              view === "platform" ? "selected" : ""
+            }`}
+            onClick={() => setView("platform")}
+            aria-pressed={view === "platform"}
+            aria-label="平台"
+          >
+            <span className="nav-symbol">◈</span>
+            <span>平台</span>
+          </button>
+
+          <button
+            type="button"
+            className={`nav-item ${
               view === "monitors" ? "selected" : ""
             }`}
             onClick={() => setView("monitors")}
@@ -2169,6 +2184,8 @@ export default function App(
               </div>
             )}
           </section>
+        ) : view === "platform" ? (
+          <PlatformView authToken={authToken} />
         ) : view === "bots" ? (
           <BotsView authToken={authToken} />
         ) : view === "reminders" ? (

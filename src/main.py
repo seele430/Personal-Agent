@@ -20,6 +20,7 @@ from src import api as legacy_chat
 from src.auth_api import router as auth_router
 from src.bot_api import router as bot_router
 from src.chat_secure_api import router as chat_router
+from src.console_api import router as console_router
 from src.inbox_api import router as inbox_router
 from src.monitors_api import router as monitor_router
 from src.notifications_api import router as notification_router
@@ -317,6 +318,9 @@ app.include_router(monitor_router)
 
 # 站内通知（非站长用户的投递渠道）
 app.include_router(notification_router)
+
+# 平台控制台（路由决策 / 节点 / 沙箱 / 执行一屏）
+app.include_router(console_router)
 
 # 统一收件箱（聚合监控通知与到点提醒）
 app.include_router(inbox_router)

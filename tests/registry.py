@@ -569,6 +569,15 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="medium",
     ),
+    # L2：控制台总览接口
+    "integration/test_console_api.py": TestSchema(
+        layer="integration",
+        domain="platform_http",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="low",
+    ),
     # L1：意图路由（规则层，不选节点）
     "test_intent_router.py": TestSchema(
         layer="unit",
