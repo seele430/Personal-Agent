@@ -237,9 +237,20 @@ class Tier1RunnerTest(unittest.TestCase):
         pid_file = self.pid_file()
         token = CancellationToken()
 
-        timer = threading.Timer(1.0, token.cancel)
-        timer.start()
-        self.addCleanup(timer.cancel)
+        # 不能用固定 sleep 后取消：机器一忙，探针可能还没把 pids.json 写出来，
+        # 于是取消发生在“进程树建立之前”，用例随机失败。
+        # 改成等探针写好 PID 文件再取消 —— 一定取消的是已经建立的进程树。
+        def cancel_when_tree_ready():
+            try:
+                wait_for_pids(pid_file, timeout=10)
+            finally:
+                token.cancel()
+
+        watcher = threading.Thread(
+            target=cancel_when_tree_ready,
+            daemon=True,
+        )
+        watcher.start()
 
         outcome = self.executor.execute_command(
             probe_argv(self.python, pid_file),
@@ -252,6 +263,7 @@ class Tier1RunnerTest(unittest.TestCase):
         self.assertIsNotNone(outcome.cancel_requested_at)
         self.assertEqual(outcome.cleanup, CLEANUP_JOB_OBJECT)
 
+        watcher.join(timeout=5)
         pids = wait_for_pids(pid_file)
         self.assertFalse(process_is_alive(pids["parent"]))
         self.assertFalse(process_is_alive(pids["child"]))

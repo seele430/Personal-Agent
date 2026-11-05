@@ -514,6 +514,15 @@ TEST_SCHEMAS = {
         risk="high",
     ),
 
+    # L1：意图路由（规则层，不选节点）
+    "test_intent_router.py": TestSchema(
+        layer="unit",
+        domain="routing",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
     # L2：账号存储（建表、口令哈希、会话）
     "test_auth_store.py": TestSchema(
         layer="integration",
