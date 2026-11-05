@@ -212,6 +212,11 @@ export default function AuthPreview() {
   // ==========================================
 
   useEffect(() => {
+    // 已登录的标签页不需要知道“能不能建号”：少一次请求，也少一个测试要 mock 的接口。
+    if (getSavedToken()) {
+      return
+    }
+
     let active = true
 
     fetch(STATE_URL, {

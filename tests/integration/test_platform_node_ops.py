@@ -18,7 +18,7 @@ from tests.helper import isolate_paths
 
 class NodeOpsTest(unittest.TestCase):
     def setUp(self):
-        self.temp = TemporaryDirectory()
+        self.temp = TemporaryDirectory(ignore_cleanup_errors=True)
         self.addCleanup(self.temp.cleanup)
         isolate_paths(self, self.temp)
 

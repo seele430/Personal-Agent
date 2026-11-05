@@ -10,10 +10,27 @@ import {
 // 与 AuthPreview.tsx 中的 SESSION_KEY 保持一致
 const SESSION_KEY = "personal-agent-auth-token";
 
+// 未登录时登录页会查一次“是否已初始化”，以便决定显示登录还是建号表单。
+const AUTH_STATE_API = "**/api/auth/state";
+
+async function mockAuthState(page: import("@playwright/test").Page) {
+  await page.route(AUTH_STATE_API, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        initialized: true,
+        registration_open: false,
+      }),
+    }),
+  );
+}
+
 test.describe("Personal Agent Login Gate", () => {
 
   test("直接访问根路径必须进入登录页面", async ({ page }) => {
     const unexpected = await blockUnmockedApi(page);
+    await mockAuthState(page);
 
     await page.goto("/");
 
@@ -32,12 +49,13 @@ test.describe("Personal Agent Login Gate", () => {
       page.getByRole("button", { name: /登录工作空间/ }),
     ).toBeVisible();
 
-    // 没有 token 时不应发出任何 API 请求。
+    // 没有 token 时除了 /auth/state 不应发出其它 API 请求。
     expectNoUnmockedApi(unexpected);
   });
 
   test("直接访问登录地址正常显示登录界面", async ({ page }) => {
     const unexpected = await blockUnmockedApi(page);
+    await mockAuthState(page);
 
     await page.goto("/login");
 

@@ -133,6 +133,19 @@ export async function installAuthMocks(
     }),
   );
 
+  // 未登录时登录页会查一次“是否已初始化”；已登录时组件会跳过。
+  // 这里给个兜底，避免用例因未 mock 而失败。
+  await page.route("**/api/auth/state", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        initialized: true,
+        registration_open: false,
+      }),
+    }),
+  );
+
   // 已登录就一定会轮询站内提醒，这里一并兜底。
   await installReminderMocks(page);
 
