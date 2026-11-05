@@ -41,6 +41,7 @@
 | event_type | status 取值 | 关联字段 | 含义 |
 | --- | --- | --- | --- |
 | `run_started` | `running` | run_id | run 被接受 |
+| `route_decided` | `routed` / `clarify` | run_id | 路由决策（intent、置信度、风险、能力、回退） |
 | `run_finished` | `succeeded` / `failed` / `cancelled` | run_id | run 终态 |
 | `tool_approval_requested` | `pending` | run / step | 需要用户批准 |
 | `tool_approval_decided` | `approved` / `rejected` / `expired` | run / step | 用户或超时给出结果 |

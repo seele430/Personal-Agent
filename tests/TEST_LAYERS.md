@@ -17,7 +17,7 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 2e767a30259f0167 -->
+<!-- membership-digest: 7b47e2355e86fb80 -->
 
 ## unit — L1 单元测试 (10 files)
 
@@ -34,7 +34,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 | `unit/test_url_policy.py` | tests/unit/ | rss | none | mocked | high | registered-inferred |
 
-## integration — L2 数据集成测试 (62 files)
+## integration — L2 数据集成测试 (63 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -58,6 +58,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `integration/test_platform_trace.py` | tests/integration/ | platform_trace | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_platform_ttl.py` | tests/integration/ | platform_ttl | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_reminder_store.py` | tests/integration/ | reminder | temporary_sqlite | none | high | registered |
+| `integration/test_route_events.py` | tests/integration/ | routing | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_sandbox_create.py` | tests/integration/ | platform_create | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_sandbox_quota.py` | tests/integration/ | platform_quota | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_sandbox_state.py` | tests/integration/ | platform_state | temporary_sqlite | none | medium | registered-inferred |

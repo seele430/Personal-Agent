@@ -175,10 +175,10 @@ Router 提交的是**约束**，不是执行计划：
 }
 ```
 
-事件顺序：
+事件顺序（run_started 由 Agent 先写）：
 
 ```
-route_decided → approval_checked → exec_queued → node_selected
+run_started → route_decided → approval_checked → exec_queued → node_selected
 → exec_started → exec_succeeded → artifact → usage/cost
 ```
 
