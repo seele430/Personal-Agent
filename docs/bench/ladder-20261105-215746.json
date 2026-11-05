@@ -1,0 +1,24 @@
+[
+  {
+    "rps_target": 4,
+    "repeat": 0,
+    "cpu_avg_percent": 106.2,
+    "cpu_max_percent": 128.9,
+    "rss_avg_mb": 100.5,
+    "rss_max_mb": 106.4,
+    "submitted": 2400,
+    "elapsed_seconds": 600.66,
+    "achieved_rps": 4.0,
+    "ok": 2400,
+    "rejected_429": 0,
+    "other": 0,
+    "p50_ms": 1016.0,
+    "p95_ms": 1640.0,
+    "p99_ms": 1969.0,
+    "max_ms": 5250.0,
+    "queue_peak": 4,
+    "codes": {
+      "202": 2400
+    }
+  }
+]

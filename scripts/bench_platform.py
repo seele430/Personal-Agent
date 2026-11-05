@@ -103,13 +103,75 @@ def percentile(values: list[float], p: float) -> float:
     return ordered[index]
 
 
-def run_stage(port: int, sandbox_id: str, rps: int, duration: float) -> dict:
+def run_stage(
+    port: int,
+    sandbox_id: str,
+    rps: int,
+    duration: float,
+    *,
+    server_pid: int | None = None,
+    repeat: int = 0,
+) -> dict:
     total = max(1, int(rps * duration))
     interval = 1.0 / rps
     latencies: list[float] = []
     statuses: dict[str, int] = {}
     queue_peak = 0
     lock = threading.Lock()
+
+    samples: list[tuple[float, float]] = []  # (cpu_percent, rss_mb)
+    stop_sampling = threading.Event()
+
+    def sample_resources() -> None:
+        if server_pid is None:
+            return
+
+        try:
+            import psutil
+        except ImportError:
+            return
+
+        try:
+            root = psutil.Process(server_pid)
+        except psutil.Error:
+            return
+
+        # Windows 上 venv 的 python.exe 可能是启动器：真正的 uvicorn 在子进程里。
+        # 采样时把 python 进程树聚合起来，避免只测到 5 MB 的壳。
+        targets = [root]
+
+        try:
+            children = [
+                child
+                for child in root.children(recursive=True)
+                if child.name().lower().startswith("python")
+            ]
+
+            if children:
+                targets = children
+        except psutil.Error:
+            pass
+
+        for process in targets:
+            try:
+                process.cpu_percent(interval=None)
+            except psutil.Error:
+                pass
+
+        while not stop_sampling.wait(2.0):
+            cpu_total = 0.0
+            rss_total = 0.0
+
+            for process in targets:
+                try:
+                    cpu_total += process.cpu_percent(interval=None)
+                    rss_total += process.memory_info().rss / 1e6
+                except psutil.Error:
+                    continue
+
+            samples.append((cpu_total, rss_total))
+
+    sampler = threading.Thread(target=sample_resources, daemon=True)
 
     def one(index: int) -> None:
         nonlocal queue_peak
@@ -148,6 +210,7 @@ def run_stage(port: int, sandbox_id: str, rps: int, duration: float) -> dict:
             statuses["poll_timeout"] = statuses.get("poll_timeout", 0) + 1
 
     began = time.monotonic()
+    sampler.start()
 
     with ThreadPoolExecutor(max_workers=max(8, rps * 2)) as pool:
         futures = []
@@ -169,9 +232,19 @@ def run_stage(port: int, sandbox_id: str, rps: int, duration: float) -> dict:
             future.result()
 
     elapsed = time.monotonic() - began
+    stop_sampling.set()
+    sampler.join(timeout=5)
+
+    cpu_values = [item[0] for item in samples]
+    rss_values = [item[1] for item in samples]
 
     return {
         "rps_target": rps,
+        "repeat": repeat,
+        "cpu_avg_percent": round(statistics.mean(cpu_values), 1) if cpu_values else None,
+        "cpu_max_percent": round(max(cpu_values), 1) if cpu_values else None,
+        "rss_avg_mb": round(statistics.mean(rss_values), 1) if rss_values else None,
+        "rss_max_mb": round(max(rss_values), 1) if rss_values else None,
         "submitted": total,
         "elapsed_seconds": round(elapsed, 2),
         "achieved_rps": round(len(latencies) / elapsed, 2) if elapsed else 0.0,
@@ -194,8 +267,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ladder", default="2,4,8,12")
     parser.add_argument("--duration", type=float, default=15.0)
+    parser.add_argument("--minutes", type=float, default=None, help="覆盖 duration（分钟）")
+    parser.add_argument("--repeat", type=int, default=1, help="每档重复次数")
     parser.add_argument("--base-url", default=None, help="跳过自启，直接打已有服务")
     args = parser.parse_args()
+
+    if args.minutes:
+        args.duration = args.minutes * 60
 
     ladder = [int(item) for item in args.ladder.split(",") if item.strip()]
     BENCH_DIR.mkdir(parents=True, exist_ok=True)
@@ -255,14 +333,23 @@ def main() -> int:
         print(f"{'RPS':>4} {'submitted':>9} {'ok':>4} {'429':>4} "
               f"{'p50ms':>7} {'p95ms':>7} {'p99ms':>7} {'q_peak':>6}")
 
-        for rps in ladder:
-            row = run_stage(port, sandbox_id, rps, args.duration)
-            rows.append(row)
-            print(
-                f"{row['rps_target']:>4} {row['submitted']:>9} {row['ok']:>4} "
-                f"{row['rejected_429']:>4} {row['p50_ms']:>7} {row['p95_ms']:>7} "
-                f"{row['p99_ms']:>7} {row['queue_peak']:>6}"
-            )
+        for rep in range(max(1, args.repeat)):
+            for rps in ladder:
+                row = run_stage(
+                    port,
+                    sandbox_id,
+                    rps,
+                    args.duration,
+                    server_pid=server.pid if server else None,
+                    repeat=rep,
+                )
+                rows.append(row)
+                print(
+                    f"{row['rps_target']:>4} {row['submitted']:>9} {row['ok']:>4} "
+                    f"{row['rejected_429']:>4} {row['p50_ms']:>7} {row['p95_ms']:>7} "
+                    f"{row['p99_ms']:>7} {row['queue_peak']:>6} "
+                    f"cpu={row['cpu_avg_percent']} rss={row['rss_avg_mb']}"
+                )
 
         stamp = time.strftime("%Y%m%d-%H%M%S")
         csv_path = BENCH_DIR / f"ladder-{stamp}.csv"
