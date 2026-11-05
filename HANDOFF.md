@@ -6,7 +6,7 @@
 
 平台主线（执行/取消/审批/轨迹/生命周期/配额/对账/认证/限流/审计/队列/观测/压测）完成；
 **本轮新增**意图路由（规则层 + 评估集 + 审批闸门）与弹性控制面（扩缩容控制器 + 对照实验 + 残留校验）。
-全量 **94 文件 / 810 用例 PASS**；CI 三 job 全绿。剩余：前端控制台页、正式长压测、G3 视频。
+全量 **95 文件 / 812 用例 PASS**；CI 三 job 全绿。剩余：前端控制台页、正式长压测、G3 视频。
 
 ## 1. 仓库与入口
 
@@ -42,6 +42,7 @@ cd "C:\Users\123\Personal Agent"
 | 扩缩容 | `src/platform/autoscale.py` | `desired_capacity` + 稳定扩容 + 冷却缩容 + 事件 |
 | 弹性对照 | `scripts/autoscale_compare.py` | 峰值积压 -71.9%，平均积压 -98.2% |
 | 残留校验 | `scripts/verify_w34_residue.py` | 目录/DB/进程残留 = 0 |
+| 前端控制台 | `frontend/src/PlatformView.tsx`、`src/console_api.py` | 侧栏「平台」一屏：路由/队列/节点/执行 |
 | 一屏控制台（CLI） | `scripts/console_overview.py` | 路由/节点/沙箱/执行一屏 |
 | 演示总入口 | `scripts/demo_w4.py` | 路由 + 弹性 + 回收，一条命令 |
 
@@ -51,7 +52,7 @@ cd "C:\Users\123\Personal Agent"
 
 | 项 | 结果 |
 |---|---|
-| 全量后端回归 | **94 文件 / 810 用例 PASS** |
+| 全量后端回归 | **95 文件 / 812 用例 PASS** |
 | 前端构建 + Playwright | 34/34 PASS（CI） |
 | CI | run 41996586242 三 job success（后续提交沿用同一 workflow） |
 | 路由评估 | test 94.3% / macro-F1 0.963 / 高危漏审批 0 |
@@ -80,7 +81,7 @@ cd "C:\Users\123\Personal Agent"
 
 ## 5. 已知缺口（按优先级）
 
-1. **W4.1 前端控制台页未做**：目前只有 CLI（`console_overview.py`），没有在 React 前端加「平台」视图。
+1. ~~W4.1 前端控制台~~ 已完成：侧栏「平台」视图 + `GET /console/overview`（CLI `console_overview.py` 保留）。
 2. **正式长压测未做**：现有 8–12 RPS 数据是每档约 10 秒，不满足修订版「10 分钟 × 3 次 + 资源采样」。
 3. **路由分类器层暂缓**：规则层已达标；触发条件是准确率跌破 90% 或新增 intent。
 4. **路由未接入真实对话流**：目前通过脚本与单元测试验证，尚未在 `agent.chat()` 里调用 Router。
