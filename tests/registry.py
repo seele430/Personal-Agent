@@ -551,6 +551,24 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="medium",
     ),
+    # L1：弹性扩缩容（期望容量 + 冷却）
+    "test_autoscale.py": TestSchema(
+        layer="unit",
+        domain="platform_nodes",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+    # L1：降级不降风险
+    "test_routing_fallback.py": TestSchema(
+        layer="unit",
+        domain="routing",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
     # L1：意图路由（规则层，不选节点）
     "test_intent_router.py": TestSchema(
         layer="unit",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -11,6 +12,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from src.main import app
+from src.platform.node_registry import NodeRegistry
 from tests.helper import isolate_paths
 
 
@@ -90,6 +92,32 @@ class SchedulingTest(unittest.TestCase):
         self.assertEqual(
             blocked.json()["error"]["code"], "CAPACITY_EXCEEDED"
         )
+
+    def test_expired_lease_stops_accepting(self):
+        self.register("node_a", capacity=4)
+
+        registry = NodeRegistry()
+        now = datetime.now(timezone.utc)
+
+        healthy = [
+            node
+            for node in registry.list_nodes(now=now)
+            if node["node_id"] == "node_a"
+        ][0]
+        self.assertTrue(healthy["accepting"])
+        self.assertIsNotNone(registry.pick_node(now=now))
+
+        expired = now + timedelta(seconds=35)
+
+        stale = [
+            node
+            for node in registry.list_nodes(now=expired)
+            if node["node_id"] == "node_a"
+        ][0]
+        self.assertFalse(stale["accepting"])
+
+        # 唯一的节点租约过期后，调度器不能再把任务分给它。
+        self.assertIsNone(registry.pick_node(now=expired))
 
     def test_single_user_global_limit(self):
         with patch.dict(

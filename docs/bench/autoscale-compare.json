@@ -1,0 +1,25 @@
+{
+  "note": "离散时间仿真，不是真实压测；用于比较控制策略。",
+  "ticks": 180,
+  "slots_per_node": 8,
+  "fixed": {
+    "mode": "fixed",
+    "peak_backlog": 64,
+    "avg_backlog": 26.76,
+    "dropped": 296,
+    "scale_events": 0,
+    "final_nodes": 1
+  },
+  "elastic": {
+    "mode": "elastic",
+    "peak_backlog": 18,
+    "avg_backlog": 0.49,
+    "dropped": 0,
+    "scale_events": 4,
+    "final_nodes": 1
+  },
+  "improvement": {
+    "peak_backlog": 0.719,
+    "avg_backlog": 0.982
+  }
+}
