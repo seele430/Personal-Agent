@@ -1,0 +1,17 @@
+{
+  "pipeline": {
+    "script": "demo_route_pipeline.py",
+    "exit": 0,
+    "stdout_tail": "ARTIFACT=C:\\Users\\123\\AppData\\Local\\Temp\\pa-route-pipeline-xyoduc9k\\chart.png\n{\n  \"run_id\": \"run_f91003805f284ea4b3eb5cdb37ff902e\",\n  \"message\": \"分析这个 CSV 的缺失值，并生成一张图\",\n  \"intent\": \"data.analysis\",\n  \"confidence\": 0.82,\n  \"risk\": \"low\",\n  \"sandbox_id\": \"sbx_ea1738e2ac324225b1ec09e3a73cba11\",\n  \"node_id\": \"node_local\",\n  \"exec_id\": \"exec_bd63e1f4f72043198459aa8581c8a827\",\n  \"exec_state\": \"succeeded\",\n  \"artifact\": \"C:\\\\Users\\\\123\\\\AppData\\\\Local\\\\Temp\\\\pa-route-pipeline-xyoduc9k\\\\chart.png\",\n  \"events\": [\n    \"run_started\",\n    \"route_decided\",\n    \"approval_checked\",\n    \"node_selected\",\n    \"exec_queued\",\n    \"exec_started\",\n    \"exec_succeeded\",\n    \"artifact\",\n    \"run_finished\"\n  ]\n}\n"
+  },
+  "autoscale": {
+    "script": "autoscale_compare.py",
+    "exit": 0,
+    "stdout_tail": "{\"peak_backlog\": 0.719, \"avg_backlog\": 0.982}\n{\"fixed\": {\"mode\": \"fixed\", \"peak_backlog\": 64, \"avg_backlog\": 26.76, \"dropped\": 296, \"scale_events\": 0, \"final_nodes\": 1}, \"elastic\": {\"mode\": \"elastic\", \"peak_backlog\": 18, \"avg_backlog\": 0.49, \"dropped\": 0, \"scale_events\": 4, \"final_nodes\": 1}}\n"
+  },
+  "residue": {
+    "script": "verify_w34_residue.py",
+    "exit": 0,
+    "stdout_tail": "{\"ok\": true, \"out\": \"C:\\\\Users\\\\123\\\\Personal Agent\\\\docs\\\\evidence\\\\w34-residue.json\"}\n"
+  }
+}
