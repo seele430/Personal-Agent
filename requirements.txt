@@ -15,6 +15,8 @@ httptools==0.8.0
 httpx2==2.13.1
 idna==3.20
 jiter==0.17.0
+matplotlib==3.11.2
+numpy==2.5.4
 openai==3.26.1
 opentelemetry-api==1.45.1
 pydantic==2.14.0

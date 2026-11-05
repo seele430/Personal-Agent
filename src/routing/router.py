@@ -57,18 +57,20 @@ _RULES: tuple[tuple[str, re.Pattern[str], str, float], ...] = (
     (
         "data.analysis",
         re.compile(
-            r"分析|统计|缺失值|数据(清洗|处理)|csv|excel|表格|图表|可视化|"
-            r"画(一|个|张)?图|pandas|numpy|平均值|分布|相关性",
+            r"分析|统计|缺失值|数据|清洗|处理|聚合|csv|excel|表格|图表|可视化|"
+            r"画(一|个|张)?图|pandas|numpy|平均值|均值|方差|分位数|分布(?!式)|相关性|"
+            r"直方图|柱状图|折线图|异常值|重复行|占比|留存|转化|趋势",
             re.IGNORECASE,
         ),
         "analysis_kw",
-        1.0,
+        0.9,
     ),
     (
         "code.execute",
         re.compile(
-            r"运行|执行|跑(一下|一遍)?|脚本|命令|报错|复现|python|node|"
-            r"pip install|pytest|编译",
+            r"运行|执行(一下|这个|命令|脚本|代码|程序|测试|迁移|查询)|"
+            r"跑(一下|一遍|个)|脚本|命令|报错|复现|python|node|"
+            r"pip install|pytest|编译|npm|用 .{0,12} 执行",
             re.IGNORECASE,
         ),
         "exec_kw",
@@ -77,28 +79,29 @@ _RULES: tuple[tuple[str, re.Pattern[str], str, float], ...] = (
     (
         "file.operate",
         re.compile(
-            r"文件|目录|文件夹|写入|读取|保存|创建|重命名|移动|复制|"
+            r"文件|目录|文件夹|写入|写到|保存到|输出到|读取|保存|创建|重命名|移动|复制|磁盘|格式化|系统配置|配置文件|转成|转换|清空|truncate|drop table|"
             r"打开.+\.(txt|md|csv|json|py)",
             re.IGNORECASE,
         ),
         "file_kw",
-        0.9,
+        1.0,
     ),
     (
         "platform.inspect",
         re.compile(
-            r"指标|节点|队列|沙箱|平台(状态|健康|负载)|metrics|queue|"
-            r"执行记录|审计",
+            r"指标|节点|队列|沙箱|平台(的)?(状态|健康|负载)|metrics|queue|exec|调度器|"
+            r"执行记录|审计|配额|容量|利用率|告警|并发上限|回收|租约|"
+            r"失败的任务|版本和配置|p99|延迟",
             re.IGNORECASE,
         ),
         "platform_kw",
-        0.9,
+        1.2,
     ),
     (
         "reminder.manage",
         re.compile(r"提醒|闹钟|定时|每天|明天.+(点|时)|remind", re.IGNORECASE),
         "reminder_kw",
-        1.0,
+        1.3,
     ),
 )
 
@@ -184,7 +187,7 @@ class Router:
         ambiguous = (
             top_score > 0
             and second_score > 0
-            and (top_score - second_score) < CLARIFY_GAP
+            and (top_score - second_score) / top_score < 0.15
             and top_intent != "general.chat"
         )
 
