@@ -1,0 +1,18 @@
+{
+  "total": 160,
+  "counts": {
+    "train": 90,
+    "dev": 35,
+    "test": 35
+  },
+  "intents": [
+    "code.execute",
+    "data.analysis",
+    "file.operate",
+    "general.chat",
+    "platform.inspect",
+    "reminder.manage"
+  ],
+  "high_risk": 10,
+  "test_sha256": "ee80dd9d6995e641e9310a17ea3e5f53241b40cc32b7e2d1b24c344a2f65c545"
+}

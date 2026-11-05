@@ -542,6 +542,15 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="medium",
     ),
+    # L1：路由评估集冻结与门槛
+    "test_router_eval.py": TestSchema(
+        layer="unit",
+        domain="routing",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
     # L1：意图路由（规则层，不选节点）
     "test_intent_router.py": TestSchema(
         layer="unit",

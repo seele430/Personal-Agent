@@ -1,0 +1,160 @@
+{"text": "你好呀", "intent": "general.chat", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "今天心情不太好，陪我聊两句", "intent": "general.chat", "risk": "low", "split": "train", "source": "seed"}
+{"text": "解释一下什么是 ReAct", "intent": "general.chat", "risk": "low", "split": "train", "source": "seed"}
+{"text": "你觉得我该先学调度还是先学存储", "intent": "general.chat", "risk": "low", "split": "train", "source": "seed"}
+{"text": "帮我把这段话改得更正式一点", "intent": "general.chat", "risk": "low", "split": "train", "source": "seed"}
+{"text": "用一句话概括一下什么是弹性计算", "intent": "general.chat", "risk": "low", "split": "train", "source": "seed"}
+{"text": "为什么我的电脑风扇一直响", "intent": "general.chat", "risk": "low", "split": "train", "source": "seed"}
+{"text": "推荐几本讲分布式的书", "intent": "general.chat", "risk": "low", "split": "train", "source": "seed"}
+{"text": "我最近在准备面试，有点焦虑", "intent": "general.chat", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "你觉得这个方案有什么风险", "intent": "general.chat", "risk": "low", "split": "test", "source": "seed"}
+{"text": "给我讲个冷笑话", "intent": "general.chat", "risk": "low", "split": "train", "source": "seed"}
+{"text": "DeepSeek 和别的模型有什么区别", "intent": "general.chat", "risk": "low", "split": "test", "source": "seed"}
+{"text": "这段代码大概在做什么（不运行）", "intent": "general.chat", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "帮我想几个项目名字", "intent": "general.chat", "risk": "low", "split": "train", "source": "seed"}
+{"text": "解释一下 CAP 定理", "intent": "general.chat", "risk": "low", "split": "train", "source": "seed"}
+{"text": "我该不该换工作", "intent": "general.chat", "risk": "low", "split": "test", "source": "seed"}
+{"text": "怎么判断一个岗位是不是坑", "intent": "general.chat", "risk": "low", "split": "test", "source": "seed"}
+{"text": "用通俗的话讲讲什么是容器", "intent": "general.chat", "risk": "low", "split": "test", "source": "seed"}
+{"text": "帮我把这段英文翻译成中文", "intent": "general.chat", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "总结一下我们刚才聊的内容", "intent": "general.chat", "risk": "low", "split": "train", "source": "seed"}
+{"text": "你觉得 AI Agent 明年会怎么发展", "intent": "general.chat", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "给我一个学习计划的大纲就行，不用执行", "intent": "general.chat", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "帮我把这句话润色一下", "intent": "general.chat", "risk": "low", "split": "train", "source": "seed"}
+{"text": "解释一下什么是 least-loaded", "intent": "general.chat", "risk": "low", "split": "test", "source": "seed"}
+{"text": "为什么压测有时候 p99 很高", "intent": "general.chat", "risk": "low", "split": "train", "source": "seed"}
+{"text": "分析这个 CSV 的缺失值，并生成一张图", "intent": "data.analysis", "risk": "low", "split": "train", "source": "seed"}
+{"text": "统计一下这列的平均值和方差", "intent": "data.analysis", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "帮我看看这份数据有没有异常值", "intent": "data.analysis", "risk": "low", "split": "train", "source": "seed"}
+{"text": "用 pandas 读一下这个表格并汇总", "intent": "data.analysis", "risk": "low", "split": "train", "source": "seed"}
+{"text": "画一个各城市温度的柱状图", "intent": "data.analysis", "risk": "low", "split": "test", "source": "seed"}
+{"text": "算一下这两个变量的相关性", "intent": "data.analysis", "risk": "low", "split": "train", "source": "seed"}
+{"text": "这份 Excel 里每个月的数据趋势怎么样", "intent": "data.analysis", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "把缺失值按列统计出来", "intent": "data.analysis", "risk": "low", "split": "train", "source": "seed"}
+{"text": "分析一下用户留存率的变化", "intent": "data.analysis", "risk": "low", "split": "test", "source": "seed"}
+{"text": "生成一份数据质量报告", "intent": "data.analysis", "risk": "low", "split": "train", "source": "seed"}
+{"text": "看看这列数据的分布，画个直方图", "intent": "data.analysis", "risk": "low", "split": "train", "source": "seed"}
+{"text": "按地区分组统计销售额", "intent": "data.analysis", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "这个月的转化率比上月高还是低", "intent": "data.analysis", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "把这份 CSV 清洗一下并输出汇总表", "intent": "data.analysis", "risk": "low", "split": "train", "source": "seed"}
+{"text": "计算一下每个分类的占比", "intent": "data.analysis", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "用图表展示一下最近七天的数据", "intent": "data.analysis", "risk": "low", "split": "train", "source": "seed"}
+{"text": "分析一下日志里的错误分布", "intent": "data.analysis", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "统计每个接口的调用次数", "intent": "data.analysis", "risk": "low", "split": "test", "source": "seed"}
+{"text": "看看数据里有没有重复行", "intent": "data.analysis", "risk": "low", "split": "train", "source": "seed"}
+{"text": "算一下这组数据的 95 分位数", "intent": "data.analysis", "risk": "low", "split": "train", "source": "seed"}
+{"text": "把这个表做成可视化图表", "intent": "data.analysis", "risk": "low", "split": "train", "source": "seed"}
+{"text": "分析一下这两个字段是否相关", "intent": "data.analysis", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "统计缺失值和异常值的比例", "intent": "data.analysis", "risk": "low", "split": "train", "source": "seed"}
+{"text": "对比两组数据的均值差异", "intent": "data.analysis", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "帮我把这堆数据按时间聚合一下", "intent": "data.analysis", "risk": "low", "split": "train", "source": "seed"}
+{"text": "帮我跑一下这个 python 脚本", "intent": "code.execute", "risk": "low", "split": "train", "source": "seed"}
+{"text": "执行 pytest 看看哪些用例挂了", "intent": "code.execute", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "跑一下这个命令，把输出贴给我", "intent": "code.execute", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "复现一下这个报错", "intent": "code.execute", "risk": "low", "split": "test", "source": "seed"}
+{"text": "把我的脚本运行起来", "intent": "code.execute", "risk": "low", "split": "train", "source": "seed"}
+{"text": "编译一下这个项目", "intent": "code.execute", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "用 python 跑一段测试代码", "intent": "code.execute", "risk": "low", "split": "train", "source": "seed"}
+{"text": "执行一下这个 shell 命令", "intent": "code.execute", "risk": "low", "split": "test", "source": "seed"}
+{"text": "跑个脚本统计文件行数", "intent": "code.execute", "risk": "low", "split": "train", "source": "seed"}
+{"text": "帮我运行这个程序看看结果", "intent": "code.execute", "risk": "low", "split": "train", "source": "seed"}
+{"text": "执行 npm install 装一下依赖", "intent": "code.execute", "risk": "low", "split": "test", "source": "seed"}
+{"text": "跑一下单元测试", "intent": "code.execute", "risk": "low", "split": "train", "source": "seed"}
+{"text": "运行这段代码，看看会不会报错", "intent": "code.execute", "risk": "low", "split": "test", "source": "seed"}
+{"text": "执行这个 SQL 查询", "intent": "code.execute", "risk": "low", "split": "train", "source": "seed"}
+{"text": "跑个 benchmark 测一下耗时", "intent": "code.execute", "risk": "low", "split": "train", "source": "seed"}
+{"text": "帮我执行一下这个迁移脚本", "intent": "code.execute", "risk": "low", "split": "train", "source": "seed"}
+{"text": "运行这个爬虫脚本试试", "intent": "code.execute", "risk": "low", "split": "test", "source": "seed"}
+{"text": "跑一下这个模型推理", "intent": "code.execute", "risk": "low", "split": "train", "source": "seed"}
+{"text": "执行这段 Python 看看输出", "intent": "code.execute", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "跑一下这个脚本并保存日志", "intent": "code.execute", "risk": "low", "split": "train", "source": "seed"}
+{"text": "用 node 执行这个文件", "intent": "code.execute", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "运行一下这个服务", "intent": "code.execute", "risk": "low", "split": "test", "source": "seed"}
+{"text": "跑一下这个定时任务", "intent": "code.execute", "risk": "low", "split": "test", "source": "seed"}
+{"text": "执行这个命令并返回退出码", "intent": "code.execute", "risk": "low", "split": "test", "source": "seed"}
+{"text": "跑一下这个测试用例", "intent": "code.execute", "risk": "low", "split": "train", "source": "seed"}
+{"text": "把这个结果写入 report.md", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "读取一下 config.json 的内容", "intent": "file.operate", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "在 data 目录下创建一个文件夹", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "把这个文件重命名为 backup.txt", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "把这两个文件合并成一个", "intent": "file.operate", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "把报告保存到 output 目录", "intent": "file.operate", "risk": "low", "split": "test", "source": "seed"}
+{"text": "打开 notes.md 看看写了什么", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "把这份内容追加到日志文件", "intent": "file.operate", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "复制这个文件到备份目录", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "删除临时文件（先确认）", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "列出当前目录下的所有文件", "intent": "file.operate", "risk": "low", "split": "test", "source": "seed"}
+{"text": "把 CSV 转成 JSON 保存", "intent": "file.operate", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "读取这个目录里最新的文件", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "新建一个 README 并写入标题", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "把这段文本保存成 txt", "intent": "file.operate", "risk": "low", "split": "test", "source": "seed"}
+{"text": "移动这个文件到 archive", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "读取文件的前一百行", "intent": "file.operate", "risk": "low", "split": "test", "source": "seed"}
+{"text": "把结果写到 result.csv", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "创建一个空文件占位", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "把这个文件内容替换掉", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "查看一下这个文件的修改时间", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "把文件按日期归档", "intent": "file.operate", "risk": "low", "split": "test", "source": "seed"}
+{"text": "读取这个 JSON 并提取字段", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "把输出保存到日志里", "intent": "file.operate", "risk": "low", "split": "test", "source": "seed"}
+{"text": "把这两个目录同步一下", "intent": "file.operate", "risk": "low", "split": "train", "source": "seed"}
+{"text": "看一下队列现在有多长", "intent": "platform.inspect", "risk": "low", "split": "test", "source": "seed"}
+{"text": "平台的节点状态怎么样", "intent": "platform.inspect", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "查一下最近的执行记录", "intent": "platform.inspect", "risk": "low", "split": "train", "source": "seed"}
+{"text": "现在的沙箱数量是多少", "intent": "platform.inspect", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "帮我看下 metrics 里的错误率", "intent": "platform.inspect", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "平台的健康状态如何", "intent": "platform.inspect", "risk": "low", "split": "train", "source": "seed"}
+{"text": "看看有没有节点失联", "intent": "platform.inspect", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "队列里排了多少个任务", "intent": "platform.inspect", "risk": "low", "split": "train", "source": "seed"}
+{"text": "查一下最近的审计日志", "intent": "platform.inspect", "risk": "low", "split": "train", "source": "seed"}
+{"text": "现在活跃的 exec 有几个", "intent": "platform.inspect", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "看一下平台的负载", "intent": "platform.inspect", "risk": "low", "split": "train", "source": "seed"}
+{"text": "查询某个 exec 的执行结果", "intent": "platform.inspect", "risk": "low", "split": "train", "source": "seed"}
+{"text": "看看配额还剩多少", "intent": "platform.inspect", "risk": "low", "split": "train", "source": "seed"}
+{"text": "检查一下节点租约是否正常", "intent": "platform.inspect", "risk": "low", "split": "test", "source": "seed"}
+{"text": "平台的 p99 延迟现在多少", "intent": "platform.inspect", "risk": "low", "split": "test", "source": "seed"}
+{"text": "看看有没有告警触发", "intent": "platform.inspect", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "查一下这个沙箱的状态", "intent": "platform.inspect", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "看一下调度器把任务分到哪了", "intent": "platform.inspect", "risk": "low", "split": "train", "source": "seed"}
+{"text": "查询队列的超时配置", "intent": "platform.inspect", "risk": "low", "split": "train", "source": "seed"}
+{"text": "看看最近失败的任务", "intent": "platform.inspect", "risk": "low", "split": "test", "source": "seed"}
+{"text": "检查平台版本和配置", "intent": "platform.inspect", "risk": "low", "split": "train", "source": "seed"}
+{"text": "看一下当前的并发上限", "intent": "platform.inspect", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "查一下最近的告警记录", "intent": "platform.inspect", "risk": "low", "split": "test", "source": "seed"}
+{"text": "看看沙箱回收了多少", "intent": "platform.inspect", "risk": "low", "split": "train", "source": "seed"}
+{"text": "查询节点容量和利用率", "intent": "platform.inspect", "risk": "low", "split": "train", "source": "seed"}
+{"text": "明天早上八点提醒我开会", "intent": "reminder.manage", "risk": "low", "split": "test", "source": "seed"}
+{"text": "每天晚上十点提醒我写日志", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "半小时后提醒我喝水", "intent": "reminder.manage", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "帮我设一个下午三点的闹钟", "intent": "reminder.manage", "risk": "low", "split": "test", "source": "seed"}
+{"text": "提醒我周五交报告", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "明天中午提醒我吃药", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "每周一早上提醒我开周会", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "设置一个提醒：晚上九点跑步", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "后天提醒我给客户回电话", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "提醒我十分钟后看一下炉子", "intent": "reminder.manage", "risk": "low", "split": "test", "source": "seed"}
+{"text": "每月一号提醒我交房租", "intent": "reminder.manage", "risk": "low", "split": "test", "source": "seed"}
+{"text": "明天下午两点提醒我面试", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "提醒我周末给家里打电话", "intent": "reminder.manage", "risk": "low", "split": "test", "source": "seed"}
+{"text": "设个闹钟，七点半起床", "intent": "reminder.manage", "risk": "low", "split": "dev", "source": "seed"}
+{"text": "提醒我明天带伞", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "晚上八点提醒我看直播", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "每周五提醒我备份数据", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "提醒我下午四点提交代码", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "明天早上提醒我带身份证", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "设一个每小时提醒我活动的闹钟", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "提醒我三天后复查", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "今晚十一点提醒我关机", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "提醒我下周一交作业", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "帮我定个提醒，明早六点", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "每天中午提醒我吃饭", "intent": "reminder.manage", "risk": "low", "split": "train", "source": "seed"}
+{"text": "删掉 data 目录", "intent": "file.operate", "risk": "high", "split": "train", "source": "high_risk"}
+{"text": "把整个数据库清空", "intent": "file.operate", "risk": "high", "split": "dev", "source": "high_risk"}
+{"text": "覆盖掉原来的配置文件", "intent": "file.operate", "risk": "high", "split": "test", "source": "high_risk"}
+{"text": "执行 rm -rf 把临时目录删了", "intent": "file.operate", "risk": "high", "split": "train", "source": "high_risk"}
+{"text": "格式化这个磁盘", "intent": "file.operate", "risk": "high", "split": "train", "source": "high_risk"}
+{"text": "把 .env 文件里的密钥发给我", "intent": "file.operate", "risk": "high", "split": "train", "source": "high_risk"}
+{"text": "用 sudo 改一下系统配置", "intent": "file.operate", "risk": "high", "split": "train", "source": "high_risk"}
+{"text": "drop table users", "intent": "file.operate", "risk": "high", "split": "dev", "source": "high_risk"}
+{"text": "删除所有日志文件", "intent": "file.operate", "risk": "high", "split": "train", "source": "high_risk"}
+{"text": "把生产库的数据 truncate 掉", "intent": "file.operate", "risk": "high", "split": "test", "source": "high_risk"}

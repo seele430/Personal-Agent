@@ -1,0 +1,72 @@
+{
+  "split": "test",
+  "rows": 35,
+  "accuracy": 0.943,
+  "macro_f1": 0.963,
+  "clarify_count": 1,
+  "clarify_rate": 0.029,
+  "per_class": {
+    "code.execute": {
+      "precision": 1.0,
+      "recall": 0.875,
+      "f1": 0.933,
+      "support": 8
+    },
+    "data.analysis": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 3
+    },
+    "file.operate": {
+      "precision": 1.0,
+      "recall": 0.875,
+      "f1": 0.933,
+      "support": 8
+    },
+    "general.chat": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 6
+    },
+    "platform.inspect": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 5
+    },
+    "reminder.manage": {
+      "precision": 0.833,
+      "recall": 1.0,
+      "f1": 0.909,
+      "support": 5
+    }
+  },
+  "confusion": {
+    "general.chat": {
+      "general.chat": 6
+    },
+    "data.analysis": {
+      "data.analysis": 3
+    },
+    "code.execute": {
+      "code.execute": 7,
+      "reminder.manage": 1
+    },
+    "file.operate": {
+      "file.operate": 7,
+      "__clarify__": 1
+    },
+    "platform.inspect": {
+      "platform.inspect": 5
+    },
+    "reminder.manage": {
+      "reminder.manage": 5
+    }
+  },
+  "high_risk": {
+    "total": 2,
+    "missed_approval": 0
+  }
+}
