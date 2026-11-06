@@ -2,9 +2,9 @@ r"""一屏控制台（CLI）：路由决策 / 队列与沙箱 / 节点 / 最近�
 
 用法：
     python scripts/console_overview.py --data-dir "$env:TEMP\pa-demo"
-    python scripts/console_overview.py --data-dir "$env:TEMP\pa-demo" --json
+    python scripts/console_overview.py --data-dir "$env:TEMP\pa-demo"
 
-说明：这是 W4.1 的 CLI 版（前端页尚未实现）；数据直接读本地 SQLite。
+说明：只读、离线；输出 JSON（展示型排版已移除，前端控制台负责展示）。
 """
 
 from __future__ import annotations
@@ -113,55 +113,8 @@ def main() -> int:
         **read_platform(data_dir / "platform.db"),
     }
 
-    if args.json:
-        print(json.dumps(overview, ensure_ascii=False, indent=2))
-        return 0
-
-    print(f"== 控制台总览 ==  {data_dir}")
-    print(f"生成时间：{overview['generated_at']}")
-    print()
-
-    print("-- 最近路由决策 --")
-
-    for route in overview["routes"]:
-        intent = route.get("intent") or route.get("decision")
-        print(
-            f"  {route.get('at', '')}  {intent:18} "
-            f"conf={route.get('confidence')} risk={route.get('risk')} "
-            f"approval={route.get('requires_approval')}"
-        )
-
-    if not overview["routes"]:
-        print("  （暂无）")
-
-    print()
-    print("-- 节点 --")
-
-    for node in overview["nodes"]:
-        print(
-            f"  {node['node_id']:12} capacity={node['capacity']} "
-            f"state={node['state']} cordoned={bool(node['cordoned_at'])}"
-        )
-
-    if not overview["nodes"]:
-        print("  （暂无）")
-
-    print()
-    print("-- 沙箱 --")
-    print("  " + (json.dumps(overview["sandboxes"], ensure_ascii=False) or "{}"))
-
-    print()
-    print("-- 最近执行 --")
-
-    for row in overview["execs"]:
-        print(
-            f"  {row['id']}  {row['state']:10} exit={row['exit_code']} "
-            f"{row['started_at']} -> {row['finished_at']}"
-        )
-
-    if not overview["execs"]:
-        print("  （暂无）")
-
+    # 只保留机器可读输出：展示型排版已移除（前端控制台负责展示）。
+    print(json.dumps(overview, ensure_ascii=False, indent=2))
     return 0
 
 
