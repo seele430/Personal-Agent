@@ -13,17 +13,15 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
-import threading
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from src.core.run_control import CancellationToken
-from src.platform import active_execs
+from src.platform import ops as platform_ops
 from src.platform.audit import EVENTS, AuditLog
 from src.platform.node_registry import (
     InvalidNodeState,
@@ -32,26 +30,8 @@ from src.platform.node_registry import (
     NodeRegistry,
     StaleGeneration,
 )
-from src.platform.exec_service import (
-    ERROR_OUTPUT_LIMIT,
-    EXEC_CANCELLED,
-    EXEC_FAILED,
-    EXEC_SUCCEEDED,
-    EXEC_TIMED_OUT,
-    Tier1Executor,
-)
-from src.platform.trace_context import is_valid, new_traceparent
-from src.platform.exec_queue import QueuedExec, get_queue
-from src.platform.exec_store import (
-    EXEC_CANCELLED as STORE_CANCELLED,
-    TERMINAL_EXEC_STATES,
-    ExecStore,
-)
-from src.platform.sandbox_service import (
-    PlatformError,
-    SandboxNotFound,
-    SandboxService,
-)
+from src.platform.exec_store import ExecStore
+from src.platform.sandbox_service import PlatformError, SandboxService
 
 router = APIRouter(prefix="/v1", tags=["沙箱平台"])
 
@@ -178,193 +158,31 @@ def _exec_body(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _result_code(outcome) -> str:
-    if outcome.status == EXEC_SUCCEEDED:
-        return "EXEC_SUCCEEDED"
+def _require_sandbox(sandbox_id: str, *, allow_reclaimed: bool = False):
+    """返回 (sandbox, None) 或 (None, error_response)。
 
-    if outcome.status == EXEC_TIMED_OUT:
-        return "EXEC_TIMED_OUT"
-
-    if outcome.status == EXEC_CANCELLED:
-        return "EXEC_CANCELLED"
-
-    if outcome.error_code == ERROR_OUTPUT_LIMIT:
-        return "OUTPUT_LIMIT_EXCEEDED"
-
-    return "EXEC_FAILED"
-
-
-def _sandbox_expired(sandbox: dict[str, Any]) -> bool:
-    """沙箱是否已经越过 TTL。
-
-    契约要求「到期后 reaper 先取消活动 exec、清进程树，再置 reclaimed」；
-    这里做惰性兜底：reaper 还没跑到时，访问本身也会触发同一条回收路径。
+    业务校验在 ``src.platform.ops``（与 /console 共用），这里只做 HTTP 映射。
     """
 
-    expires_at = sandbox.get("expires_at")
-
-    if not expires_at:
-        return False
-
     try:
-        deadline = datetime.fromisoformat(expires_at)
-    except ValueError:
-        return False
-
-    return datetime.now(timezone.utc) >= deadline
-
-
-def _require_sandbox(sandbox_id: str, *, allow_reclaimed: bool = False):
-    """返回 (sandbox, None) 或 (None, error_response)。"""
-
-    service = SandboxService()
-
-    try:
-        sandbox = service.get(sandbox_id)
-    except SandboxNotFound:
-        return None, _error(404, "SANDBOX_NOT_FOUND", "沙箱不存在")
-
-    if sandbox["state"] != "reclaimed" and _sandbox_expired(sandbox):
-        active_execs.cancel_for_sandbox(sandbox_id)
-        sandbox = service.reclaim(sandbox_id, reason="ttl_expired")
-
-    if sandbox["state"] == "reclaimed" and not allow_reclaimed:
-        return None, _error(410, "SANDBOX_GONE", "沙箱已回收")
+        sandbox = platform_ops.require_sandbox(
+            sandbox_id, allow_reclaimed=allow_reclaimed
+        )
+    except PlatformError as exc:
+        return None, _error(
+            exc.http_status,
+            exc.code,
+            str(exc),
+            retryable=bool(getattr(exc, "retryable", False)),
+        )
 
     return sandbox, None
 
 
-def _run_exec(
-    exec_id: str,
-    sandbox_id: str,
-    argv: list[str],
-    timeout_ms: int,
-    max_output_bytes: int,
-    traceparent: str | None = None,
-) -> None:
-    store = ExecStore()
-    token = CancellationToken()
-    service = SandboxService()
-
-    active_execs.register(exec_id, sandbox_id, token)
-
-    try:
-        # D30：出队后可能已经被取消（排队期间取消不需要杀进程）。
-        if store.get(exec_id)["state"] in TERMINAL_EXEC_STATES:
-            return
-
-        # D20：有 exec 在跑 → 沙箱进入 running；被回收/失败时直接拒绝执行。
-        service.begin_exec(sandbox_id)
-
-        outcome = Tier1Executor().execute_command(
-            argv,
-            sandbox_id=sandbox_id,
-            cancel_token=token,
-            timeout_ms=timeout_ms,
-            max_output_bytes=max_output_bytes,
-            on_started=lambda _sandbox: store.start(exec_id),
-            traceparent=traceparent,
-        )
-
-        store.finish(
-            exec_id,
-            state=outcome.status,
-            exit_code=outcome.exit_code,
-            stdout=outcome.stdout,
-            stderr=outcome.stderr,
-            truncated=outcome.truncated,
-            error_code=outcome.error_code,
-            result_code=_result_code(outcome),
-        )
-    except Exception as exc:  # noqa: BLE001 - 执行器崩溃也要给确定终态
-        store.finish(
-            exec_id,
-            state=EXEC_FAILED,
-            exit_code=None,
-            stdout="",
-            stderr=str(exc),
-            truncated=False,
-            error_code="INTERNAL_ERROR",
-            result_code="EXEC_FAILED",
-        )
-    finally:
-        try:
-            # D20：没有活动 exec 了 → running 回到 idle。
-            if store.get(exec_id)["state"] in TERMINAL_EXEC_STATES:
-                service.end_exec(
-                    sandbox_id,
-                    active_execs=store.count_active(sandbox_id),
-                )
-        except (KeyError, PlatformError):
-            logger.exception("sandbox end_exec 失败 sandbox_id=%s", sandbox_id)
-        finally:
-            # 最后才从活动表摘掉：只要还在这里，就说明 worker 可能还在碰数据库。
-            active_execs.unregister(exec_id)
-            # D30：让出并发名额，必要时放出队首。
-            _exec_queue().finish()
-
-
-def _spawn_exec(item) -> None:
-    """队列放行一条 exec：起线程跑真实的 tier1 执行。"""
-
-    threading.Thread(
-        target=_run_exec,
-        args=(
-            item.exec_id,
-            item.sandbox_id,
-            item.argv,
-            item.timeout_ms,
-            item.max_output_bytes,
-            item.traceparent,
-        ),
-        daemon=True,
-    ).start()
-
-
 def _exec_queue():
-    queue = get_queue()
+    """兼容旧调用点：队列与 worker 已搬到 ``src.platform.ops``。"""
 
-    if queue._start is None:  # noqa: SLF001 - 单例只需要装一次启动器
-        queue.start_with(_spawn_exec)
-        queue.expire_with(_expire_queued)
-
-    return queue
-
-
-def _expire_queued(item) -> None:
-    """排队等太久的 exec：落 timed_out，不启动进程。"""
-
-    store = ExecStore()
-
-    try:
-        row = store.get(item.exec_id)
-    except KeyError:
-        return
-
-    if row["state"] != "queued":
-        return
-
-    store.finish(
-        item.exec_id,
-        state=EXEC_TIMED_OUT,
-        exit_code=None,
-        stdout="",
-        stderr="排队等待超时",
-        truncated=False,
-        error_code="QUEUE_TIMEOUT",
-        result_code="EXEC_TIMED_OUT",
-    )
-
-    try:
-        AuditLog().record(
-            "exec.timeout",
-            outcome="timed_out",
-            code="QUEUE_TIMEOUT",
-            sandbox_id=item.sandbox_id,
-            exec_id=item.exec_id,
-        )
-    except Exception:  # noqa: BLE001 - 审计是旁路
-        logger.exception("审计写入失败 event=exec.timeout")
+    return platform_ops.exec_queue()
 
 
 # ==========================================
@@ -458,7 +276,7 @@ def _node_ops_error(exc: PlatformError):
 @router.post("/nodes/{node_id}/cordon", status_code=202)
 def cordon_node(node_id: str):
     try:
-        row = NodeRegistry().cordon(node_id)
+        row = platform_ops.cordon_node(node_id)
     except PlatformError as exc:
         return _node_ops_error(exc)
 
@@ -471,7 +289,7 @@ def cordon_node(node_id: str):
 @router.post("/nodes/{node_id}/drain", status_code=202)
 def drain_node(node_id: str):
     try:
-        row = NodeRegistry().drain(node_id)
+        row = platform_ops.drain_node(node_id)
     except PlatformError as exc:
         return _node_ops_error(exc)
 
@@ -559,40 +377,11 @@ def create_sandbox(
     tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ):
     try:
-        registry = NodeRegistry()
-        # 保底节点：单机部署至少有一个 node_local，并顺手续租。
-        registry.ensure_default_node()
-
-        # 最小 least-loaded 调度：活动沙箱最少且未满容量的节点。
-        node = registry.pick_node()
-
-        if node is None:
-            full = registry.has_full_nodes()
-            code = "CAPACITY_EXCEEDED" if full else "NO_READY_NODE"
-
-            _audit(
-                "sandbox.create",
-                request=request,
-                outcome="denied",
-                code=code,
-            )
-            return _error(
-                429,
-                code,
-                (
-                    "所有可用节点都已达到容量上限"
-                    if full
-                    else "没有可接收新沙箱的节点（cordon / drain / 租约过期）"
-                ),
-                retryable=True,
-            )
-
-        sandbox = SandboxService().create(
+        sandbox = platform_ops.create_sandbox(
             idempotency_key=idempotency_key or "",
             tier=payload.tier,
             workspace_id=payload.workspace_id,
             ttl_seconds=payload.ttl_seconds,
-            node_id=node["node_id"],
             tenant_id=tenant_id or "default",
         )
     except PlatformError as exc:
@@ -631,12 +420,22 @@ def get_sandbox(sandbox_id: str):
 
 @router.post("/sandboxes/{sandbox_id}/destroy")
 def destroy_sandbox(sandbox_id: str, request: Request):
-    sandbox, error = _require_sandbox(sandbox_id, allow_reclaimed=True)
-
-    if error is not None:
-        return error
-
-    reclaimed = SandboxService().reclaim(sandbox_id, reason="manual")
+    try:
+        reclaimed = platform_ops.destroy_sandbox(sandbox_id)
+    except PlatformError as exc:
+        _audit(
+            "sandbox.destroy",
+            request=request,
+            outcome="denied",
+            code=exc.code,
+            sandbox_id=sandbox_id,
+        )
+        return _error(
+            exc.http_status,
+            exc.code,
+            str(exc),
+            retryable=bool(getattr(exc, "retryable", False)),
+        )
 
     _audit("sandbox.destroy", request=request, sandbox_id=sandbox_id)
 
@@ -654,96 +453,41 @@ def create_exec(
     request: Request,
     traceparent: str | None = Header(default=None, alias="traceparent"),
 ):
-    sandbox, error = _require_sandbox(sandbox_id)
-
-    if error is not None:
-        return error
-
-    # D20：failed 是「运行时失去所有权」的终态，不接受新 exec；reclaimed 已在
-    # _require_sandbox 里返回 410。
-    if sandbox["state"] not in ("created", "running", "idle"):
-        return _error(
-            409,
-            "INVALID_STATE_TRANSITION",
-            f"沙箱处于 {sandbox['state']}，不接受新的 exec",
-        )
-
     command = payload.command
 
-    if (
-        not isinstance(command, list)
-        or not command
-        or not all(isinstance(item, str) and item for item in command)
-    ):
-        return _error(400, "INVALID_ARGUMENT", "command 必须是非空字符串数组")
-
-    if not 1 <= payload.timeout_ms <= 300_000:
-        return _error(400, "INVALID_ARGUMENT", "timeout_ms 必须在 1—300000")
-
-    if not 1 <= payload.max_output_bytes <= 1_048_576:
-        return _error(
-            400, "INVALID_ARGUMENT", "max_output_bytes 必须在 1—1048576"
-        )
-
-    # D24：调用方给了合法 traceparent 就沿用（同一条 trace），否则新开一条。
-    if not is_valid(traceparent):
-        traceparent = new_traceparent()
-
-    queue = _exec_queue()
-
-    # D30：队列满了就不创建 exec，直接 429；不隐式无限排队。
-    if not queue.accepting():
-        _audit(
-            "exec.create",
-            request=request,
-            outcome="denied",
-            code="QUEUE_FULL",
-            sandbox_id=sandbox_id,
-        )
-        return _queue_full_error()
-
-    row = ExecStore().create(
-        sandbox_id,
-        argv=command,
-        run_id=payload.run_id,
-        step_id=payload.step_id,
-        timeout_ms=payload.timeout_ms,
-        max_output_bytes=payload.max_output_bytes,
-        traceparent=traceparent,
-    )
-
-    outcome = queue.submit(
-        QueuedExec(
-            exec_id=row["id"],
-            sandbox_id=sandbox_id,
-            argv=command,
+    try:
+        row = platform_ops.submit_exec(
+            sandbox_id,
+            command=command,
             timeout_ms=payload.timeout_ms,
             max_output_bytes=payload.max_output_bytes,
+            run_id=payload.run_id,
+            step_id=payload.step_id,
             traceparent=traceparent,
         )
-    )
-
-    if outcome == "full":
-        # 预检之后被别人抢了位置：这条已经建出来的 exec 落失败，请求仍是 429。
-        ExecStore().finish(
-            row["id"],
-            state=EXEC_FAILED,
-            exit_code=None,
-            stdout="",
-            stderr="执行队列已满",
-            truncated=False,
-            error_code="QUEUE_FULL",
-            result_code="EXEC_FAILED",
-        )
+    except platform_ops.QueueFull:
         _audit(
             "exec.create",
             request=request,
             outcome="denied",
             code="QUEUE_FULL",
             sandbox_id=sandbox_id,
-            exec_id=row["id"],
         )
         return _queue_full_error()
+    except PlatformError as exc:
+        _audit(
+            "exec.create",
+            request=request,
+            outcome="denied",
+            code=exc.code,
+            sandbox_id=sandbox_id,
+        )
+        return _error(
+            exc.http_status,
+            exc.code,
+            str(exc),
+            retryable=bool(getattr(exc, "retryable", False)),
+        )
 
     _audit(
         "exec.create",
@@ -769,34 +513,15 @@ def get_exec(exec_id: str):
 @router.post("/exec/{exec_id}/cancel", status_code=202)
 def cancel_exec(exec_id: str, request: Request):
     try:
-        row = ExecStore().get(exec_id)
-    except KeyError:
+        row, previous = platform_ops.cancel_exec(exec_id)
+    except platform_ops.ExecNotFound:
         return _error(404, "EXEC_NOT_FOUND", "exec 不存在")
-
-    if row["state"] == STORE_CANCELLED:
-        # 已经取消：幂等返回当前结果。
-        return JSONResponse(status_code=202, content=_exec_body(row))
-
-    if row["state"] in TERMINAL_EXEC_STATES:
+    except platform_ops.ExecNotCancellable:
         return _error(409, "EXEC_NOT_CANCELLABLE", "exec 已到不可取消的终态")
+    except PlatformError as exc:
+        return _error(exc.http_status, exc.code, str(exc))
 
-    if row["state"] == "queued":
-        # D30：排队中的 exec 从未起过进程，摘出队列后直接落 cancelled。
-        # 但 worker 可能在「已出队、还没置 running」的窗口里 —— 顺手把 token
-        # 也取消掉，否则它会带着未取消的 token 跑完整个命令。
-        _exec_queue().cancel(exec_id)
-        active_execs.cancel(exec_id)
-        ExecStore().finish(
-            exec_id,
-            state=EXEC_CANCELLED,
-            exit_code=None,
-            stdout="",
-            stderr="",
-            truncated=False,
-            error_code="EXEC_CANCELLED",
-            result_code="EXEC_CANCELLED",
-        )
-
+    if previous == "queued":
         _audit(
             "exec.cancel",
             request=request,
@@ -804,19 +529,13 @@ def cancel_exec(exec_id: str, request: Request):
             exec_id=exec_id,
             detail={"was": "queued"},
         )
-
-        return JSONResponse(
-            status_code=202, content=_exec_body(ExecStore().get(exec_id))
+    else:
+        _audit(
+            "exec.cancel",
+            request=request,
+            sandbox_id=row["sandbox_id"],
+            exec_id=exec_id,
         )
-
-    active_execs.cancel(exec_id)
-
-    _audit(
-        "exec.cancel",
-        request=request,
-        sandbox_id=row["sandbox_id"],
-        exec_id=exec_id,
-    )
 
     # 返回完整资源：SDK 的 cancel() 会按 ExecResult 解析，缺字段会炸。
     return JSONResponse(status_code=202, content=_exec_body(row))
@@ -830,7 +549,7 @@ def queue_status():
     当前进程看到的数字。
     """
 
-    return _exec_queue().snapshot()
+    return platform_ops.queue_status()
 
 
 @router.get("/audit")
