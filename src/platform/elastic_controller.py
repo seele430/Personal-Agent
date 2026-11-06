@@ -107,6 +107,31 @@ def ensure_schema() -> None:
         init_scale_schema(conn)
 
 
+def capacity_snapshot(
+    registry: NodeRegistry | None = None,
+    *,
+    unit: str = CAPACITY_UNIT_NODES,
+) -> dict[str, Any]:
+    """真实可用容量：只有 ``accepting`` 的节点算数（口径见 R7）。
+
+    cordon / drain / 租约过期 / 已移除的节点都不计入，但计数单独给出，
+    便于页面解释“为什么容量比节点数少”。控制台在控制器未运行时也用这个函数。
+    """
+
+    nodes = (registry if registry is not None else NodeRegistry()).list_nodes()
+    accepting = [node for node in nodes if node.get("accepting")]
+
+    return {
+        "nodes_total": len(nodes),
+        "nodes_accepting": len(accepting),
+        "nodes_cordoned": sum(1 for n in nodes if n.get("cordoned")),
+        "nodes_draining": sum(1 for n in nodes if n.get("draining")),
+        "nodes_expired": sum(1 for n in nodes if n.get("expired")),
+        "slots_accepting": sum(int(n["capacity"]) for n in accepting),
+        "unit": unit,
+    }
+
+
 class ElasticController:
     def __init__(
         self,
@@ -155,24 +180,7 @@ class ElasticController:
         return dict(get_queue().snapshot())
 
     def capacity(self) -> dict[str, Any]:
-        """真实可用容量：只有 ``accepting`` 的节点算数（口径见 R7）。
-
-        cordon / drain / 租约过期 / 已移除的节点都不计入，但计数单独给出，
-        便于页面解释“为什么容量比节点数少”。
-        """
-
-        nodes = self.registry.list_nodes()
-        accepting = [node for node in nodes if node.get("accepting")]
-
-        return {
-            "nodes_total": len(nodes),
-            "nodes_accepting": len(accepting),
-            "nodes_cordoned": sum(1 for n in nodes if n.get("cordoned")),
-            "nodes_draining": sum(1 for n in nodes if n.get("draining")),
-            "nodes_expired": sum(1 for n in nodes if n.get("expired")),
-            "slots_accepting": sum(int(n["capacity"]) for n in accepting),
-            "unit": self.capacity_unit,
-        }
+        return capacity_snapshot(self.registry, unit=self.capacity_unit)
 
     # ------------------------------------------------------------------
     # 一次 tick
