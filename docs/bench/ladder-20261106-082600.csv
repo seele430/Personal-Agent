@@ -1,0 +1,2 @@
+rps_target,repeat,cpu_avg_percent,cpu_max_percent,rss_avg_mb,rss_max_mb,submitted,elapsed_seconds,achieved_rps,ok,rejected_429,other,p50_ms,p95_ms,p99_ms,max_ms,queue_peak,codes
+8,0,106.0,142.6,112.4,124.9,4800,877.88,5.47,4800,0,0,2656.0,4844.0,7093.0,14469.0,12,{'202': 4800}

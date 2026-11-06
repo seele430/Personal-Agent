@@ -187,6 +187,11 @@ def run_stage(
             code = body.get("error", {}).get("code", str(status))
             with lock:
                 statuses[code] = statuses.get(code, 0) + 1
+
+                # 429 的 body 里可能是 QUEUE_FULL 等具体 code；两种口径都记，
+                # 否则 rejected_429 永远为 0。
+                if status == 429:
+                    statuses["429"] = statuses.get("429", 0) + 1
             return
 
         with lock:

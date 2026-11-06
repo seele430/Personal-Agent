@@ -1,0 +1,25 @@
+[
+  {
+    "rps_target": 12,
+    "repeat": 0,
+    "cpu_avg_percent": 112.9,
+    "cpu_max_percent": 140.3,
+    "rss_avg_mb": 126.1,
+    "rss_max_mb": 138.7,
+    "submitted": 7200,
+    "elapsed_seconds": 1136.88,
+    "achieved_rps": 5.93,
+    "ok": 6741,
+    "rejected_429": 0,
+    "other": 459,
+    "p50_ms": 3938.0,
+    "p95_ms": 4765.0,
+    "p99_ms": 5609.0,
+    "max_ms": 8250.0,
+    "queue_peak": 16,
+    "codes": {
+      "202": 6741,
+      "QUEUE_FULL": 459
+    }
+  }
+]
