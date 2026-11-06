@@ -70,7 +70,13 @@ class IntentRouterTest(unittest.TestCase):
     def test_router_never_selects_nodes(self):
         event = self.decide("分析这个 CSV").to_event()
 
-        for forbidden in ("node_id", "sandbox_id", "queue_position"):
+        for forbidden in (
+            "node_id",
+            "sandbox_id",
+            "queue_position",
+            # 成本/模型档位未实现，字段已移除；避免看起来像生效的开关。
+            "model_policy",
+        ):
             self.assertNotIn(forbidden, event)
 
         self.assertEqual(event["event"], "route_decided")

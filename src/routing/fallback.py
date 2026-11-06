@@ -1,6 +1,7 @@
-"""模型/供应商故障时的安全降级。
+"""供应商故障时的安全降级。
 
-原则：降级只换 provider / 模型，**不降风险等级、不绕过审批、不放宽执行约束**。
+原则：降级只换 provider，**不降风险等级、不绕过审批、不放宽执行约束**。
+（成本/模型档位路由未实现，`model_policy` 字段已移除。）
 """
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ from src.routing.router import RouteDecision
 @dataclass(frozen=True)
 class FallbackPlan:
     provider: str
-    model_policy: str
     risk: str
     requires_approval: bool
     constraints: dict
@@ -38,23 +38,14 @@ def plan_fallback(
     if not candidates:
         return FallbackPlan(
             provider="",
-            model_policy=decision.model_policy,
             risk=decision.risk,
             requires_approval=decision.requires_approval,
             constraints=dict(decision.constraints),
             reason="no_available_provider",
         )
 
-    provider = candidates[0]
-
-    # 本地 provider 只能跑便宜/本地模型，不能假装还是强模型。
-    model_policy = (
-        "local" if provider == "local" else decision.model_policy
-    )
-
     return FallbackPlan(
-        provider=provider,
-        model_policy=model_policy,
+        provider=candidates[0],
         risk=decision.risk,
         requires_approval=decision.requires_approval,
         constraints=dict(decision.constraints),
@@ -70,6 +61,5 @@ def apply_fallback(decision: RouteDecision, plan: FallbackPlan) -> RouteDecision
 
     return replace(
         decision,
-        model_policy=plan.model_policy,
         reason=f"{decision.reason}|{plan.reason}",
     )

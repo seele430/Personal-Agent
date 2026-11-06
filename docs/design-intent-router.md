@@ -50,7 +50,6 @@ class RouteDecision:
     requires_approval: bool
     capability: str                          # chat / sandbox_exec / platform_read / reminder
     execution_type: str | None               # local_sandbox / None
-    model_policy: Literal["cheap", "strong", "local"]
     constraints: dict                        # 超时、资源上限、允许的工具白名单
     fallback: tuple[str, ...]                # 允许的回退 intent，按优先级
     candidates: tuple[tuple[str, float], ...]# 前 3 名及分数，便于解释
@@ -63,6 +62,9 @@ class RouteDecision:
 1. `requires_approval=True` 时，平台必须走审批；Router 不能把它设回 False。
 2. `decision="clarify"` 时不得携带 `execution_type`。
 3. Router **不产出** `node_id`、`sandbox_id`、`queue_position`。
+4. **成本/模型档位路由未实现**，`model_policy` 字段已移除。
+   历史事件里若仍带该字段，读取保持兼容；重新引入时必须带真实 provider 切换、
+   质量约束与预算测试，不能只加字段。
 
 ---
 
@@ -168,7 +170,6 @@ Router 提交的是**约束**，不是执行计划：
   "requires_approval": false,
   "capability": "sandbox_exec",
   "execution_type": "local_sandbox",
-  "model_policy": "cheap",
   "candidates": [["data.analysis", 0.86], ["code.execute", 0.41]],
   "reason": "rule:analysis_kw",
   "source": "rule"

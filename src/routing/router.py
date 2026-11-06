@@ -37,7 +37,6 @@ class RouteDecision:
     requires_approval: bool
     capability: str
     execution_type: str | None
-    model_policy: Literal["cheap", "strong", "local"]
     constraints: dict
     fallback: tuple[str, ...]
     candidates: tuple[tuple[str, float], ...]
@@ -200,7 +199,6 @@ class Router:
                 requires_approval=False,
                 capability="chat",
                 execution_type=None,
-                model_policy="cheap",
                 constraints={},
                 fallback=(),
                 candidates=ranked,
@@ -238,7 +236,6 @@ class Router:
             requires_approval=risk == "high",
             capability=capability,
             execution_type=execution_type,
-            model_policy="strong" if top_intent == "data.analysis" else "cheap",
             constraints=constraints,
             fallback=_FALLBACK[top_intent],
             candidates=ranked,

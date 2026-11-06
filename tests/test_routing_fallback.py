@@ -22,7 +22,6 @@ class FallbackPlanTest(unittest.TestCase):
         )
 
         self.assertEqual(plan.provider, "local")
-        self.assertEqual(plan.model_policy, "local")
         self.assertEqual(plan.risk, decision.risk)
         self.assertEqual(plan.requires_approval, decision.requires_approval)
         self.assertEqual(plan.constraints, decision.constraints)
@@ -64,7 +63,6 @@ class FallbackPlanTest(unittest.TestCase):
 
         self.assertEqual(applied.risk, decision.risk)
         self.assertEqual(applied.requires_approval, decision.requires_approval)
-        self.assertEqual(applied.model_policy, "local")
         self.assertIn("fallback_after:deepseek", applied.reason)
 
     def test_apply_without_provider_raises(self):

@@ -78,6 +78,25 @@ class RouteEventTest(unittest.TestCase):
 
         self.assertNotIn("node_id", row)
         self.assertNotIn("sandbox_id", row)
+        self.assertNotIn("model_policy", row)
+
+    def test_legacy_event_with_model_policy_still_readable(self):
+        # 历史轨迹里可能还有 model_policy；删除字段不能影响旧事件读取。
+        self.store.append_event(
+            self.run["id"],
+            event_type="route_decided",
+            status="routed",
+            payload={
+                "decision": "route",
+                "intent": "data.analysis",
+                "model_policy": "strong",
+            },
+        )
+
+        events = self.store.list_events(self.run["id"])
+
+        self.assertEqual(events[-1]["event_type"], "route_decided")
+        self.assertEqual(events[-1]["payload"]["model_policy"], "strong")
 
 
 if __name__ == "__main__":
