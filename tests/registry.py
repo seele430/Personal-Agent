@@ -578,6 +578,15 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="low",
     ),
+    # L2：单用户产品面（无注册/邀请入口）
+    "integration/test_single_user_surface.py": TestSchema(
+        layer="integration",
+        domain="auth",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
     # L1：意图路由（规则层，不选节点）
     "test_intent_router.py": TestSchema(
         layer="unit",

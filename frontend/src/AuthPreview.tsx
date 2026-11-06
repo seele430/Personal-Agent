@@ -1103,7 +1103,7 @@ export default function AuthPreview() {
                 ? '首次运行 · 站长账号只能创建一次'
                 : resetMode
                   ? '仅限本机 · 重置后旧会话立即失效'
-                  : '邀请制访问 · 安全身份验证'}
+                  : '个人使用 · 本地优先'}
             </div>
 
             <div className="pa-auth-preview-note">
