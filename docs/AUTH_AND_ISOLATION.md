@@ -96,9 +96,9 @@ secrets.compare_digest(candidate_hash, stored_hash)           # 常量时间比�
 
 ---
 
-## 3. 邀请码（存储层预留，当前不暴露）
+## 3. 邀请码（已删除，2026-11-06）
 
-> 2026-11-06 决定：项目按**个人自用**交付，不提供注册/邀请入口。下文描述的是 `auth_store` 里的能力，保留作未来多用户预留。
+> 2026-11-06 决定：项目按**个人自用**交付，邀请与多用户运行时代码已删除。\n> 下文保留的是历史设计描述，仅作背景；旧库中的 `auth_invites` 表不读取、不迁移。
 
 表 `auth_invites`：主键 `token_hash`（同样只存摘要）、`role`、`issued_by`、
 `expires_at`、`used_by`、`created_at`。

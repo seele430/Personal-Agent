@@ -10,7 +10,7 @@ from tempfile import TemporaryDirectory
 
 from fastapi.testclient import TestClient
 
-from tests.helper import isolate_paths
+from tests.helper import create_auth_user, isolate_paths
 from src.auth_api import get_auth_store
 from src.core.auth_store import AuthStore
 from src.main import app
@@ -296,16 +296,7 @@ class TestAuthAPI(unittest.TestCase):
 
     def test_member_role_is_returned_correctly(self):
 
-        invite = self.store.issue_invite(
-            self.owner["id"],
-            role="member",
-        )
-
-        self.store.register(
-            "alice",
-            PASSWORD,
-            invite,
-        )
+        create_auth_user(self.store, "alice", PASSWORD, "member")
 
         token = self.login("alice")
 

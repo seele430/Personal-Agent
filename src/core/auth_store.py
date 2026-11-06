@@ -1,5 +1,5 @@
 
-"""Personal Agent 邀请制用户存储层。
+"""Personal Agent 本地单用户认证存储层。
 
 当前仅为本地服务模块，不对公网提供接口。
 """
@@ -89,21 +89,6 @@ class AuthStore:
                         )),
                     active INTEGER NOT NULL DEFAULT 1
                         CHECK(active IN (0,1)),
-                    created_at INTEGER NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS auth_invites (
-                    token_hash TEXT PRIMARY KEY,
-                    role TEXT NOT NULL
-                        CHECK(role IN (
-                            'member',
-                            'trusted',
-                            'admin'
-                        )),
-                    issued_by TEXT NOT NULL
-                        REFERENCES auth_users(id),
-                    expires_at INTEGER NOT NULL,
-                    used_by TEXT REFERENCES auth_users(id),
                     created_at INTEGER NOT NULL
                 );
 
@@ -328,203 +313,16 @@ class AuthStore:
     # 检查邀请码管理权限
     # ======================================
 
-    def _require_actor(
-        self,
-        conn,
-        actor_id: str,
-    ):
-        row = conn.execute(
-            """
-            SELECT id, username, role, active
-            FROM auth_users
-            WHERE id = ?
-            """,
-            (actor_id,),
-        ).fetchone()
-
-        if (
-            row is None
-            or not row["active"]
-            or ROLE_LEVEL[row["role"]] < 2
-        ):
-            raise AuthForbidden(
-                "没有管理邀请码的权限"
-            )
-
-        return row
 
     # ======================================
     # 生成邀请码
     # ======================================
 
-    def issue_invite(
-        self,
-        actor_id: str,
-        role: str = "member",
-        hours: int = 72,
-    ) -> str:
-
-        if role not in (
-            "member",
-            "trusted",
-            "admin",
-        ):
-            raise AuthError(
-                "不能创建该等级的邀请码"
-            )
-
-        if (
-            type(hours) is not int
-            or not 1 <= hours <= 720
-        ):
-            raise AuthError(
-                "邀请码有效期为1-720小时"
-            )
-
-        token = secrets.token_urlsafe(32)
-        now = int(time.time())
-
-        with closing(self._connect()) as conn, conn:
-            conn.execute("BEGIN IMMEDIATE")
-
-            actor = self._require_actor(
-                conn,
-                actor_id,
-            )
-
-            if (
-                role == "admin"
-                and actor["role"] != "owner"
-            ):
-                raise AuthForbidden(
-                    "仅站长可以邀请管理员"
-                )
-
-            conn.execute(
-                """
-                INSERT INTO auth_invites (
-                    token_hash,
-                    role,
-                    issued_by,
-                    expires_at,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    self._digest(token),
-                    role,
-                    actor_id,
-                    now + hours * 3600,
-                    now,
-                ),
-            )
-
-        return token
 
     # ======================================
     # 使用邀请码注册
     # ======================================
 
-    def register(
-        self,
-        username: str,
-        password: str,
-        invite: str,
-    ) -> dict:
-
-        username = self._username(username)
-        raw = self._password(password)
-
-        salt = secrets.token_bytes(16)
-        password_hash = self._hash_password(
-            raw,
-            salt,
-        )
-
-        token_hash = self._digest(invite)
-
-        now = int(time.time())
-        user_id = uuid.uuid4().hex
-
-        with closing(self._connect()) as conn, conn:
-            conn.execute("BEGIN IMMEDIATE")
-
-            row = conn.execute(
-                """
-                SELECT
-                    v.role,
-                    v.expires_at,
-                    v.used_by,
-                    u.active,
-                    u.role AS issuer_role
-                FROM auth_invites v
-                JOIN auth_users u
-                    ON v.issued_by = u.id
-                WHERE v.token_hash = ?
-                """,
-                (token_hash,),
-            ).fetchone()
-
-            if (
-                row is None
-                or row["used_by"] is not None
-                or row["expires_at"] <= now
-                or not row["active"]
-                or ROLE_LEVEL[row["issuer_role"]] < 2
-                or (
-                    row["role"] == "admin"
-                    and row["issuer_role"] != "owner"
-                )
-            ):
-                raise AuthError(
-                    "邀请码无效、已使用或已过期"
-                )
-
-            try:
-                conn.execute(
-                    """
-                    INSERT INTO auth_users (
-                        id,
-                        username,
-                        salt,
-                        password_hash,
-                        role,
-                        created_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        user_id,
-                        username,
-                        salt,
-                        password_hash,
-                        row["role"],
-                        now,
-                    ),
-                )
-
-            except sqlite3.IntegrityError as exc:
-                raise AuthError(
-                    "用户名已被使用"
-                ) from exc
-
-            conn.execute(
-                """
-                UPDATE auth_invites
-                SET used_by = ?
-                WHERE token_hash = ?
-                  AND used_by IS NULL
-                """,
-                (user_id, token_hash),
-            )
-
-        return {
-            "id": user_id,
-            "username": username,
-            "role": row["role"],
-            "active": True,
-        }
 
     # ======================================
     # 用户登录

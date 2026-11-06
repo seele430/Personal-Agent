@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from tests.helper import isolate_paths
+from tests.helper import create_auth_user, isolate_paths
 from src import api
 from src.auth_api import get_auth_store
 from src.core.auth_store import AuthStore
@@ -42,13 +42,7 @@ class TestSecureChatHttp(unittest.TestCase):
             self.PASSWORD,
         )
 
-        invite = self.store.issue_invite(owner["id"])
-
-        self.store.register(
-            "testmember",
-            self.PASSWORD,
-            invite,
-        )
+        create_auth_user(self.store, "testmember", self.PASSWORD, "member")
 
         # 正式 App 的认证依赖使用临时账户库
         self.old_overrides = app.dependency_overrides.copy()

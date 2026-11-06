@@ -201,3 +201,37 @@ def called_tool(mock):
         tool_call.function.name,
         json.loads(tool_call.function.arguments),
     )
+
+def create_auth_user(store, username, password, role="member"):
+    """测试专用：直接写入指定角色的账号。
+
+    生产只允许 bootstrap_owner（空库建站长）；这个 helper 仅用于测试
+    需要 member/trusted 身份的场景，避免为测试保留邀请码运行时代码。
+    """
+
+    import secrets
+    import uuid
+
+    from contextlib import closing
+
+    salt = secrets.token_bytes(16)
+    digest = store._hash_password(store._password(password), salt)
+
+    with closing(store._connect()) as conn, conn:
+        conn.execute(
+            """
+            INSERT INTO auth_users(
+                id, username, salt, password_hash, role, active, created_at
+            ) VALUES (?, ?, ?, ?, ?, 1, ?)
+            """,
+            (
+                uuid.uuid4().hex,
+                store._username(username),
+                salt,
+                digest,
+                role,
+                int(time.time()),
+            ),
+        )
+
+    return store.login(username, password)
