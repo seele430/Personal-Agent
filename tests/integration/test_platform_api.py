@@ -24,7 +24,7 @@ TERMINAL = {"succeeded", "failed", "cancelled", "timed_out"}
 
 class PlatformApiTest(unittest.TestCase):
     def setUp(self):
-        self.temp = TemporaryDirectory()
+        self.temp = TemporaryDirectory(ignore_cleanup_errors=True)
         self.addCleanup(self.temp.cleanup)
         isolate_paths(self, self.temp)
 
