@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 3732ab3bc62df393 -->
+<!-- membership-digest: e2b9208756b9cc30 -->
 
-## unit — L1 单元测试 (15 files)
+## unit — L1 单元测试 (17 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -27,12 +27,14 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_agent_call_count.py` | tests/ 根 | agent | none | none | low | registered-inferred |
 | `test_agent_usage.py` | tests/ 根 | agent | none | none | low | registered-inferred |
 | `test_autoscale.py` | tests/ 根 | platform_nodes | none | none | low | registered-inferred |
+| `test_elastic_controller.py` | tests/ 根 | platform_elastic | temporary_sqlite | none | low | registered-inferred |
 | `test_intent_router.py` | tests/ 根 | routing | none | none | medium | registered-inferred |
 | `test_netcheck.py` | tests/ 根 | platform_ops | none | none | low | registered-inferred |
 | `test_router_eval.py` | tests/ 根 | routing | none | none | medium | registered-inferred |
 | `test_routing_fallback.py` | tests/ 根 | routing | none | none | medium | registered-inferred |
 | `test_routing_policy.py` | tests/ 根 | routing | none | none | medium | registered-inferred |
 | `test_rss_errors.py` | tests/ 根 | rss | none | mocked | medium | registered-inferred |
+| `test_scale_events.py` | tests/ 根 | platform_elastic | temporary_sqlite | none | low | registered-inferred |
 | `test_tool_registry.py` | tests/ 根 | tool_policy | none | none | low | registered-inferred |
 | `unit/test_agent_tool_limits.py` | tests/unit/ | reminder | none | mocked | medium | registered |
 | `unit/test_platform_sdk.py` | tests/unit/ | platform_sdk | none | none | low | registered-inferred |

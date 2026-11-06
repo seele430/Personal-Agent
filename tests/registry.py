@@ -560,6 +560,24 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="low",
     ),
+    # W3：扩缩容事件持久化与动作标签映射
+    "test_scale_events.py": TestSchema(
+        layer="unit",
+        domain="platform_elastic",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+    # W3：弹性控制器（真实容量口径、决策/事件分离、apply 模式）
+    "test_elastic_controller.py": TestSchema(
+        layer="unit",
+        domain="platform_elastic",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
     # L1：降级不降风险
     "test_routing_fallback.py": TestSchema(
         layer="unit",
