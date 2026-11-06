@@ -43,12 +43,23 @@
 param(
     [string]$DataDir = "",
     [int]$ApiPort = 8000,
+    [string]$BindAddress = "127.0.0.1",
+    [switch]$AllowNetwork,
     [switch]$NoFrontend,
     [switch]$NoNtfy,
     [switch]$Stop
 )
 
 $ErrorActionPreference = "Stop"
+
+# 本地优先：默认只绑回环；要暴露到局域网必须显式 -AllowNetwork。
+if ($BindAddress -ne "127.0.0.1" -and -not $AllowNetwork) {
+    throw "非回环绑定（$BindAddress）需要显式 -AllowNetwork。个人版默认只允许 127.0.0.1。"
+}
+
+if ($BindAddress -ne "127.0.0.1") {
+    Write-Host "警告：API 绑定在 $BindAddress，局域网内其他设备可能访问。请确认认证已开启。" -ForegroundColor Yellow
+}
 
 $repo = Split-Path -Parent $PSScriptRoot
 $runDir = Join-Path $repo ".run"
@@ -196,7 +207,7 @@ Write-Host ""
 Write-Host "启动进程："
 
 Start-AgentService -Name "api" -FilePath $python `
-    -Arguments @("-m", "uvicorn", "src.main:app", "--host", "127.0.0.1", "--port", "$ApiPort") `
+    -Arguments @("-m", "uvicorn", "src.main:app", "--host", "$BindAddress", "--port", "$ApiPort") `
     -WorkingDirectory $repo -Port "$ApiPort"
 
 Start-AgentService -Name "scheduler" -FilePath $python `

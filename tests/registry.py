@@ -587,6 +587,35 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="low",
     ),
+    # L2：备份 → 破坏 → 恢复 演练
+    "integration/test_backup_restore.py": TestSchema(
+        layer="integration",
+        domain="backup",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
+
+    # L2：CLI 控制台离线只读
+    "integration/test_console_cli.py": TestSchema(
+        layer="integration",
+        domain="console",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
+    # L1：监听地址解析（回环判定）
+    "test_netcheck.py": TestSchema(
+        layer="unit",
+        domain="platform_ops",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
     # L1：意图路由（规则层，不选节点）
     "test_intent_router.py": TestSchema(
         layer="unit",

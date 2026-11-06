@@ -28,7 +28,7 @@ def read_routes(db: Path, limit: int) -> list[dict]:
     if not db.is_file():
         return []
 
-    conn = sqlite3.connect(db)
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
 
     try:
@@ -57,7 +57,7 @@ def read_platform(db: Path) -> dict:
     if not db.is_file():
         return {"nodes": [], "sandboxes": {}, "execs": []}
 
-    conn = sqlite3.connect(db)
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
 
     try:
