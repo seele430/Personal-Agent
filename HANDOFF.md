@@ -99,6 +99,17 @@ cd "C:\Users\123\Personal Agent"
 # 监听暴露面
 .\.venv\Scripts\python.exe scripts\check_listeners.py --port 8000
 ```
+## 4.2 个人版精简收尾（2026-11-06）
+
+五个阶段已执行完，详见 `docs/CLOSING-REPORT-20261106.md`：
+
+- 阶段 1：备份/恢复、CLI 只读、监听检查、绑定守卫
+- 阶段 2：删除未生效的 `model_policy`（历史事件兼容）
+- 阶段 3：删除邀请/多用户运行时（−452 行；旧表不读取、不迁移）
+- 阶段 4：CLI 只留只读 JSON
+- 阶段 5：全量 821 + 前端 34/34 + 浏览器链路 + 残留 0
+
+日常测试分三层：模块测试 + 垂直切片（日常）→ 全量 + 前端（阶段）→ 长压测/对照/录屏（手动）。
 ## 5. 已知缺口（按优先级）
 
 1. ~~W4.1 前端控制台~~ 已完成：侧栏「平台」视图 + `GET /console/overview`（CLI `console_overview.py` 保留）。
