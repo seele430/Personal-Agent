@@ -31,6 +31,13 @@ class ConsoleSnapshotTest(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         isolate_paths(self, self.temp)
 
+        # 采样线程在测试里默认关闭（tests.helper 设 PERSONAL_AGENT_TRENDS=0），
+        # 样本由用例自己喂，避免受到启动时那次采样的干扰。
+        from src.platform import trends
+
+        trends.reset()
+        self.addCleanup(trends.reset)
+
         self.client = TestClient(app)
         self.client.__enter__()
         self.addCleanup(self.client.__exit__, None, None, None)
@@ -76,7 +83,7 @@ class ConsoleSnapshotTest(unittest.TestCase):
             self.assertIn(key, body)
 
         self.assertEqual(body["series_window"], "15m")
-        self.assertIsNone(body["sample_count"])
+        self.assertEqual(body["sample_count"], 0)
         self.assertEqual(body["data_source"], "live")
 
         for key in ("queue", "nodes", "sandboxes", "executions", "elastic"):
@@ -84,11 +91,52 @@ class ConsoleSnapshotTest(unittest.TestCase):
             self.assertIn("error", body[key], key)
             self.assertIsNotNone(body[key]["data"], key)
 
-    def test_trends_are_explicitly_not_collected(self):
-        body = self.fetch().json()
+    def test_trends_report_series_and_sample_count(self):
+        import time as _time
 
-        self.assertIsNone(body["trends"]["data"])
-        self.assertEqual(body["trends"]["error"]["code"], "NOT_COLLECTED")
+        from src.platform import trends
+
+        self.addCleanup(trends.reset)
+
+        now = _time.time()
+
+        trends.record_sample(
+            running=3, queued=2, capacity=2, desired=3, action="scale_out", at=now - 120
+        )
+        trends.record_sample(
+            running=1, queued=0, capacity=2, desired=1, action="hold", at=now - 60
+        )
+
+        body = self.fetch().json()
+        data = body["trends"]["data"]
+
+        self.assertEqual(data["sample_count"], 2)
+        self.assertEqual(body["sample_count"], 2)
+        self.assertEqual(len(data["series"]), 2)
+        self.assertFalse(data["persisted"])
+        self.assertIn("重启", data["note"])
+        self.assertEqual(data["series"][0]["action"], "scale_out")
+
+    def test_trends_drop_samples_outside_window(self):
+        import time as _time
+
+        from src.platform import trends
+
+        self.addCleanup(trends.reset)
+
+        now = _time.time()
+
+        trends.record_sample(
+            running=9, queued=9, capacity=0, desired=1, at=now - 2000
+        )
+        trends.record_sample(
+            running=1, queued=0, capacity=0, desired=1, at=now - 10
+        )
+
+        data = self.fetch().json()["trends"]["data"]
+
+        self.assertEqual(data["sample_count"], 1)
+        self.assertEqual(data["series"][0]["running"], 1)
 
     def test_elastic_without_controller_is_compute_only(self):
         body = self.fetch().json()
@@ -148,7 +196,8 @@ class ConsoleSnapshotTest(unittest.TestCase):
 
         conn.close()
 
-        window = self.fetch().json()["executions"]["data"]["window"]
+        body = self.fetch().json()
+        window = body["executions"]["data"]["window"]
 
         self.assertEqual(window["samples"], 7)
         self.assertEqual(window["terminal"]["cancelled"], 2)
@@ -159,6 +208,9 @@ class ConsoleSnapshotTest(unittest.TestCase):
         self.assertEqual(window["queue_wait_ms"]["samples"], 7)
         self.assertTrue(window["queue_wait_ms"]["insufficient_samples"])
         self.assertIsNone(window["queue_wait_ms"]["p50"])
+
+        # 同一窗口的执行结果也要出现在趋势块里
+        self.assertTrue(body["trends"]["data"]["exec_buckets"])
 
     def test_single_block_failure_does_not_blank_the_page(self):
         with patch("src.console_api._nodes_block", side_effect=RuntimeError("boom")):

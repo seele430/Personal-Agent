@@ -194,7 +194,29 @@ function buildSnapshot(overrides: Record<string, unknown> = {}) {
       event_count: 1,
       message: null,
     }),
-    trends: fail("NOT_COLLECTED", "趋势采样未接入"),
+    trends: ok({
+      window_seconds: 900,
+      interval_seconds: 30,
+      sample_count: 3,
+      source: "ring_buffer",
+      persisted: false,
+      note: "单进程采样，进程重启即丢；不构成完整历史监控",
+      series: [
+        { at: "2026-11-06T12:59:30+00:00", running: 1, queued: 0, capacity: 2, desired: 1, action: "hold" },
+        { at: "2026-11-06T13:00:00+00:00", running: 6, queued: 3, capacity: 2, desired: 3, action: "hold" },
+        { at: "2026-11-06T13:00:30+00:00", running: 9, queued: 1, capacity: 3, desired: 3, action: "scale_out" },
+      ],
+      exec_buckets: [
+        {
+          at: "2026-11-06T13:00:00+00:00",
+          succeeded: 9,
+          failed: 1,
+          cancelled: 2,
+          timed_out: 0,
+          total: 12,
+        },
+      ],
+    }),
     ...overrides,
   };
 }
@@ -246,6 +268,14 @@ test("总览展示容量、控制器模式与最近决策", async ({ page }) => 
   // 事件与趋势块都在
   await expect(page.getByRole("heading", { name: "扩缩容事件" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "趋势" })).toBeVisible();
+
+  // 趋势：窗口、样本量与真实折线
+  await expect(page.getByText(/采样间隔/)).toBeVisible();
+  await expect(page.getByText(/样本 3/)).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: "队列与容量趋势" }),
+  ).toBeVisible();
+  await expect(page.getByText(/窗口内执行/)).toBeVisible();
 
   expectNoUnmockedApi(unexpected);
 });

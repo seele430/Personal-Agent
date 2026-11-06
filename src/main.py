@@ -35,6 +35,7 @@ from src.platform.rate_limit import get_limiter
 from src.platform.exec_queue import start_watchdog, stop_watchdog
 from src.platform.reaper import start_reaper, stop_reaper
 from src.platform.reconcile import reconcile_startup
+from src.platform.trends import start_sampler, stop_sampler
 from src.reminder_api import router as reminder_router
 from src.tts_api import router as tts_router
 from src.teams_api import router as teams_router
@@ -109,9 +110,16 @@ async def lifespan(_app: FastAPI):
     except Exception:
         logger.exception("弹性控制器启动失败")
 
+    # W3：趋势采样（进程内 ring buffer，重启即丢；PERSONAL_AGENT_TRENDS=0 关闭）。
+    try:
+        start_sampler()
+    except Exception:
+        logger.exception("趋势采样启动失败")
+
     try:
         yield
     finally:
+        stop_sampler()
         stop_elastic_controller()
         stop_watchdog()
         stop_reaper()

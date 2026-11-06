@@ -176,6 +176,35 @@ type ExecutionsData = {
   };
 };
 
+type TrendSample = {
+  at: string;
+  running: number;
+  queued: number;
+  capacity: number;
+  desired: number;
+  action: string;
+};
+
+type TrendBucket = {
+  at: string;
+  succeeded: number;
+  failed: number;
+  cancelled: number;
+  timed_out: number;
+  total: number;
+};
+
+type TrendsData = {
+  window_seconds: number;
+  interval_seconds: number;
+  sample_count: number;
+  source: string;
+  persisted: boolean;
+  note: string;
+  series: TrendSample[];
+  exec_buckets: TrendBucket[];
+};
+
 type Snapshot = {
   generated_at: string;
   series_window: string;
@@ -188,7 +217,7 @@ type Snapshot = {
   sandboxes: Envelope<SandboxData>;
   executions: Envelope<ExecutionsData>;
   elastic: Envelope<ElasticData>;
-  trends: Envelope<unknown>;
+  trends: Envelope<TrendsData>;
 };
 
 type Zone = "overview" | "nodes" | "sandboxes" | "execs" | "elastic";
@@ -367,6 +396,105 @@ function Scroll({ children }: { children: React.ReactNode }) {
   return <div style={{ overflowX: "auto", width: "100%" }}>{children}</div>;
 }
 
+const SERIES_COLORS: Record<string, string> = {
+  running: "#1d4ed8",
+  queued: "#b45309",
+  capacity: "#067647",
+  desired: "#7c3aed",
+};
+
+const SERIES_LABELS: Record<string, string> = {
+  running: "运行中",
+  queued: "排队",
+  capacity: "容量",
+  desired: "目标",
+};
+
+/** 内联 SVG 折线：窗口内队列与容量的关联趋势（V2 §3.1）。 */
+function TrendChart({ series }: { series: TrendSample[] }) {
+  const width = 720;
+  const height = 150;
+  const pad = 10;
+  const keys: Array<keyof TrendSample> = ["running", "queued", "capacity", "desired"];
+
+  const peak = Math.max(
+    1,
+    ...series.map((sample) =>
+      Math.max(
+        Number(sample.running),
+        Number(sample.queued),
+        Number(sample.capacity),
+        Number(sample.desired),
+      ),
+    ),
+  );
+
+  const x = (index: number) =>
+    series.length <= 1
+      ? pad
+      : pad + (index * (width - pad * 2)) / (series.length - 1);
+
+  const y = (value: number) =>
+    height - pad - (value / peak) * (height - pad * 2);
+
+  const path = (key: keyof TrendSample) =>
+    series
+      .map((sample, index) => `${x(index)},${y(Number(sample[key]))}`)
+      .join(" ");
+
+  return (
+    <div>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label="队列与容量趋势"
+        style={{ width: "100%", height: 150, display: "block" }}
+        preserveAspectRatio="none"
+      >
+        {[0, 0.5, 1].map((ratio) => (
+          <line
+            key={ratio}
+            x1={pad}
+            x2={width - pad}
+            y1={pad + ratio * (height - pad * 2)}
+            y2={pad + ratio * (height - pad * 2)}
+            stroke={color.line}
+            strokeWidth={1}
+          />
+        ))}
+
+        {keys.map((key) => (
+          <polyline
+            key={key}
+            points={path(key)}
+            fill="none"
+            stroke={SERIES_COLORS[key]}
+            strokeWidth={key === "capacity" || key === "desired" ? 1.5 : 2}
+            strokeDasharray={key === "desired" ? "5 4" : undefined}
+            strokeLinejoin="round"
+          />
+        ))}
+      </svg>
+
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 6 }}>
+        {keys.map((key) => (
+          <span key={key} style={{ ...muted, display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span
+              style={{
+                width: 10,
+                height: 3,
+                background: SERIES_COLORS[key],
+                display: "inline-block",
+              }}
+            />
+            {SERIES_LABELS[key]}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function PlatformView({ authToken }: { authToken?: string }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState("");
@@ -439,6 +567,7 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
   const sandboxes = snapshot?.sandboxes.data ?? null;
   const executions = snapshot?.executions.data ?? null;
   const elastic = snapshot?.elastic.data ?? null;
+  const trends = snapshot?.trends.data ?? null;
   const decision = elastic?.last_decision ?? null;
 
   if (!authToken) {
@@ -657,12 +786,47 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
                 )}
               </Card>
 
-              <Card title="趋势" subtitle="窗口与样本量必须一起看。">
+              <Card
+                title="趋势"
+                subtitle="窗口、样本量与曲线一起看；单进程采样，重启即丢。"
+              >
                 <BlockError error={snapshot.trends.error} />
-                <p style={{ ...muted, margin: 0 }}>
-                  窗口 {snapshot.series_window} · 样本{" "}
-                  {snapshot.sample_count === null ? "未采集" : snapshot.sample_count}
-                </p>
+
+                {trends ? (
+                  <>
+                    <p style={{ ...muted, margin: "0 0 8px" }}>
+                      窗口 {snapshot.series_window} · 采样间隔{" "}
+                      {trends.interval_seconds}s · 样本 {trends.sample_count}
+                    </p>
+
+                    {trends.series.length >= 2 ? (
+                      <TrendChart series={trends.series} />
+                    ) : (
+                      <Empty text="样本不足：至少需要 2 个采样点，等下一轮刷新。" />
+                    )}
+
+                    {trends.exec_buckets.length > 0 ? (
+                      <p style={{ ...muted, margin: "8px 0 0" }}>
+                        窗口内执行：
+                        {(() => {
+                          const totals = trends.exec_buckets.reduce(
+                            (acc, bucket) => ({
+                              succeeded: acc.succeeded + bucket.succeeded,
+                              failed: acc.failed + bucket.failed,
+                              cancelled: acc.cancelled + bucket.cancelled,
+                              timed_out: acc.timed_out + bucket.timed_out,
+                            }),
+                            { succeeded: 0, failed: 0, cancelled: 0, timed_out: 0 },
+                          );
+
+                          return `成功 ${totals.succeeded} · 失败 ${totals.failed} · 超时 ${totals.timed_out} · 取消 ${totals.cancelled}`;
+                        })()}
+                      </p>
+                    ) : null}
+
+                    <p style={{ ...muted, margin: "8px 0 0" }}>{trends.note}</p>
+                  </>
+                ) : null}
               </Card>
             </>
           ) : null}

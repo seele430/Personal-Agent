@@ -107,7 +107,11 @@ def _enter(stack: ExitStack, container) -> config.Paths:
     stack.enter_context(
         patch.dict(
             "os.environ",
-            {"PERSONAL_AGENT_PLATFORM_RATE_PER_MIN": "0"},
+            {
+                "PERSONAL_AGENT_PLATFORM_RATE_PER_MIN": "0",
+                # W3：测试不启动趋势采样线程，样本由用例自己喂，避免时序不确定。
+                "PERSONAL_AGENT_TRENDS": "0",
+            },
             clear=False,
         )
     )

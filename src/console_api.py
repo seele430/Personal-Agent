@@ -466,6 +466,75 @@ def _elastic_block(queue_snapshot: dict, limit: int) -> dict:
     }
 
 
+def _exec_buckets(window_seconds: int) -> list[dict]:
+    """按分钟桶统计终态执行数（与趋势同一窗口）。"""
+
+    db = paths.platform_db
+
+    if not db.is_file():
+        return []
+
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+
+    try:
+        rows = conn.execute(
+            """
+            SELECT strftime('%Y-%m-%dT%H:%M:00+00:00', finished_at) AS bucket,
+                   state,
+                   COUNT(*) AS n
+            FROM platform_execs
+            WHERE finished_at IS NOT NULL
+              AND julianday(finished_at) >= julianday('now', ?)
+            GROUP BY bucket, state
+            ORDER BY bucket
+            """,
+            (f"-{int(window_seconds)} seconds",),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    buckets: dict[str, dict] = {}
+
+    for row in rows:
+        key = row["bucket"]
+        item = buckets.setdefault(
+            key,
+            {
+                "at": key,
+                "succeeded": 0,
+                "failed": 0,
+                "cancelled": 0,
+                "timed_out": 0,
+                "total": 0,
+            },
+        )
+
+        if row["state"] in item:
+            item[row["state"]] = int(row["n"])
+
+        item["total"] += int(row["n"])
+
+    return list(buckets.values())
+
+
+def _trends_block() -> dict:
+    from src.platform import trends as trend_store
+
+    rows = trend_store.series(window_seconds=SERIES_WINDOW_SECONDS)
+
+    return {
+        "window_seconds": SERIES_WINDOW_SECONDS,
+        "interval_seconds": trend_store.interval_seconds(),
+        "sample_count": len(rows),
+        "source": "ring_buffer",
+        "persisted": False,
+        "note": "单进程采样，进程重启即丢；不构成完整历史监控",
+        "series": rows,
+        "exec_buckets": _exec_buckets(SERIES_WINDOW_SECONDS),
+    }
+
+
 def _freshness(elastic: dict) -> tuple[bool, str | None]:
     """stale 只由「采样年龄」决定（V2 §4.1 / §5）。"""
 
@@ -504,12 +573,15 @@ def snapshot(
     elastic_block = _block("elastic", _elastic_block, queue_snapshot, limit)
     elastic = elastic_block["data"] or {}
 
+    trends_block = _block("trends", _trends_block)
+    trends = trends_block["data"] or {}
+
     is_stale, stale_reason = _freshness(elastic) if elastic else (False, None)
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "series_window": SERIES_WINDOW_LABEL,
-        "sample_count": None,
+        "sample_count": trends.get("sample_count"),
         "data_source": "live",
         "is_stale": is_stale,
         "stale_reason": stale_reason,
@@ -519,10 +591,7 @@ def snapshot(
         "sandboxes": _block("sandboxes", _sandboxes_block, limit),
         "executions": _block("executions", _executions_block, limit),
         "elastic": elastic_block,
-        "trends": _fail(
-            "NOT_COLLECTED",
-            "趋势采样未接入：计划为进程内 ring buffer，重启即丢（V2 §4.3）",
-        ),
+        "trends": trends_block,
     }
 
 

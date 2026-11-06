@@ -578,6 +578,15 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="low",
     ),
+    # W3：趋势采样（ring buffer、窗口、样本量）
+    "test_trends.py": TestSchema(
+        layer="unit",
+        domain="platform_elastic",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
     # L1：降级不降风险
     "test_routing_fallback.py": TestSchema(
         layer="unit",
