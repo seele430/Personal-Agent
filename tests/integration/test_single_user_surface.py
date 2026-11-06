@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 
 from fastapi.testclient import TestClient
 
+from src.auth_api import get_auth_store
 from src.main import app
 from tests.helper import isolate_paths
 
@@ -17,6 +18,11 @@ class SingleUserSurfaceTest(unittest.TestCase):
         self.temp = TemporaryDirectory(ignore_cleanup_errors=True)
         self.addCleanup(self.temp.cleanup)
         isolate_paths(self, self.temp)
+
+        # get_auth_store 是进程级缓存；上一个用例的临时库可能已被删除，
+        # 不清缓存会连到旧路径。
+        get_auth_store.cache_clear()
+        self.addCleanup(get_auth_store.cache_clear)
 
         self.client = TestClient(app)
         self.client.__enter__()
