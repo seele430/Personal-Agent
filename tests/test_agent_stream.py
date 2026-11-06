@@ -194,5 +194,28 @@ class AgentStreamTest(unittest.TestCase):
         )
 
 
+    def test_ambiguous_message_asks_clarification_without_model_call(self):
+        def boom(*args, **kwargs):
+            raise AssertionError("歧义消息不应调用模型")
+
+        with patch.object(agent, "_completion", side_effect=boom):
+            reply = run_chat_stream(
+                "分析并运行这个脚本",
+                emit=self.events.append,
+                cancel_token=self.token,
+            )
+
+        self.assertIn("哪一个", reply)
+
+        run = self.stored_run()
+        events = RunStore(self.db_path).list_events(run["id"])
+        types = [event["event_type"] for event in events]
+
+        self.assertEqual(types[0], "run_started")
+        self.assertEqual(types[1], "route_decided")
+        self.assertIn("clarification_requested", types)
+        self.assertEqual(run["status"], "succeeded")
+
+
 if __name__ == "__main__":
     unittest.main()

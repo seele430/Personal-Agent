@@ -17,7 +17,18 @@ from src.core import approvals
 from src.core.run_control import CancellationToken, ChatCancelled
 from src.core.run_store import RunStore
 from src.core.tool_registry import ToolApprovalRequired, ToolDenied
+from src.routing import Router
+from src.routing.events import record_route_decision
 from src.platform.trace_context import child_traceparent, traceparent_for_run
+
+_INTENT_LABELS = {
+    "general.chat": "闲聊问答",
+    "data.analysis": "分析数据并出图",
+    "code.execute": "执行代码或命令",
+    "file.operate": "读写/整理文件",
+    "platform.inspect": "查看平台状态",
+    "reminder.manage": "设置提醒",
+}
 from src.platform.exec_service import (
     ERROR_CANCELLED,
     ERROR_RUNNER,
@@ -136,6 +147,10 @@ def run_chat_stream(
 ) -> str:
     """Run at most two streaming model calls and one approved tool call."""
 
+    # 每条消息先过意图路由：决策落 trajectory；低置信度/歧义直接要求澄清，
+    # 不把问题丢给模型去猜。
+    decision = Router().decide(user_input)
+
     identity = agent.current_identity()
     store = RunStore() if identity is not None else None
     run = turn = None
@@ -149,7 +164,29 @@ def run_chat_stream(
             content=user_input, status="succeeded",
         )
         store.append_event(run["id"], event_type="run_started", status="running")
+        record_route_decision(store, run["id"], decision)
     run_id = run["id"] if run is not None else None
+
+    if decision.decision == "clarify":
+        labels = "、".join(
+            f"「{_INTENT_LABELS.get(item[0], item[0])}」"
+            for item in decision.candidates[:2]
+        )
+        question = f"我不太确定你想让我做什么：是 {labels} 中的哪一个？"
+
+        if store is not None:
+            store.add_step(
+                turn["id"], kind="assistant", actor="assistant",
+                content=question, status="succeeded",
+            )
+            store.append_event(
+                run_id, event_type="clarification_requested", status="succeeded"
+            )
+            store.append_event(run_id, event_type="run_finished", status="succeeded")
+            store.finish(run_id, status="succeeded")
+
+        emit({"type": "done", "run_id": run_id, "reply": question})
+        return question
 
     # D24：同一条 run 共用一条 trace-id，沙箱子进程通过 TRACEPARENT 继承。
     run_traceparent = (

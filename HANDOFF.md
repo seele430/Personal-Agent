@@ -84,7 +84,7 @@ cd "C:\Users\123\Personal Agent"
 1. ~~W4.1 前端控制台~~ 已完成：侧栏「平台」视图 + `GET /console/overview`（CLI `console_overview.py` 保留）。
 2. ~~正式长压测~~ 已完成：2/4/8/12 RPS 各 10 分钟，8 RPS 重复 3 次，含 CPU/RSS 采样；拐点 4 RPS，12 RPS 触发 6.4% `QUEUE_FULL`（`docs/bench/ELASTIC.md`）。
 3. **路由分类器层暂缓**：规则层已达标；触发条件是准确率跌破 90% 或新增 intent。
-4. **路由未接入真实对话流**：目前通过脚本与单元测试验证，尚未在 `agent.chat()` 里调用 Router。
+4. ~~路由接入对话流~~ 已完成：`agent_stream.run_chat_stream` 入口先路由，歧义请求直接澄清。
 5. **G3 60 秒视频**：命令已冻结（`docs/G3.md`），待录。
 6. **邀请码流程无 UI**（创建站长之外的用户仍需后端接口）。
 7. **D31–D36 砍单**：本机无 Docker/C++ 工具链。
