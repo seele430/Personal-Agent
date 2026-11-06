@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import unittest
 
+from datetime import datetime
+
 from src.platform.autoscale import (
     AutoscalePolicy,
     Autoscaler,
@@ -104,6 +106,49 @@ class AutoscalerTest(unittest.TestCase):
         self.assertEqual(scaler.events[0].action, "scale_up")
         self.assertEqual(scaler.events[0].current, 1)
         self.assertEqual(scaler.events[0].desired, 3)
+
+    def test_decision_and_event_use_wall_clock(self):
+        """回归：`at` 必须来自墙钟，可注入以便断言。"""
+
+        scaler = Autoscaler(
+            AutoscalePolicy(capacity_per_node=4, headroom=0.0, scale_up_after=1),
+            now_fn=lambda: 0.0,
+            wall_fn=lambda: 1_700_000_000.0,
+        )
+
+        decision = scaler.observe(running=9, queued=0, current=1, now=0)
+
+        self.assertEqual(decision.action, "scale_up")
+        self.assertEqual(decision.at, "2023-11-14T22:13:20+00:00")
+        self.assertEqual(scaler.events[0].at, "2023-11-14T22:13:20+00:00")
+
+    def test_event_timestamp_is_not_monotonic(self):
+        """回归：旧实现把 monotonic 当墙钟，事件时间会落在 1970 年。"""
+
+        scaler = Autoscaler(
+            AutoscalePolicy(capacity_per_node=4, headroom=0.0, scale_up_after=1),
+            now_fn=lambda: 3344.734,
+        )
+
+        scaler.observe(running=9, queued=0, current=1)
+
+        year = datetime.fromisoformat(scaler.events[0].at).year
+
+        self.assertGreaterEqual(year, 2020)
+
+    def test_cooldown_still_uses_monotonic_clock(self):
+        """冷却期只依赖单调时钟，注入 wall_fn 不影响其判定。"""
+
+        scaler = Autoscaler(
+            AutoscalePolicy(capacity_per_node=4, headroom=0.0, scale_up_after=1),
+            now_fn=lambda: 0.0,
+            wall_fn=lambda: 1_700_000_000.0,
+        )
+
+        scaler.observe(running=9, queued=0, current=1, now=10)
+        blocked = scaler.observe(running=0, queued=0, current=3, now=40)
+
+        self.assertEqual(blocked.reason, "scale_down_cooldown")
 
 
 if __name__ == "__main__":

@@ -2,6 +2,10 @@
 
 纯逻辑，不直接改数据库；调用方（脚本或平台）按决策去注册/摘除节点，
 并把 ``ScaleEvent`` 写进审计。
+
+计时说明：冷却期与稳定期用单调时钟（``time.monotonic``，只用于算间隔），
+决策与事件的 ``at`` 用墙钟（``time.time``）。两者不可混用 —— 把单调时钟
+当墙钟转成 ISO-8601 会得到 1970 年的时间戳（见 W3 回归）。
 """
 
 from __future__ import annotations
@@ -65,9 +69,11 @@ class Autoscaler:
         policy: AutoscalePolicy | None = None,
         *,
         now_fn=time.monotonic,
+        wall_fn=time.time,
     ):
         self.policy = policy or AutoscalePolicy()
         self._now = now_fn
+        self._wall = wall_fn
         self._up_streak = 0
         self._last_change: float | None = None
         self.events: list[ScaleEvent] = []
@@ -94,7 +100,6 @@ class Autoscaler:
                     current,
                     desired,
                     "load_above_capacity",
-                    moment,
                 )
 
             return self._decide(
@@ -102,7 +107,6 @@ class Autoscaler:
                 current,
                 desired,
                 f"scale_up_pending:{self._up_streak}",
-                moment,
             )
 
         self._up_streak = 0
@@ -118,7 +122,6 @@ class Autoscaler:
                     current,
                     desired,
                     "scale_down_cooldown",
-                    moment,
                 )
 
             self._last_change = moment
@@ -127,10 +130,9 @@ class Autoscaler:
                 current,
                 desired,
                 "load_below_capacity",
-                moment,
             )
 
-        return self._decide("none", current, desired, "steady", moment)
+        return self._decide("none", current, desired, "steady")
 
     def _decide(
         self,
@@ -138,9 +140,8 @@ class Autoscaler:
         current: int,
         desired: int,
         reason: str,
-        moment: float,
     ) -> ScaleDecision:
-        at = datetime.fromtimestamp(moment, timezone.utc).isoformat()
+        at = datetime.fromtimestamp(self._wall(), timezone.utc).isoformat()
 
         decision = ScaleDecision(
             action=action,
