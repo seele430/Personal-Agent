@@ -246,6 +246,8 @@ class ApprovalGateTest(unittest.TestCase):
             [
                 item for item in self.trajectory()
                 if not item[0].startswith("run_")
+                # 路由事件与审批链路正交，单独由 routing 测试覆盖。
+                and item[0] != "route_decided"
             ],
             [
                 ("tool_approval_requested", "pending"),
