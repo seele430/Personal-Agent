@@ -79,6 +79,26 @@ cd "C:\Users\123\Personal Agent"
 .\.venv\Scripts\python.exe scripts\demo_w4.py
 ```
 
+## 4.1 阶段 1 已落地（2026-11-06）
+
+- **备份/恢复**：`src/core/backup.py` + `scripts/backup_data.py`；
+  SQLite 在线备份、`integrity_check`/`foreign_key_check`、manifest（哈希/字节/版本），
+  恢复前校验、恢复后再校验。演练测试含"恢复后 owner 能登录"。
+- **CLI 只读**：`scripts/console_overview.py` 全部改 `mode=ro` URI；
+  测试断言运行前后数据库哈希不变、缺失的 `platform.db` 不会被创建。
+- **监听地址**：`src/platform/netcheck.py` + `scripts/check_listeners.py`；
+  `run-dev.ps1` 新增 `-BindAddress`（默认 `127.0.0.1`）与 `-AllowNetwork` 守卫。
+- 全量：**825 用例 PASS**。
+
+```powershell
+# 备份 / 校验 / 恢复
+.\.venv\Scripts\python.exe scripts\backup_data.py backup  --data-dir "$env:TEMP\pa-demo" --backup-dir "$env:TEMP\pa-backups"
+.\.venv\Scripts\python.exe scripts\backup_data.py verify  --backup <备份目录>
+.\.venv\Scripts\python.exe scripts\backup_data.py restore --backup <备份目录> --data-dir <新目录>
+
+# 监听暴露面
+.\.venv\Scripts\python.exe scripts\check_listeners.py --port 8000
+```
 ## 5. 已知缺口（按优先级）
 
 1. ~~W4.1 前端控制台~~ 已完成：侧栏「平台」视图 + `GET /console/overview`（CLI `console_overview.py` 保留）。

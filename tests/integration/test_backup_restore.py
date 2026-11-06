@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from src.core.auth_store import AuthStore
 from src.core.backup import (
     BackupError,
     backup_data,
@@ -36,6 +37,9 @@ class BackupRestoreTest(unittest.TestCase):
             self.run["id"], event_type="run_started", status="running"
         )
 
+        self.password = "backup-restore-2026"
+        AuthStore(self.data / "auth_users.db").bootstrap_owner("seele", self.password)
+
         workspace = self.data / "sandboxes" / "sbx_demo" / "workspace"
         workspace.mkdir(parents=True)
         (workspace / "chart.png").write_bytes(b"PNG-DEMO")
@@ -54,7 +58,7 @@ class BackupRestoreTest(unittest.TestCase):
         report = verify_backup(Path(manifest["path"]))
 
         self.assertTrue(report["ok"], report["problems"])
-        self.assertEqual(len(report["manifest"]["databases"]), 1)
+        self.assertEqual(len(report["manifest"]["databases"]), 2)  # chat + auth
         self.assertEqual(report["manifest"]["directories"][0]["files"], 1)
 
     def test_restore_after_corruption(self):
@@ -70,6 +74,8 @@ class BackupRestoreTest(unittest.TestCase):
         restored = store.get_run(self.run["id"], owner_id="alice")
 
         self.assertEqual(restored["id"], self.run["id"])
+        token = AuthStore(target / "auth_users.db").login("seele", self.password)
+        self.assertTrue(token)
         self.assertTrue(
             (target / "sandboxes" / "sbx_demo" / "workspace" / "chart.png").is_file()
         )
