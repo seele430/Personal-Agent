@@ -27,6 +27,8 @@ EVENTS = frozenset(
         "exec.create",
         "exec.cancel",
         "exec.timeout",
+        "node.cordon",
+        "node.drain",
         "alert.fired",
         "auth.denied",
         "rate_limited",

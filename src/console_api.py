@@ -18,11 +18,16 @@ import sqlite3
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from src.auth_api import get_current_user
 from src.config import paths
+from src.platform import ops as platform_ops
+from src.platform.audit import AuditLog
 from src.platform.exec_queue import get_queue
+from src.platform.sandbox_service import PlatformError
 
 logger = logging.getLogger("personal_agent.console")
 
@@ -608,4 +613,283 @@ def overview(
         "routes": _read_routes(limit),
         "queue": snapshot_payload,
         **_read_platform(),
+    }
+
+
+# ======================================================================
+# 写操作（P1）
+#
+# 与 /v1 共用 ``src.platform.ops``：这里只做鉴权、审计和响应映射，
+# 不复制任何业务规则（V2 §7.3）。所有写操作要求 owner 会话。
+# ======================================================================
+
+
+class SandboxCreateRequest(BaseModel):
+    tier: str = "tier1"
+    workspace_id: str | None = None
+    ttl_seconds: int = 600
+    idempotency_key: str | None = None
+
+
+class ExecCreateRequest(BaseModel):
+    sandbox_id: str
+    command: list[str]
+    run_id: str | None = None
+    step_id: str | None = None
+    timeout_ms: int = 30_000
+    max_output_bytes: int = 65_536
+
+
+def require_owner(user: dict = Depends(get_current_user)) -> dict:
+    """控制台写操作只对站长开放（V2 §7.3）。"""
+
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="需要站长权限")
+
+    return user
+
+
+def _op_error(exc: PlatformError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.http_status,
+        content={
+            "error": {
+                "code": exc.code,
+                "message": str(exc),
+                "retryable": bool(getattr(exc, "retryable", False)),
+            }
+        },
+    )
+
+
+def _console_audit(
+    event: str,
+    *,
+    user: dict,
+    outcome: str = "ok",
+    code: str | None = None,
+    sandbox_id: str | None = None,
+    exec_id: str | None = None,
+    detail: dict | None = None,
+) -> None:
+    """审计是旁路：写失败不影响请求，但必须记日志。"""
+
+    try:
+        AuditLog().record(
+            event,
+            outcome=outcome,
+            code=code,
+            actor=f"user:{user.get('username', 'unknown')}",
+            sandbox_id=sandbox_id,
+            exec_id=exec_id,
+            detail=detail,
+        )
+    except Exception:  # noqa: BLE001 - 审计失败不能挡操作
+        logger.exception("控制台审计写入失败 event=%s", event)
+
+
+def _sandbox_view(row: dict) -> dict:
+    return {
+        "sandbox_id": row["id"],
+        "state": row["state"],
+        "node_id": row.get("node_id"),
+        "workspace_id": row.get("workspace_id"),
+        "created_at": row.get("created_at"),
+        "expires_at": row.get("expires_at"),
+        "reclaimed_at": row.get("reclaimed_at"),
+        "reclaim_reason": row.get("reclaim_reason"),
+    }
+
+
+def _execution_view(row: dict) -> dict:
+    return {
+        "exec_id": row["id"],
+        "sandbox_id": row["sandbox_id"],
+        "state": row["state"],
+        "exit_code": row.get("exit_code"),
+        "stdout": row.get("stdout") or "",
+        "stderr": row.get("stderr") or "",
+        "started_at": row.get("started_at"),
+        "finished_at": row.get("finished_at"),
+        "truncated": bool(row.get("truncated")),
+        "result_code": row.get("result_code"),
+        "traceparent": row.get("traceparent"),
+    }
+
+
+@router.post("/actions/sandboxes", status_code=201)
+def console_create_sandbox(
+    payload: SandboxCreateRequest,
+    user: dict = Depends(require_owner),
+):
+    import uuid
+
+    try:
+        sandbox = platform_ops.create_sandbox(
+            idempotency_key=payload.idempotency_key or f"console-{uuid.uuid4().hex}",
+            tier=payload.tier,
+            workspace_id=payload.workspace_id,
+            ttl_seconds=payload.ttl_seconds,
+            tenant_id="default",
+        )
+    except PlatformError as exc:
+        _console_audit(
+            "sandbox.create", user=user, outcome="denied", code=exc.code
+        )
+        return _op_error(exc)
+
+    _console_audit("sandbox.create", user=user, sandbox_id=sandbox["id"])
+
+    return JSONResponse(status_code=201, content=_sandbox_view(sandbox))
+
+
+@router.post("/actions/sandboxes/{sandbox_id}/destroy")
+def console_destroy_sandbox(
+    sandbox_id: str,
+    user: dict = Depends(require_owner),
+):
+    try:
+        sandbox = platform_ops.destroy_sandbox(sandbox_id)
+    except PlatformError as exc:
+        _console_audit(
+            "sandbox.destroy",
+            user=user,
+            outcome="denied",
+            code=exc.code,
+            sandbox_id=sandbox_id,
+        )
+        return _op_error(exc)
+
+    _console_audit("sandbox.destroy", user=user, sandbox_id=sandbox_id)
+
+    return _sandbox_view(sandbox)
+
+
+@router.post("/actions/executions", status_code=202)
+def console_submit_exec(
+    payload: ExecCreateRequest,
+    user: dict = Depends(require_owner),
+):
+    try:
+        row = platform_ops.submit_exec(
+            payload.sandbox_id,
+            command=payload.command,
+            timeout_ms=payload.timeout_ms,
+            max_output_bytes=payload.max_output_bytes,
+            run_id=payload.run_id,
+            step_id=payload.step_id,
+        )
+    except platform_ops.QueueFull as exc:
+        _console_audit(
+            "exec.create",
+            user=user,
+            outcome="denied",
+            code=exc.code,
+            sandbox_id=payload.sandbox_id,
+        )
+        response = _op_error(exc)
+        response.headers["Retry-After"] = str(platform_ops.queue_retry_after())
+        return response
+    except PlatformError as exc:
+        _console_audit(
+            "exec.create",
+            user=user,
+            outcome="denied",
+            code=exc.code,
+            sandbox_id=payload.sandbox_id,
+        )
+        return _op_error(exc)
+
+    _console_audit(
+        "exec.create",
+        user=user,
+        sandbox_id=payload.sandbox_id,
+        exec_id=row["id"],
+        detail={"argv_bytes": len(" ".join(payload.command))},
+    )
+
+    return JSONResponse(status_code=202, content=_execution_view(row))
+
+
+@router.post("/actions/executions/{exec_id}/cancel", status_code=202)
+def console_cancel_exec(
+    exec_id: str,
+    user: dict = Depends(require_owner),
+):
+    try:
+        row, previous = platform_ops.cancel_exec(exec_id)
+    except PlatformError as exc:
+        _console_audit(
+            "exec.cancel", user=user, outcome="denied", code=exc.code, exec_id=exec_id
+        )
+        return _op_error(exc)
+
+    _console_audit(
+        "exec.cancel",
+        user=user,
+        sandbox_id=row["sandbox_id"],
+        exec_id=exec_id,
+        detail={"was": previous},
+    )
+
+    return JSONResponse(status_code=202, content=_execution_view(row))
+
+
+@router.get("/executions/{exec_id}")
+def console_exec_detail(
+    exec_id: str,
+    user: dict = Depends(get_current_user),
+):
+    try:
+        row = platform_ops.exec_detail(exec_id)
+    except PlatformError as exc:
+        return _op_error(exc)
+
+    return _execution_view(row)
+
+
+@router.post("/actions/nodes/{node_id}/cordon", status_code=202)
+def console_cordon_node(
+    node_id: str,
+    user: dict = Depends(require_owner),
+):
+    try:
+        row = platform_ops.cordon_node(node_id)
+    except PlatformError as exc:
+        _console_audit(
+            "node.cordon", user=user, outcome="denied", code=exc.code, detail={"node_id": node_id}
+        )
+        return _op_error(exc)
+
+    _console_audit("node.cordon", user=user, detail={"node_id": node_id})
+
+    return _node_view_for_console(row)
+
+
+@router.post("/actions/nodes/{node_id}/drain", status_code=202)
+def console_drain_node(
+    node_id: str,
+    user: dict = Depends(require_owner),
+):
+    try:
+        row = platform_ops.drain_node(node_id)
+    except PlatformError as exc:
+        _console_audit(
+            "node.drain", user=user, outcome="denied", code=exc.code, detail={"node_id": node_id}
+        )
+        return _op_error(exc)
+
+    _console_audit("node.drain", user=user, detail={"node_id": node_id})
+
+    return _node_view_for_console(row)
+
+
+def _node_view_for_console(row: dict) -> dict:
+    return {
+        "node_id": row["node_id"],
+        "state": row["state"],
+        "capacity": row["capacity"],
+        "cordoned": bool(row.get("cordoned")),
+        "draining": bool(row.get("draining")),
+        "accepting": bool(row.get("accepting")),
     }

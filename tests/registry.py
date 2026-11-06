@@ -614,6 +614,15 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="low",
     ),
+    # W3：控制台写操作（owner 鉴权、闭环、幂等、审计）
+    "integration/test_console_actions.py": TestSchema(
+        layer="integration",
+        domain="platform_http",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
     # L2：单用户产品面（无注册/邀请入口）
     "integration/test_single_user_surface.py": TestSchema(
         layer="integration",
