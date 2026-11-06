@@ -396,6 +396,100 @@ function Scroll({ children }: { children: React.ReactNode }) {
   return <div style={{ overflowX: "auto", width: "100%" }}>{children}</div>;
 }
 
+type Notice = { tone: "ok" | "error"; text: string } | null;
+
+function NoticeBar({ notice }: { notice: Notice }) {
+  if (!notice) return null;
+
+  return (
+    <div
+      data-testid="console-notice"
+      role="status"
+      style={{
+        border: `1px solid ${notice.tone === "ok" ? "#abefc6" : "#fecdca"}`,
+        background: notice.tone === "ok" ? "#ecfdf3" : "#fff6f5",
+        color: notice.tone === "ok" ? color.ok : color.danger,
+        borderRadius: 8,
+        padding: "8px 10px",
+        fontSize: 12.5,
+        marginBottom: 12,
+      }}
+    >
+      {notice.text}
+    </div>
+  );
+}
+
+function ConfirmDialog({
+  title,
+  message,
+  confirmText,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  message: string;
+  confirmText: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15, 23, 42, 0.35)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        zIndex: 50,
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        style={{
+          background: "#fff",
+          borderRadius: 12,
+          padding: 18,
+          maxWidth: 440,
+          width: "100%",
+          boxShadow: "0 12px 32px rgba(15, 23, 42, 0.18)",
+        }}
+      >
+        <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>{title}</h3>
+        <p
+          style={{
+            margin: "0 0 14px",
+            fontSize: 13,
+            color: color.muted,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {message}
+        </p>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button type="button" onClick={onCancel} disabled={busy}>
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            style={{ color: color.danger }}
+          >
+            {busy ? "执行中…" : confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const SERIES_COLORS: Record<string, string> = {
   running: "#1d4ed8",
   queued: "#b45309",
@@ -502,6 +596,22 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
   const [zone, setZone] = useState<Zone>("overview");
   const [updatedAt, setUpdatedAt] = useState<string>("");
 
+  // P1：写操作只对 owner 开放；角色从 /api/auth/me 取，不靠前端猜。
+  const [role, setRole] = useState("");
+  const [notice, setNotice] = useState<Notice>(null);
+  const [busy, setBusy] = useState("");
+  const [confirm, setConfirm] = useState<{
+    title: string;
+    message: string;
+    confirmText: string;
+    run: () => Promise<void>;
+  } | null>(null);
+
+  const [workspaceId, setWorkspaceId] = useState("console-demo");
+  const [ttlSeconds, setTtlSeconds] = useState("600");
+  const [execSandbox, setExecSandbox] = useState("");
+  const [execCommand, setExecCommand] = useState("cmd /c echo hello");
+
   const load = useCallback(async () => {
     if (!authToken) return;
 
@@ -562,8 +672,96 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
     };
   }, [authToken, load]);
 
-  const queue = snapshot?.queue.data ?? null;
-  const nodes = snapshot?.nodes.data ?? null;
+  // 角色从后端取：前端不靠“藏按钮”当权限，后端每个写接口仍会校验 owner。
+  useEffect(() => {
+    if (!authToken) return;
+
+    let alive = true;
+
+    fetch("/api/auth/me", {
+      headers: { Authorization: `Bearer ${authToken}` },
+      cache: "no-store",
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { user?: { role?: string } } | null) => {
+        if (alive && data?.user?.role) setRole(data.user.role);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      alive = false;
+    };
+  }, [authToken]);
+
+  const canWrite = role === "owner";
+
+  const post = useCallback(
+    async (path: string, body?: unknown) => {
+      if (!authToken) {
+        return { ok: false as const, message: "缺少登录凭据" };
+      }
+
+      try {
+        const response = await fetch(`/api${path}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+          detail?: string;
+        } | null;
+
+        if (!response.ok) {
+          return {
+            ok: false as const,
+            message:
+              payload?.error?.message ??
+              payload?.detail ??
+              `请求失败（${response.status}）`,
+          };
+        }
+
+        return { ok: true as const, data: payload };
+      } catch {
+        return { ok: false as const, message: "无法连接后端" };
+      }
+    },
+    [authToken],
+  );
+
+  const runAction = useCallback(
+    async (
+      label: string,
+      action: () => Promise<
+        { ok: true; data: unknown } | { ok: false; message: string }
+      >,
+    ) => {
+      setBusy(label);
+      setNotice(null);
+
+      try {
+        const result = await action();
+
+        if (!result.ok) {
+          setNotice({ tone: "error", text: `${label}：${result.message}` });
+          return;
+        }
+
+        setNotice({ tone: "ok", text: `${label}：已完成` });
+        await load();
+      } finally {
+        setBusy("");
+      }
+    },
+    [load],
+  );
+
+  const queue = snapshot?.queue.data ?? null;  const nodes = snapshot?.nodes.data ?? null;
   const sandboxes = snapshot?.sandboxes.data ?? null;
   const executions = snapshot?.executions.data ?? null;
   const elastic = snapshot?.elastic.data ?? null;
@@ -620,10 +818,27 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
         </div>
       ) : null}
 
+      {confirm ? (
+        <ConfirmDialog
+          title={confirm.title}
+          message={confirm.message}
+          confirmText={confirm.confirmText}
+          busy={busy !== ""}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => {
+            const action = confirm.run;
+            setConfirm(null);
+            void action();
+          }}
+        />
+      ) : null}
+
       {!snapshot && !error ? <div style={card}>加载中…</div> : null}
 
       {snapshot ? (
         <>
+          <NoticeBar notice={notice} />
+
           <nav
             style={{
               display: "flex",
@@ -870,6 +1085,7 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
                             <th style={th}>活跃沙箱</th>
                             <th style={th}>可接新任务</th>
                             <th style={th}>心跳</th>
+                            <th style={th}>操作</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -892,6 +1108,54 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
                                   ? "—"
                                   : `${node.seconds_since_heartbeat}s 前`}
                               </td>
+                              <td style={td}>
+                                {canWrite ? (
+                                  <span style={{ display: "inline-flex", gap: 6 }}>
+                                    <button
+                                      type="button"
+                                      aria-label={`cordon ${node.node_id}`}
+                                      disabled={busy !== "" || node.cordoned}
+                                      onClick={() =>
+                                        setConfirm({
+                                          title: "停止接新任务（cordon）",
+                                          message: `节点：${node.node_id}\n当前活跃沙箱：${node.active_sandboxes}\n影响：不再接收新沙箱；已有沙箱与执行照常跑。`,
+                                          confirmText: "确认 cordon",
+                                          run: () =>
+                                            runAction("cordon 节点", () =>
+                                              post(
+                                                `/console/actions/nodes/${node.node_id}/cordon`,
+                                              ),
+                                            ),
+                                        })
+                                      }
+                                    >
+                                      cordon
+                                    </button>
+                                    <button
+                                      type="button"
+                                      aria-label={`drain ${node.node_id}`}
+                                      disabled={busy !== "" || node.draining}
+                                      onClick={() =>
+                                        setConfirm({
+                                          title: "排空节点（drain）",
+                                          message: `节点：${node.node_id}\n当前活跃沙箱：${node.active_sandboxes}\n影响：不再接新沙箱；存量沙箱回收后才允许下线。`,
+                                          confirmText: "确认 drain",
+                                          run: () =>
+                                            runAction("drain 节点", () =>
+                                              post(
+                                                `/console/actions/nodes/${node.node_id}/drain`,
+                                              ),
+                                            ),
+                                        })
+                                      }
+                                    >
+                                      drain
+                                    </button>
+                                  </span>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -906,6 +1170,59 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
           {zone === "sandboxes" ? (
             <Card title="沙箱" subtitle="状态、归属节点、创建与到期时间。">
               <BlockError error={snapshot.sandboxes.error} />
+
+              {canWrite ? (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    alignItems: "flex-end",
+                    marginBottom: 12,
+                  }}
+                >
+                  <label style={muted}>
+                    工作区
+                    <input
+                      data-testid="sandbox-workspace"
+                      value={workspaceId}
+                      onChange={(event) => setWorkspaceId(event.target.value)}
+                      style={{ display: "block", marginTop: 4, padding: "5px 8px" }}
+                    />
+                  </label>
+                  <label style={muted}>
+                    TTL（秒）
+                    <input
+                      data-testid="sandbox-ttl"
+                      type="number"
+                      min={1}
+                      value={ttlSeconds}
+                      onChange={(event) => setTtlSeconds(event.target.value)}
+                      style={{ display: "block", marginTop: 4, padding: "5px 8px", width: 110 }}
+                    />
+                  </label>
+                  <button
+                    data-testid="sandbox-submit"
+                    type="button"
+                    disabled={busy !== ""}
+                    onClick={() =>
+                      runAction("创建沙箱", () =>
+                        post("/console/actions/sandboxes", {
+                          tier: "tier1",
+                          workspace_id: workspaceId,
+                          ttl_seconds: Number(ttlSeconds) || 600,
+                        }),
+                      )
+                    }
+                  >
+                    创建沙箱
+                  </button>
+                </div>
+              ) : (
+                <p style={{ ...muted, margin: "0 0 10px" }}>
+                  只读：写操作需要站长权限。
+                </p>
+              )}
 
               {sandboxes ? (
                 <>
@@ -942,6 +1259,7 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
                             <th style={th}>层级</th>
                             <th style={th}>创建</th>
                             <th style={th}>到期</th>
+                            <th style={th}>操作</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -953,6 +1271,32 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
                               <td style={td}>{item.tier}</td>
                               <td style={td}>{timeText(item.created_at)}</td>
                               <td style={td}>{timeText(item.expires_at)}</td>
+                              <td style={td}>
+                                {canWrite && item.state !== "reclaimed" ? (
+                                  <button
+                                    type="button"
+                                    aria-label={`销毁 ${item.id}`}
+                                    disabled={busy !== ""}
+                                    onClick={() =>
+                                      setConfirm({
+                                        title: "销毁沙箱",
+                                        message: `对象：${item.id}\n当前状态：${item.state}\n销毁后沙箱不可恢复，正在执行的命令会被终止。`,
+                                        confirmText: "确认销毁",
+                                        run: () =>
+                                          runAction("销毁沙箱", () =>
+                                            post(
+                                              `/console/actions/sandboxes/${item.id}/destroy`,
+                                            ),
+                                          ),
+                                      })
+                                    }
+                                  >
+                                    销毁
+                                  </button>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -1026,6 +1370,68 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
                 ) : null}
               </Card>
 
+              {canWrite ? (
+                <Card title="提交执行" subtitle="命令按空格切分；P1 不解析引号。">
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      alignItems: "flex-end",
+                    }}
+                  >
+                    <label style={muted}>
+                      沙箱
+                      <select
+                        data-testid="exec-sandbox"
+                        value={execSandbox}
+                        onChange={(event) => setExecSandbox(event.target.value)}
+                        style={{ display: "block", marginTop: 4, padding: "5px 8px" }}
+                      >
+                        <option value="">选择沙箱</option>
+                        {(sandboxes?.rows ?? []).map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.id}（{item.state}）
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={muted}>
+                      命令
+                      <input
+                        data-testid="exec-command"
+                        value={execCommand}
+                        onChange={(event) => setExecCommand(event.target.value)}
+                        style={{
+                          display: "block",
+                          marginTop: 4,
+                          padding: "5px 8px",
+                          minWidth: 260,
+                        }}
+                      />
+                    </label>
+                    <button
+                      data-testid="exec-submit"
+                      type="button"
+                      disabled={execSandbox === "" || busy !== ""}
+                      onClick={() =>
+                        runAction("提交执行", () =>
+                          post("/console/actions/executions", {
+                            sandbox_id: execSandbox,
+                            command: execCommand
+                              .trim()
+                              .split(/\s+/)
+                              .filter(Boolean),
+                          }),
+                        )
+                      }
+                    >
+                      提交执行
+                    </button>
+                  </div>
+                </Card>
+              ) : null}
+
               <Card title="执行详情" subtitle="最近 10 条；详情按 ID 读取（P1 提供）。">
                 {executions && executions.recent.length > 0 ? (
                   <Scroll>
@@ -1037,6 +1443,7 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
                           <th style={th}>exit</th>
                           <th style={th}>创建</th>
                           <th style={th}>结束</th>
+                          <th style={th}>操作</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1047,6 +1454,33 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
                             <td style={td}>{item.exit_code ?? "—"}</td>
                             <td style={td}>{timeText(item.created_at)}</td>
                             <td style={td}>{timeText(item.finished_at)}</td>
+                            <td style={td}>
+                              {canWrite &&
+                              (item.state === "queued" || item.state === "running") ? (
+                                <button
+                                  type="button"
+                                  aria-label={`取消 ${item.id}`}
+                                  disabled={busy !== ""}
+                                  onClick={() =>
+                                    setConfirm({
+                                      title: "取消执行",
+                                      message: `对象：${item.id}\n当前状态：${item.state}\n取消会终止正在运行的进程；已终态的执行重复取消不会产生第二条结果。`,
+                                      confirmText: "确认取消",
+                                      run: () =>
+                                        runAction("取消执行", () =>
+                                          post(
+                                            `/console/actions/executions/${item.id}/cancel`,
+                                          ),
+                                        ),
+                                    })
+                                  }
+                                >
+                                  取消
+                                </button>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>

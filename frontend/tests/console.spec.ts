@@ -224,10 +224,11 @@ function buildSnapshot(overrides: Record<string, unknown> = {}) {
 async function openConsole(
   page: Page,
   payload: Record<string, unknown> = buildSnapshot(),
+  user: MockUser = OWNER,
 ) {
   const unexpected = await blockUnmockedApi(page);
 
-  await installAuthMocks(page, TEST_TOKEN_VALUE, OWNER);
+  await installAuthMocks(page, TEST_TOKEN_VALUE, user);
 
   await page.route(SNAPSHOT_API, (route) =>
     route.fulfill({
@@ -361,6 +362,153 @@ test("移动端没有页面级横向溢出", async ({ page }) => {
   );
 
   expect(bottomOverflow).toBeLessThanOrEqual(1);
+
+  expectNoUnmockedApi(unexpected);
+});
+
+const MEMBER: MockUser = {
+  id: "playwright-console-member",
+  username: "playwright-member",
+  role: "member",
+  active: true,
+};
+
+test("创建沙箱会提交工作区并提示完成", async ({ page }) => {
+  const unexpected = await openConsole(page);
+  let body: unknown = null;
+
+  await page.route("**/api/console/actions/sandboxes", async (route) => {
+    body = route.request().postDataJSON();
+
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ sandbox_id: "sbx-new", state: "created" }),
+    });
+  });
+
+  await page.getByRole("button", { name: "沙箱", exact: true }).click();
+  await page.getByTestId("sandbox-workspace").fill("ws-demo");
+  await page.getByTestId("sandbox-submit").click();
+
+  await expect(page.getByTestId("console-notice")).toContainText("创建沙箱");
+  expect(body).toMatchObject({ workspace_id: "ws-demo", tier: "tier1" });
+
+  expectNoUnmockedApi(unexpected);
+});
+
+test("销毁沙箱先弹确认框，确认后才发请求", async ({ page }) => {
+  const unexpected = await openConsole(page);
+  const calls: string[] = [];
+
+  await page.route(
+    "**/api/console/actions/sandboxes/*/destroy",
+    async (route) => {
+      calls.push(route.request().url());
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ sandbox_id: "sbx-1", state: "reclaimed" }),
+      });
+    },
+  );
+
+  await page.getByRole("button", { name: "沙箱", exact: true }).click();
+  await page.getByRole("button", { name: "销毁 sbx-1" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "销毁沙箱" });
+
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("sbx-1");
+  await expect(dialog).toContainText("不可恢复");
+  expect(calls).toEqual([]);
+
+  await dialog.getByRole("button", { name: "确认销毁" }).click();
+
+  await expect(page.getByTestId("console-notice")).toContainText("销毁沙箱");
+  expect(calls.length).toBe(1);
+  expect(calls[0]).toContain("/destroy");
+
+  expectNoUnmockedApi(unexpected);
+});
+
+test("提交执行会带上沙箱与命令参数", async ({ page }) => {
+  const unexpected = await openConsole(page);
+  let body: unknown = null;
+
+  await page.route("**/api/console/actions/executions", async (route) => {
+    body = route.request().postDataJSON();
+
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ exec_id: "exec-new", state: "queued" }),
+    });
+  });
+
+  await page.getByRole("button", { name: "执行", exact: true }).click();
+  await page.getByTestId("exec-sandbox").selectOption("sbx-1");
+  await page.getByTestId("exec-command").fill("cmd /c echo hi");
+  await page.getByTestId("exec-submit").click();
+
+  await expect(page.getByTestId("console-notice")).toContainText("提交执行");
+  expect(body).toMatchObject({
+    sandbox_id: "sbx-1",
+    command: ["cmd", "/c", "echo", "hi"],
+  });
+
+  expectNoUnmockedApi(unexpected);
+});
+
+test("取消执行同样需要确认", async ({ page }) => {
+  const payload = buildSnapshot();
+  const executions = payload.executions as {
+    data: { recent: Array<{ state: string }> };
+  };
+
+  // 只有 queued / running 才有取消按钮
+  executions.data.recent[0].state = "running";
+
+  const unexpected = await openConsole(page, payload);
+  const calls: string[] = [];
+
+  await page.route(
+    "**/api/console/actions/executions/*/cancel",
+    async (route) => {
+      calls.push(route.request().url());
+
+      await route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({ exec_id: "exec-1", state: "cancelled" }),
+      });
+    },
+  );
+
+  await page.getByRole("button", { name: "执行", exact: true }).click();
+  await page.getByRole("button", { name: "取消 exec-1" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "取消执行" });
+
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("exec-1");
+  await dialog.getByRole("button", { name: "确认取消" }).click();
+
+  await expect(page.getByTestId("console-notice")).toContainText("取消执行");
+  expect(calls.length).toBe(1);
+
+  expectNoUnmockedApi(unexpected);
+});
+
+test("非 owner 看不到写操作入口", async ({ page }) => {
+  const unexpected = await openConsole(page, buildSnapshot(), MEMBER);
+
+  await page.getByRole("button", { name: "沙箱", exact: true }).click();
+
+  await expect(page.getByText("只读：写操作需要站长权限。")).toBeVisible();
+  await expect(page.getByTestId("sandbox-submit")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "销毁 sbx-1" })).toHaveCount(0);
 
   expectNoUnmockedApi(unexpected);
 });
