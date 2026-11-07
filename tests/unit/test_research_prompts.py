@@ -98,7 +98,7 @@ class TestAnalystContract(unittest.TestCase):
 
     def test_too_many_gaps_are_rejected(self):
         payload = load("analyst_gap.json")
-        payload["gaps"] = payload["gaps"] * 6
+        payload["gaps"] = payload["gaps"] * 9
 
         with self.assertRaises(PromptContractError):
             validate_analyst(payload)

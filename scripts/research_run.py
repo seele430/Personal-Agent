@@ -331,7 +331,37 @@ def main(argv=None) -> int:
     result = graph.run()
 
     if result.draft is None:
+        # 失败也要落账：token 已经花了，账本不能看不见
+        slug = _slug(args.query)
+        stamp = datetime.now(timezone.utc)
+        failure_path = out_dir / f"{slug}.json"
+
+        failure_path.write_text(
+            json.dumps(
+                {
+                    "generated_at": stamp.isoformat(),
+                    "mode": "live" if live else "offline",
+                    "query": args.query,
+                    "run_id": result.run_id,
+                    "state": result.state,
+                    "ok": False,
+                    "error": result.error,
+                    "llm_calls": result.llm_calls,
+                    "usage": asdict(result.usage),
+                    "events": [
+                        {"seq": event.seq, "to": event.to_state, "reason": event.reason}
+                        for event in result.events
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
         print(f"FAIL state={result.state} error={result.error}")
+        print(f"用量：{result.usage.total_tokens} tokens")
+        print(f"证据：{failure_path}")
 
         return 1
 
