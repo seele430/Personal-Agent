@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: de6f569f7f613a55 -->
+<!-- membership-digest: df89a467b7327526 -->
 
-## unit — L1 单元测试 (22 files)
+## unit — L1 单元测试 (26 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -41,12 +41,16 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_agent_tool_limits.py` | tests/unit/ | reminder | none | mocked | medium | registered |
 | `unit/test_platform_sdk.py` | tests/unit/ | platform_sdk | none | none | low | registered-inferred |
 | `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |
+| `unit/test_research_graph.py` | tests/unit/ | research | temporary_sqlite | mocked | medium | registered-inferred |
+| `unit/test_research_llm.py` | tests/unit/ | research | none | mocked | medium | registered-inferred |
+| `unit/test_research_prompts.py` | tests/unit/ | research | none | none | low | registered-inferred |
+| `unit/test_research_report.py` | tests/unit/ | research | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_url_policy.py` | tests/unit/ | rss | none | mocked | high | registered-inferred |
 | `unit/test_web_evidence.py` | tests/unit/ | web | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_web_extract.py` | tests/unit/ | web | none | none | low | registered-inferred |
 | `unit/test_web_search.py` | tests/unit/ | web | none | mocked | medium | registered-inferred |
 
-## integration — L2 数据集成测试 (75 files)
+## integration — L2 数据集成测试 (76 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -78,6 +82,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `integration/test_platform_trace.py` | tests/integration/ | platform_trace | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_platform_ttl.py` | tests/integration/ | platform_ttl | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_reminder_store.py` | tests/integration/ | reminder | temporary_sqlite | none | high | registered |
+| `integration/test_research_run.py` | tests/integration/ | research | temporary_sqlite | mocked | medium | registered-inferred |
 | `integration/test_route_events.py` | tests/integration/ | routing | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_route_pipeline.py` | tests/integration/ | routing | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_sandbox_create.py` | tests/integration/ | platform_create | temporary_sqlite | none | medium | registered-inferred |

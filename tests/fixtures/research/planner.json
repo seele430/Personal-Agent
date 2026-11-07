@@ -1,0 +1,9 @@
+{
+  "title_hint": "PagedAttention 与 vLLM 的显存管理",
+  "sub_queries": [
+    {"query": "PagedAttention vLLM arxiv 2309.06180", "why": "原始论文是唯一一手来源"},
+    {"query": "vLLM PagedAttention documentation memory management", "why": "官方文档给出实现细节"},
+    {"query": "KV cache fragmentation inference serving benchmark", "why": "需要量化证据说明收益"},
+    {"query": "paged attention implementation open source serving engine", "why": "看工程落地形式"}
+  ]
+}

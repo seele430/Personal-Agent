@@ -211,6 +211,46 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L1：研究侧模型调用层（completer 注入，不发请求）
+    "unit/test_research_llm.py": TestSchema(
+        layer="unit",
+        domain="research",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+
+    # L1：提示词 JSON 契约（纯校验函数）
+    "unit/test_research_prompts.py": TestSchema(
+        layer="unit",
+        domain="research",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
+    # L1：ResearchGraph 状态机与两条回边（临时 SQLite 记账本）
+    "unit/test_research_graph.py": TestSchema(
+        layer="unit",
+        domain="research",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+
+    # L1：报告渲染与引用对账（临时 SQLite 证据库）
+    "unit/test_research_report.py": TestSchema(
+        layer="unit",
+        domain="research",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # ----------------------------------------------------------------
     # L2：数据集成测试（临时 SQLite）
     # ----------------------------------------------------------------
@@ -229,6 +269,16 @@ TEST_SCHEMAS = {
     "integration/test_web_pipeline.py": TestSchema(
         layer="integration",
         domain="web",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+
+    # L2：研究端到端脚本（离线脚本化模型 + 固定证据，可复现）
+    "integration/test_research_run.py": TestSchema(
+        layer="integration",
+        domain="research",
         database="temporary_sqlite",
         authentication="none",
         external_network="mocked",

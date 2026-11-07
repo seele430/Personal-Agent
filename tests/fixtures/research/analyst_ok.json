@@ -1,0 +1,17 @@
+{
+  "findings": [
+    {
+      "claim": "PagedAttention 把 KV cache 切成固定大小的块，块可以非连续存放，从而把碎片压到接近零。",
+      "evidence_ids": [1, 2]
+    },
+    {
+      "claim": "vLLM 在该机制上实现了比强基线更高的吞吐，收益在长序列与输出长度可变时最大。",
+      "evidence_ids": [1]
+    },
+    {
+      "claim": "该实现以开源项目形式发布，并被生产部署采用。",
+      "evidence_ids": [2]
+    }
+  ],
+  "gaps": []
+}
