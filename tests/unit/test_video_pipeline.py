@@ -161,5 +161,121 @@ class TestKeyframes(PipelineCase):
         self.assertEqual(len(summary.keyframes), 2)
 
 
+class TestUsage(PipelineCase):
+    def test_usage_defaults_to_zero(self):
+        summary = self.run_pipeline()
+
+        self.assertEqual(summary.usage.total, 0)
+
+    def test_usage_in_payload(self):
+        payload = self.run_pipeline().to_dict()
+
+        self.assertEqual(payload["usage"]["total"], 0)
+        self.assertIn("prompt", payload["usage"])
+class TestUsageAggregation(PipelineCase):
+    def test_usage_totals_serialize(self):
+        from src.video.pipeline import UsageTotals
+
+        payload = UsageTotals(prompt=10, completion=5, total=15).to_dict()
+
+        self.assertEqual(payload, {"prompt": 10, "completion": 5, "total": 15})
+
+    def test_usage_defaults(self):
+        from src.video.pipeline import UsageTotals
+
+        self.assertEqual(UsageTotals().to_dict(), {"prompt": 0, "completion": 0, "total": 0})
+
+    def test_pipeline_aggregates_multiple_calls(self):
+        from unittest.mock import patch
+
+        class Usage:
+            prompt_tokens = 100
+            completion_tokens = 50
+            total_tokens = 150
+
+        class Call:
+            usage = Usage()
+
+        payload = {"points": [{"text": f"要点{i}", "segments": [i]} for i in range(4)]}
+
+        with patch(
+            "src.research.llm.complete_json",
+            return_value=(payload, Call()),
+        ), patch("src.video.pipeline.probe", return_value=video_info()):
+            summary = summarize_video(
+                "demo.mp4",
+                transcriber=FakeTranscriber(transcript(20)),
+                completer=None,
+                out_dir=self.out,
+                extractor=fake_extractor,
+                keyframe_extractor=lambda video, target: [],
+            )
+        # 20 段 / 每块 8 段 = 3 块 → 3 次调用
+        self.assertEqual(summary.usage.total, 450)
+        self.assertEqual(summary.usage.prompt, 300)
+
+    def test_missing_usage_fields_do_not_crash(self):
+        from unittest.mock import patch
+
+        class Usage:
+            total_tokens = 7
+
+        class Call:
+            usage = Usage()
+
+        with patch(
+            "src.research.llm.complete_json",
+            return_value=({"points": [{"text": "x", "segments": [0]}]}, Call()),
+        ), patch("src.video.pipeline.probe", return_value=video_info()):
+            summary = summarize_video(
+                "demo.mp4",
+                transcriber=FakeTranscriber(transcript(3)),
+                completer=None,
+                out_dir=self.out,
+                extractor=fake_extractor,
+                keyframe_extractor=lambda video, target: [],
+            )
+
+        self.assertEqual(summary.usage.total, 7)
+        self.assertEqual(summary.usage.prompt, 0)
+
+    def test_usage_survives_serialization(self):
+        payload = self.run_pipeline().to_dict()
+
+        self.assertIsInstance(payload["usage"]["total"], int)
+
+    def test_cli_writes_usage(self):
+        import json
+
+        import scripts.summarize_video as cli
+
+        summary = self.run_pipeline()
+
+        with patch.object(cli, "summarize_video", lambda *a, **k: summary):
+            code = cli.main(["--video", "demo.mp4", "--out", str(self.out)])
+
+        self.assertEqual(code, 0)
+
+        files = sorted(self.out.glob("video-summary-*.json"))
+        payload = json.loads(files[-1].read_text(encoding="utf-8"))
+
+        self.assertIn("usage", payload)
+        self.assertEqual(payload["usage"]["total"], 0)
+
+    def test_cli_prints_usage(self):
+        import io
+
+        from contextlib import redirect_stdout
+
+        import scripts.summarize_video as cli
+
+        summary = self.run_pipeline()
+        buffer = io.StringIO()
+
+        with patch.object(cli, "summarize_video", lambda *a, **k: summary):
+            with redirect_stdout(buffer):
+                cli.main(["--video", "demo.mp4", "--out", str(self.out)])
+
+        self.assertIn("tokens", buffer.getvalue())
 if __name__ == "__main__":
     unittest.main()

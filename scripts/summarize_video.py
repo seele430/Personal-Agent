@@ -134,7 +134,10 @@ def main(argv=None) -> int:
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-    print(f"要点 {len(summary.points)} 条，关键帧 {len(summary.keyframes)} 张")
+    print(
+        f"要点 {len(summary.points)} 条，关键帧 {len(summary.keyframes)} 张，"
+        f"用量 {summary.usage.total} tokens"
+    )
     print(f"转写 {summary.transcript.speech_chars} 字（{summary.transcript.language}）")
     print(f"报告：{report_path}")
 

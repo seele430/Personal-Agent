@@ -26,6 +26,22 @@ from src.video.summarize import Point, render_points, summarize
 
 
 @dataclass(frozen=True)
+class UsageTotals:
+    """只记 token，不折算金额（单价未知，沿用 W7 口径）。"""
+
+    prompt: int = 0
+    completion: int = 0
+    total: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "prompt": self.prompt,
+            "completion": self.completion,
+            "total": self.total,
+        }
+
+
+@dataclass(frozen=True)
 class VideoSummary:
     info: VideoInfo
     transcript: Transcript
@@ -33,6 +49,7 @@ class VideoSummary:
     keyframes: tuple[Path, ...] = ()
     keyframe_error: str = ""
     generated_at: str = ""
+    usage: UsageTotals = UsageTotals()
 
     @property
     def verified(self) -> bool:
@@ -47,6 +64,7 @@ class VideoSummary:
             "keyframes": [str(path) for path in self.keyframes],
             "keyframe_error": self.keyframe_error,
             "verified": self.verified,
+            "usage": self.usage.to_dict(),
         }
 
 
@@ -116,7 +134,14 @@ def summarize_video(
             f"（阈值 {MIN_SPEECH_CHARS}），不生成总结"
         )
 
-    points = summarize(transcript, completer=completer)
+    totals = {"prompt": 0, "completion": 0, "total": 0}
+
+    def collect_usage(usage) -> None:
+        totals["prompt"] += int(getattr(usage, "prompt_tokens", 0) or 0)
+        totals["completion"] += int(getattr(usage, "completion_tokens", 0) or 0)
+        totals["total"] += int(getattr(usage, "total_tokens", 0) or 0)
+
+    points = summarize(transcript, completer=completer, usage_sink=collect_usage)
 
     if not points:
         raise VideoUnverified("没有定位到时间的要点，不生成总结")
@@ -137,4 +162,5 @@ def summarize_video(
         keyframes=keyframes,
         keyframe_error=keyframe_error,
         generated_at=datetime.now(timezone.utc).isoformat(),
+        usage=UsageTotals(**totals),
     )

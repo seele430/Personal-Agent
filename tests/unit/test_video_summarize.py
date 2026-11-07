@@ -162,5 +162,52 @@ class TestCitations(unittest.TestCase):
         self.assertEqual(parse_citations("[abc] [ ]"), ())
 
 
+class TestUsageSink(unittest.TestCase):
+    """用量只由真实 LLM 调用产生；注入 completer 时不编数字。"""
+
+    def test_injected_completer_reports_no_usage(self):
+        seen = []
+
+        def completer(messages, chunk):
+            return {"points": [{"text": "x", "segments": [0]}]}
+
+        summarize(transcript(3), completer=completer, usage_sink=seen.append)
+
+        self.assertEqual(seen, [])
+
+    def test_sink_is_optional(self):
+        def completer(messages, chunk):
+            return {"points": [{"text": "x", "segments": [0]}]}
+
+        self.assertEqual(len(summarize(transcript(3), completer=completer)), 1)
+class TestRealBranchUsage(unittest.TestCase):
+    """真实 LLM 分支：用量必须回传，且与 total 自洽。"""
+
+    def test_usage_is_forwarded(self):
+        from unittest.mock import patch
+
+        class Usage:
+            prompt_tokens = 120
+            completion_tokens = 30
+            total_tokens = 150
+
+        class Call:
+            usage = Usage()
+
+        payload = {"points": [{"text": "要点", "segments": [0]}]}
+        seen = []
+
+        with patch(
+            "src.research.llm.complete_json",
+            return_value=(payload, Call()),
+        ):
+            summarize(transcript(3), usage_sink=seen.append)
+
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0].total_tokens, 150)
+        self.assertEqual(
+            seen[0].prompt_tokens + seen[0].completion_tokens,
+            seen[0].total_tokens,
+        )
 if __name__ == "__main__":
     unittest.main()

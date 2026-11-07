@@ -166,8 +166,13 @@ def summarize(
     *,
     completer=None,
     max_points: int = MAX_POINTS,
+    usage_sink=None,
 ) -> list[Point]:
-    """逐块提炼要点，合并去重后返回（最多 max_points 条）。"""
+    """逐块提炼要点，合并去重后返回（最多 max_points 条）。
+
+    `usage_sink(usage)` 只对**真实 LLM 调用**触发；注入 completer 的测试路径
+    不会回调，避免编造用量。
+    """
 
     if not transcript.segments:
         raise SummarizeError("没有可摘要的转写")
@@ -182,7 +187,10 @@ def summarize(
         if completer is None:
             from src.research.llm import complete_json
 
-            payload, _call = complete_json(messages, max_tokens=1024, temperature=0.0)
+            payload, call = complete_json(messages, max_tokens=1024, temperature=0.0)
+
+            if usage_sink is not None:
+                usage_sink(call.usage)
 
         else:
             payload = completer(messages, chunk)
