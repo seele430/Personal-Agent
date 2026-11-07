@@ -362,6 +362,26 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L1：远程只读守卫（401/403/白名单/日志脱敏）
+    "unit/test_remote_guard.py": TestSchema(
+        layer="unit",
+        domain="remote",
+        database="none",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
+
+    # L1：访问日志与自签名证书
+    "unit/test_remote_access_log.py": TestSchema(
+        layer="unit",
+        domain="remote",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：数据集成测试（临时 SQLite）
     # ----------------------------------------------------------------
 
