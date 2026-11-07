@@ -153,5 +153,92 @@ class TestRender(unittest.TestCase):
         self.assertEqual(render_transcript(transcript([])), "")
 
 
+class TestInitialPrompt(unittest.TestCase):
+    """术语偏置：prompt 必须真的进 whisper 调用，默认不改变行为。"""
+
+    def setUp(self):
+        self._temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temporary.cleanup)
+        self.audio = Path(self._temporary.name) / "a.wav"
+        self.audio.write_bytes(b"RIFF")
+
+    def test_prompt_is_stored(self):
+        backend = WhisperTranscriber(initial_prompt="PagedAttention,vLLM")
+
+        self.assertEqual(backend.initial_prompt, "PagedAttention,vLLM")
+
+    def test_default_prompt_is_empty(self):
+        self.assertEqual(WhisperTranscriber().initial_prompt, "")
+
+    def test_prompt_forwarded_to_whisper(self):
+        captured = {}
+
+        class FakeWhisper:
+            @staticmethod
+            def transcribe(model, path, **kwargs):
+                captured.update(kwargs)
+
+                return {"language": "zh", "segments": []}
+
+        import sys
+        import types
+
+        fake_module = types.ModuleType("whisper")
+        fake_module.transcribe = FakeWhisper.transcribe
+        fake_module.load_model = lambda *a, **k: object()
+
+        backend = WhisperTranscriber(initial_prompt="术语表")
+
+        with patch.dict(sys.modules, {"whisper": fake_module}):
+            backend.transcribe(self.audio)
+
+        self.assertEqual(captured.get("initial_prompt"), "术语表")
+
+    def test_empty_prompt_becomes_none(self):
+        captured = {}
+
+        class FakeWhisper:
+            @staticmethod
+            def transcribe(model, path, **kwargs):
+                captured.update(kwargs)
+
+                return {"language": "zh", "segments": []}
+
+        import sys
+        import types
+
+        fake_module = types.ModuleType("whisper")
+        fake_module.transcribe = FakeWhisper.transcribe
+        fake_module.load_model = lambda *a, **k: object()
+
+        backend = WhisperTranscriber()
+
+        with patch.dict(sys.modules, {"whisper": fake_module}):
+            backend.transcribe(self.audio)
+
+        self.assertIsNone(captured.get("initial_prompt"))
+
+    def test_injected_transcribe_still_works(self):
+        backend = WhisperTranscriber(
+            initial_prompt="x",
+            loader=lambda: object(),
+            transcribe=lambda model, path: {"segments": [{"start": 0, "end": 1, "text": "ok"}]},
+        )
+
+        self.assertEqual(backend.transcribe(self.audio).text, "ok")
+
+    def test_prompt_does_not_change_segment_parsing(self):
+        backend = WhisperTranscriber(
+            initial_prompt="x",
+            loader=lambda: object(),
+            transcribe=lambda model, path: {
+                "segments": [
+                    {"start": 0, "end": 1, "text": "a"},
+                    {"start": 1, "end": 2, "text": " "},
+                ]
+            },
+        )
+
+        self.assertEqual(len(backend.transcribe(self.audio).segments), 1)
 if __name__ == "__main__":
     unittest.main()

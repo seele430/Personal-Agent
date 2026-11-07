@@ -76,12 +76,14 @@ class WhisperTranscriber:
         model_name: str = DEFAULT_MODEL,
         download_root: str = DEFAULT_ROOT,
         language: str | None = None,
+        initial_prompt: str = "",
         loader=None,
         transcribe=None,
     ):
         self.model_name = model_name
         self.download_root = download_root
         self.language = language
+        self.initial_prompt = initial_prompt
         self._loader = loader
         self._transcribe = transcribe
         self._model = None
@@ -129,6 +131,7 @@ class WhisperTranscriber:
                 language=self.language,
                 fp16=False,
                 verbose=False,
+                initial_prompt=self.initial_prompt or None,
             )
 
         segments = tuple(

@@ -83,6 +83,11 @@ def main(argv=None) -> int:
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--model", default="base")
     parser.add_argument("--language", default=None)
+    parser.add_argument(
+        "--prompt",
+        default="",
+        help="术语偏置（initial_prompt），例如：PagedAttention,vLLM,KV cache",
+    )
     parser.add_argument("--eval", dest="eval_path", default="")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
@@ -91,7 +96,9 @@ def main(argv=None) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     transcriber = WhisperTranscriber(
-        model_name=args.model, language=args.language
+        model_name=args.model,
+        language=args.language,
+        initial_prompt=args.prompt,
     )
 
     try:
