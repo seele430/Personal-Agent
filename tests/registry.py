@@ -1494,6 +1494,25 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="medium",
     ),
+    # L1：外部 Agent 能力快照（unknown 即拒绝）
+    "unit/test_collab_capability.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L1：任务注册表 / 工作区守卫 / 独立验收
+    "unit/test_collab_registry.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
 }
 
 
