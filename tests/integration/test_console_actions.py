@@ -191,5 +191,126 @@ class ConsoleActionsTest(unittest.TestCase):
         self.assertEqual(records[0]["outcome"], "ok")
 
 
+
+    # ------------------------------------------------------------------
+    # 错误路径（V2 §7.4：失败也要有可理解的反馈）
+    # ------------------------------------------------------------------
+
+    def test_exec_on_unknown_sandbox_is_404(self):
+        self.as_user(OWNER)
+
+        response = self.client.post(
+            "/console/actions/executions",
+            json={"sandbox_id": "sbx_missing", "command": ["cmd", "/c", "echo", "hi"]},
+        )
+
+        self.assertEqual(response.status_code, 404, response.text)
+        self.assertEqual(response.json()["error"]["code"], "SANDBOX_NOT_FOUND")
+
+    def test_exec_after_destroy_is_410(self):
+        sandbox_id = self.create_sandbox().json()["sandbox_id"]
+
+        self.client.post(f"/console/actions/sandboxes/{sandbox_id}/destroy")
+
+        response = self.client.post(
+            "/console/actions/executions",
+            json={"sandbox_id": sandbox_id, "command": ["cmd", "/c", "echo", "hi"]},
+        )
+
+        self.assertEqual(response.status_code, 410, response.text)
+        self.assertEqual(response.json()["error"]["code"], "SANDBOX_GONE")
+
+    def test_invalid_command_is_400(self):
+        sandbox_id = self.create_sandbox().json()["sandbox_id"]
+
+        response = self.client.post(
+            "/console/actions/executions",
+            json={"sandbox_id": sandbox_id, "command": []},
+        )
+
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertEqual(response.json()["error"]["code"], "INVALID_ARGUMENT")
+
+    def test_cancel_unknown_exec_is_404(self):
+        self.as_user(OWNER)
+
+        response = self.client.post("/console/actions/executions/exec_missing/cancel")
+
+        self.assertEqual(response.status_code, 404, response.text)
+        self.assertEqual(response.json()["error"]["code"], "EXEC_NOT_FOUND")
+
+    def test_destroy_unknown_sandbox_is_404(self):
+        self.as_user(OWNER)
+
+        response = self.client.post("/console/actions/sandboxes/sbx_missing/destroy")
+
+        self.assertEqual(response.status_code, 404, response.text)
+        self.assertEqual(response.json()["error"]["code"], "SANDBOX_NOT_FOUND")
+
+    def test_cordon_unknown_node_is_404(self):
+        self.as_user(OWNER)
+
+        response = self.client.post("/console/actions/nodes/node_missing/cordon")
+
+        self.assertEqual(response.status_code, 404, response.text)
+        self.assertEqual(response.json()["error"]["code"], "NODE_NOT_FOUND")
+
+    def test_queue_full_returns_429_with_retry_after(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "PERSONAL_AGENT_PLATFORM_MAX_ACTIVE_EXECS": "1",
+                "PERSONAL_AGENT_PLATFORM_QUEUE_SIZE": "1",
+            },
+        ):
+            sandbox_id = self.create_sandbox().json()["sandbox_id"]
+            command = ["cmd", "/c", "ping", "-n", "8", "127.0.0.1"]
+
+            first = self.client.post(
+                "/console/actions/executions",
+                json={"sandbox_id": sandbox_id, "command": command},
+            )
+            second = self.client.post(
+                "/console/actions/executions",
+                json={"sandbox_id": sandbox_id, "command": command},
+            )
+            third = self.client.post(
+                "/console/actions/executions",
+                json={"sandbox_id": sandbox_id, "command": command},
+            )
+
+            self.assertEqual(first.status_code, 202, first.text)
+            self.assertEqual(second.status_code, 202, second.text)
+            self.assertEqual(third.status_code, 429, third.text)
+            self.assertEqual(third.json()["error"]["code"], "QUEUE_FULL")
+            self.assertIn("retry-after", {k.lower() for k in third.headers})
+
+            for body in (first.json(), second.json()):
+                self.client.post(
+                    f"/console/actions/executions/{body['exec_id']}/cancel"
+                )
+                wait_for_exec_worker(body["exec_id"])
+
+    def test_cancel_after_success_is_409(self):
+        sandbox_id = self.create_sandbox().json()["sandbox_id"]
+
+        exec_id = self.client.post(
+            "/console/actions/executions",
+            json={"sandbox_id": sandbox_id, "command": ["cmd", "/c", "echo", "hi"]},
+        ).json()["exec_id"]
+
+        final = self.wait_state(exec_id, TERMINAL)
+        wait_for_exec_worker(exec_id)
+
+        self.assertEqual(final["state"], "succeeded")
+
+        response = self.client.post(f"/console/actions/executions/{exec_id}/cancel")
+
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(
+            response.json()["error"]["code"], "EXEC_NOT_CANCELLABLE"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
