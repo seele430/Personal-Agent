@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-MIN_SUB_QUERIES = 3
+MIN_SUB_QUERIES = 4
 MAX_SUB_QUERIES = 6
 MAX_FINDINGS = 12
 MAX_GAPS = 5

@@ -85,6 +85,9 @@ MAX_REVISIONS = 2
 CONTRACT_RETRIES = 1
 MAX_DIGEST_ITEMS = 12
 
+#: 证据少于这个数就补研（对应 W2/W6 的「≥10 来源」口径）
+MIN_TOTAL_EVIDENCE = 10
+
 STAGE_MAX_TOKENS = {
     "planner": 1024,
     "analyst": 3072,
@@ -165,10 +168,11 @@ class ResearchGraph:
         max_llm_calls: int = MAX_LLM_CALLS,
         max_research_rounds: int = MAX_RESEARCH_ROUNDS,
         max_revisions: int = MAX_REVISIONS,
-        queries_per_round: int = 4,
-        sources_per_query: int = 4,
-        pages_per_query: int = 3,
+        queries_per_round: int = 6,
+        sources_per_query: int = 5,
+        pages_per_query: int = 4,
         min_chars: int = 500,
+        min_total_evidence: int = MIN_TOTAL_EVIDENCE,
         persist: bool = True,
     ):
         if not isinstance(question, str) or not question.strip():
@@ -182,6 +186,7 @@ class ResearchGraph:
             ("sources_per_query", sources_per_query, 1, 10),
             ("pages_per_query", pages_per_query, 1, 10),
             ("min_chars", min_chars, 1, 100_000),
+            ("min_total_evidence", min_total_evidence, 1, 50),
         ):
             if isinstance(value, bool) or not isinstance(value, int):
                 raise ValueError(f"{name} 必须是整数")
@@ -201,6 +206,7 @@ class ResearchGraph:
         self._sources_per_query = sources_per_query
         self._pages_per_query = pages_per_query
         self._min_chars = min_chars
+        self._min_total_evidence = min_total_evidence
         self._persist = persist
 
         self._run_id = 0
@@ -434,11 +440,16 @@ class ResearchGraph:
 
         # 4. E1 补研回边（最多 1 轮）
         while (
-            (analysis.has_gaps or self._search_failures > 0)
+            (
+                analysis.has_gaps
+                or self._search_failures > 0
+                or len(self._evidence_ids) < self._min_total_evidence
+            )
             and self._research_rounds < self._max_research_rounds
         ):
             reason = (
                 f"缺口 {len(analysis.gaps)} 个 / 失败 {self._search_failures} 次"
+                f" / 证据 {len(self._evidence_ids)}/{self._min_total_evidence} 条"
             )
             self._transition(RESEARCHING, "analyst", f"补研：{reason}")
 

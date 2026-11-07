@@ -107,6 +107,7 @@ class GraphTestCase(unittest.TestCase):
             search_round=search,
             evidence_store=self.evidence,
             store=self.store,
+            min_total_evidence=1,
             **kwargs,
         )
 
@@ -416,6 +417,38 @@ class TestPersistence(GraphTestCase):
         self.assertEqual(run.critic_score, 6)
         self.assertIn("未通过", run.error)
 
+
+
+class TestCoverageBackEdge(GraphTestCase):
+    """来源不足也要补研（W6 报告第 1 次只有 7 条来源暴露的缺口）。"""
+
+    def test_few_evidence_triggers_one_more_round(self):
+        llm = FakeLLM(
+            {
+                "planner": [PLANNER],
+                "analyst": [ANALYST_OK, ANALYST_OK],
+                "writer": [WRITER],
+                "critic": [CRITIC_PASS],
+            }
+        )
+        search = FakeSearch([self.round_result(ids=(1, 2)), self.round_result(ids=(1, 2))])
+
+        graph = ResearchGraph(
+            "PagedAttention 如何管理显存",
+            llm=llm,
+            search_round=search,
+            evidence_store=self.evidence,
+            store=self.store,
+            min_total_evidence=10,
+        )
+
+        result = graph.run()
+
+        self.assertEqual(result.research_rounds, 2)
+        self.assertEqual(len(search.calls), 2)
+        self.assertTrue(
+            any("证据 2/10" in event.reason for event in result.events)
+        )
 
 if __name__ == "__main__":
     unittest.main()
