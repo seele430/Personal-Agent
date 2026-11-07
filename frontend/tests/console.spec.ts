@@ -298,7 +298,7 @@ test("五个分区可以切换", async ({ page }) => {
 
   await page.getByRole("button", { name: "弹性", exact: true }).click();
   await expect(page.getByRole("heading", { name: "控制器" })).toBeVisible();
-  await expect(page.getByText("每节点容量")).toBeVisible();
+  await expect(page.getByText("每节点容量").first()).toBeVisible();
   await expect(page.getByText("load_above_capacity")).toBeVisible();
 
   expectNoUnmockedApi(unexpected);
@@ -509,6 +509,55 @@ test("非 owner 看不到写操作入口", async ({ page }) => {
   await expect(page.getByText("只读：写操作需要站长权限。")).toBeVisible();
   await expect(page.getByTestId("sandbox-submit")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "销毁 sbx-1" })).toHaveCount(0);
+
+  expectNoUnmockedApi(unexpected);
+});
+test("What-if 模拟只出仿真结果，不动真实容量", async ({ page }) => {
+  const unexpected = await openConsole(page);
+  let body: unknown = null;
+
+  await page.route("**/api/console/simulate", async (route) => {
+    body = route.request().postDataJSON();
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        simulation_id: "sim-abc123",
+        data_source: "simulation",
+        applied: false,
+        message: "仅模拟，未改变真实容量、任务或审计",
+        inputs: { running: 20, queued: 5, current_capacity: 2 },
+        policy: POLICY,
+        desired_capacity: 3,
+        action: "scale_up",
+        reason: "load_above_capacity",
+        label: "scale_out",
+        title: "扩容",
+        delta: 1,
+        stabilization: { required_samples: 2, note: "假设已满足" },
+        cooldown: { seconds: 60, note: "假设已满足" },
+      }),
+    });
+  });
+
+  await page.getByRole("button", { name: "弹性", exact: true }).click();
+  await page.getByTestId("sim-running").fill("20");
+  await page.getByTestId("sim-queued").fill("5");
+  await page.getByTestId("sim-current").fill("2");
+  await page.getByTestId("sim-submit").click();
+
+  const result = page.getByTestId("sim-result");
+
+  await expect(result).toContainText("期望容量 3");
+  await expect(result).toContainText("仅模拟");
+  await expect(result).toContainText("sim-abc123");
+  await expect(result).toContainText("仿真");
+  expect(body).toMatchObject({
+    running: 20,
+    queued: 5,
+    current_capacity: 2,
+  });
 
   expectNoUnmockedApi(unexpected);
 });

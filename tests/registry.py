@@ -587,6 +587,15 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="low",
     ),
+    # W3：What-if 模拟（与真实决策同公式、只算不改）
+    "test_whatif.py": TestSchema(
+        layer="unit",
+        domain="platform_elastic",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
     # L1：降级不降风险
     "test_routing_fallback.py": TestSchema(
         layer="unit",
@@ -622,6 +631,15 @@ TEST_SCHEMAS = {
         authentication="mocked",
         external_network="none",
         risk="medium",
+    ),
+    # W3：控制台 What-if（默认取真实状态、模拟无副作用）
+    "integration/test_console_simulate.py": TestSchema(
+        layer="integration",
+        domain="platform_http",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="low",
     ),
     # L2：单用户产品面（无注册/邀请入口）
     "integration/test_single_user_surface.py": TestSchema(

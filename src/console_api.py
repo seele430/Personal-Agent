@@ -893,3 +893,55 @@ def _node_view_for_console(row: dict) -> dict:
         "draining": bool(row.get("draining")),
         "accepting": bool(row.get("accepting")),
     }
+
+# ======================================================================
+# What-if 模拟（P2）
+#
+# 只读：复用 autoscale 的同一个计算入口，不写节点、队列、事件或审计。
+# ======================================================================
+
+
+class SimulateRequest(BaseModel):
+    running: int | None = None
+    queued: int | None = None
+    current_capacity: int | None = None
+    policy: dict | None = None
+
+
+@router.post("/simulate")
+def console_simulate(
+    payload: SimulateRequest,
+    user: dict = Depends(get_current_user),
+):
+    """载入当前状态作为默认输入；任何字段都可以覆盖，但不写回真实状态。"""
+
+    from src.platform import whatif
+    from src.platform.elastic_controller import capacity_snapshot
+
+    queue = get_queue().snapshot()
+
+    running = (
+        int(payload.running)
+        if payload.running is not None
+        else int(queue.get("active", 0))
+    )
+    queued = (
+        int(payload.queued)
+        if payload.queued is not None
+        else int(queue.get("queued", 0))
+    )
+    current = (
+        int(payload.current_capacity)
+        if payload.current_capacity is not None
+        else int(capacity_snapshot()["nodes_accepting"])
+    )
+
+    try:
+        return whatif.simulate(
+            running=running,
+            queued=queued,
+            current_capacity=current,
+            policy_overrides=payload.policy,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None

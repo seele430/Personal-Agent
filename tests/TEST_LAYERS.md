@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 66be1d6b4693129c -->
+<!-- membership-digest: 183c3d97d6188515 -->
 
-## unit — L1 单元测试 (18 files)
+## unit — L1 单元测试 (19 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -37,12 +37,13 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_scale_events.py` | tests/ 根 | platform_elastic | temporary_sqlite | none | low | registered-inferred |
 | `test_tool_registry.py` | tests/ 根 | tool_policy | none | none | low | registered-inferred |
 | `test_trends.py` | tests/ 根 | platform_elastic | temporary_sqlite | none | low | registered-inferred |
+| `test_whatif.py` | tests/ 根 | platform_elastic | none | none | low | registered-inferred |
 | `unit/test_agent_tool_limits.py` | tests/unit/ | reminder | none | mocked | medium | registered |
 | `unit/test_platform_sdk.py` | tests/unit/ | platform_sdk | none | none | low | registered-inferred |
 | `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 | `unit/test_url_policy.py` | tests/unit/ | rss | none | mocked | high | registered-inferred |
 
-## integration — L2 数据集成测试 (70 files)
+## integration — L2 数据集成测试 (71 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -53,6 +54,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `integration/test_console_actions.py` | tests/integration/ | platform_http | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_console_api.py` | tests/integration/ | platform_http | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_console_cli.py` | tests/integration/ | console | temporary_sqlite | none | low | registered-inferred |
+| `integration/test_console_simulate.py` | tests/integration/ | platform_http | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_console_snapshot.py` | tests/integration/ | platform_http | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_default_node_renewal.py` | tests/integration/ | platform_nodes | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_guarded_asyncio.py` | tests/integration/ | test_infra | none | none | low | registered-inferred |

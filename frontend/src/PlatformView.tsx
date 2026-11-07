@@ -205,6 +205,23 @@ type TrendsData = {
   exec_buckets: TrendBucket[];
 };
 
+type Simulation = {
+  simulation_id: string;
+  data_source: string;
+  applied: boolean;
+  message: string;
+  inputs: { running: number; queued: number; current_capacity: number };
+  policy: PolicyData;
+  desired_capacity: number;
+  action: string;
+  reason: string;
+  label: string;
+  title: string;
+  delta: number;
+  stabilization: { required_samples: number; note: string };
+  cooldown: { seconds: number; note: string };
+};
+
 type Snapshot = {
   generated_at: string;
   series_window: string;
@@ -612,6 +629,15 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
   const [execSandbox, setExecSandbox] = useState("");
   const [execCommand, setExecCommand] = useState("cmd /c echo hello");
 
+  // P2：What-if 模拟（只算不改）
+  const [simRunning, setSimRunning] = useState("");
+  const [simQueued, setSimQueued] = useState("");
+  const [simCurrent, setSimCurrent] = useState("");
+  const [simCapacity, setSimCapacity] = useState("");
+  const [simHeadroom, setSimHeadroom] = useState("");
+  const [simBusy, setSimBusy] = useState(false);
+  const [simulation, setSimulation] = useState<Simulation | null>(null);
+
   const load = useCallback(async () => {
     if (!authToken) return;
 
@@ -761,7 +787,59 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
     [load],
   );
 
-  const queue = snapshot?.queue.data ?? null;  const nodes = snapshot?.nodes.data ?? null;
+  const runSimulation = useCallback(async () => {
+    if (!authToken) return;
+
+    const body: Record<string, unknown> = {};
+
+    if (simRunning !== "") body.running = Number(simRunning);
+    if (simQueued !== "") body.queued = Number(simQueued);
+    if (simCurrent !== "") body.current_capacity = Number(simCurrent);
+
+    const policy: Record<string, unknown> = {};
+
+    if (simCapacity !== "") policy.capacity_per_node = Number(simCapacity);
+    if (simHeadroom !== "") policy.headroom = Number(simHeadroom) / 100;
+    if (Object.keys(policy).length > 0) body.policy = policy;
+
+    setSimBusy(true);
+    setNotice(null);
+
+    try {
+      const response = await fetch("/api/console/simulate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const data = (await response.json().catch(() => null)) as
+        | Simulation
+        | { detail?: string }
+        | null;
+
+      if (!response.ok) {
+        const detail =
+          data && "detail" in data ? data.detail : null;
+
+        setNotice({
+          tone: "error",
+          text: `模拟：${detail ?? `请求失败（${response.status}）`}`,
+        });
+        return;
+      }
+
+      setSimulation(data as Simulation);
+    } catch {
+      setNotice({ tone: "error", text: "模拟：无法连接后端" });
+    } finally {
+      setSimBusy(false);
+    }
+  }, [authToken, simRunning, simQueued, simCurrent, simCapacity, simHeadroom]);
+
+  const queue = snapshot?.queue.data ?? null;
+  const nodes = snapshot?.nodes.data ?? null;
   const sandboxes = snapshot?.sandboxes.data ?? null;
   const executions = snapshot?.executions.data ?? null;
   const elastic = snapshot?.elastic.data ?? null;
@@ -1563,6 +1641,143 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
                 ) : (
                   <Empty text="策略不可用。" />
                 )}
+              </Card>
+
+              <Card
+                title="What-if 模拟"
+                subtitle="只算不改：不改容量、不建任务、不写审计。留空表示用当前真实值。"
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    alignItems: "flex-end",
+                    marginBottom: 12,
+                  }}
+                >
+                  <label style={muted}>
+                    运行中
+                    <input
+                      data-testid="sim-running"
+                      type="number"
+                      min={0}
+                      placeholder={String(queue?.active ?? 0)}
+                      value={simRunning}
+                      onChange={(event) => setSimRunning(event.target.value)}
+                      style={{ display: "block", marginTop: 4, padding: "5px 8px", width: 96 }}
+                    />
+                  </label>
+                  <label style={muted}>
+                    排队
+                    <input
+                      data-testid="sim-queued"
+                      type="number"
+                      min={0}
+                      placeholder={String(queue?.queued ?? 0)}
+                      value={simQueued}
+                      onChange={(event) => setSimQueued(event.target.value)}
+                      style={{ display: "block", marginTop: 4, padding: "5px 8px", width: 96 }}
+                    />
+                  </label>
+                  <label style={muted}>
+                    当前容量
+                    <input
+                      data-testid="sim-current"
+                      type="number"
+                      min={0}
+                      placeholder={String(elastic?.actual_capacity ?? 0)}
+                      value={simCurrent}
+                      onChange={(event) => setSimCurrent(event.target.value)}
+                      style={{ display: "block", marginTop: 4, padding: "5px 8px", width: 96 }}
+                    />
+                  </label>
+                  <label style={muted}>
+                    每节点容量
+                    <input
+                      data-testid="sim-capacity"
+                      type="number"
+                      min={1}
+                      placeholder={String(elastic?.policy.capacity_per_node ?? 8)}
+                      value={simCapacity}
+                      onChange={(event) => setSimCapacity(event.target.value)}
+                      style={{ display: "block", marginTop: 4, padding: "5px 8px", width: 110 }}
+                    />
+                  </label>
+                  <label style={muted}>
+                    headroom（%）
+                    <input
+                      data-testid="sim-headroom"
+                      type="number"
+                      min={0}
+                      placeholder={String(
+                        Math.round((elastic?.policy.headroom ?? 0.2) * 100),
+                      )}
+                      value={simHeadroom}
+                      onChange={(event) => setSimHeadroom(event.target.value)}
+                      style={{ display: "block", marginTop: 4, padding: "5px 8px", width: 110 }}
+                    />
+                  </label>
+                  <button
+                    data-testid="sim-submit"
+                    type="button"
+                    disabled={simBusy}
+                    onClick={() => void runSimulation()}
+                  >
+                    {simBusy ? "计算中…" : "计算"}
+                  </button>
+                </div>
+
+                {simulation ? (
+                  <div
+                    data-testid="sim-result"
+                    style={{
+                      border: `1px solid ${color.line}`,
+                      borderRadius: 10,
+                      padding: "10px 12px",
+                      background: color.soft,
+                    }}
+                  >
+                    <div style={{ ...row, borderBottom: "none", paddingTop: 0 }}>
+                      <span>
+                        <strong>
+                          {LABELS[simulation.label] ?? simulation.title}
+                        </strong>
+                        <span style={{ ...muted, marginLeft: 8 }}>
+                          {simulation.reason}
+                        </span>
+                      </span>
+                      <span>
+                        期望容量 {simulation.desired_capacity}
+                        <span style={muted}>
+                          {" "}
+                          （{simulation.delta >= 0 ? "+" : ""}
+                          {simulation.delta}）
+                        </span>
+                      </span>
+                    </div>
+                    <p style={{ ...muted, margin: "6px 0 0" }}>
+                      输入：运行 {simulation.inputs.running} · 排队{" "}
+                      {simulation.inputs.queued} · 当前容量{" "}
+                      {simulation.inputs.current_capacity}
+                    </p>
+                    <p style={{ ...muted, margin: "4px 0 0" }}>
+                      稳定期：需连续 {simulation.stabilization.required_samples} 次采样
+                    </p>
+                    <p style={{ ...muted, margin: "4px 0 0" }}>
+                      冷却期：{simulation.cooldown.seconds} 秒
+                    </p>
+                    <p
+                      style={{
+                        ...muted,
+                        color: color.warn,
+                        margin: "8px 0 0",
+                      }}
+                    >
+                      仿真 · {simulation.message}（{simulation.simulation_id}）
+                    </p>
+                  </div>
+                ) : null}
               </Card>
 
               <Card title="事件" subtitle={`共 ${elastic?.event_count ?? 0} 条，展示最近 10 条。`}>
