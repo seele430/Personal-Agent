@@ -23,11 +23,13 @@ import time
 import unittest
 
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST_ROOT = ROOT / "tests"
+FAILURE_LOG_DIR = ROOT / ".run"
 
 TEST_LAYERS = (
     "unit",
@@ -325,6 +327,51 @@ def module_name(relative: Path) -> str:
 # 执行测试
 # ==========================================
 
+def write_failure_report(
+    layer: str,
+    result,
+    loader_errors: list,
+    duration: float,
+    cases: int,
+    directory: Path | None = None,
+) -> Path:
+    """失败时把完整用例名与 traceback 落盘。
+
+    背景：控制台输出可能被管道/过滤截断（D26.3 排查一次 flake 时就丢过整份
+    traceback），所以失败细节必须自己存一份，并把路径打出来。
+    """
+
+    target = Path(directory) if directory is not None else FAILURE_LOG_DIR
+    target.mkdir(parents=True, exist_ok=True)
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    path = target / f"test-failure-{stamp}-{layer}.log"
+
+    lines = [
+        f"layer={layer}",
+        f"at={datetime.now().isoformat(timespec='seconds')}",
+        f"cases={cases}",
+        f"duration={duration:.2f}s",
+        f"failures={len(result.failures)}",
+        f"errors={len(result.errors)}",
+        "",
+    ]
+
+    for message in loader_errors:
+        lines.extend(["[LOADER]", str(message).rstrip(), ""])
+
+    for label, entries in (
+        ("FAIL", result.failures),
+        ("ERROR", result.errors),
+    ):
+        for case, detail in entries:
+            lines.extend([f"[{label}] {case}", str(detail).rstrip(), ""])
+
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    return path
+
+
 def execute_tests(
     layer: str,
     files: list[Path],
@@ -432,6 +479,19 @@ def execute_tests(
             f"Errors: {len(result.errors)}"
         )
         print(f"Duration: {duration:.2f}s")
+
+        try:
+            report = write_failure_report(
+                layer,
+                result,
+                loader.errors,
+                duration,
+                count,
+            )
+            print(f"Failure details: {report}")
+        except Exception:  # noqa: BLE001 - 落盘失败不能盖掉测试结论
+            print("Failure details: (无法写入失败报告)")
+
         print(f"Result: FAIL")
 
         return 1
