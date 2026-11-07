@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 52e51bd55111cb30 -->
+<!-- membership-digest: 5e3d7e9c7af0f00f -->
 
-## unit — L1 单元测试 (43 files)
+## unit — L1 单元测试 (45 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -39,11 +39,13 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_trends.py` | tests/ 根 | platform_elastic | temporary_sqlite | none | low | registered-inferred |
 | `test_whatif.py` | tests/ 根 | platform_elastic | none | none | low | registered-inferred |
 | `unit/test_activity_summary.py` | tests/unit/ | activity | none | none | low | registered-inferred |
+| `unit/test_activity_timeline.py` | tests/unit/ | activity | temporary_sqlite | none | low | registered-inferred |
 | `unit/test_agent_tool_limits.py` | tests/unit/ | reminder | none | mocked | medium | registered |
 | `unit/test_artifact_registry.py` | tests/unit/ | artifacts | temporary_sqlite | none | high | registered-inferred |
 | `unit/test_cost_ledger.py` | tests/unit/ | cost | none | none | low | registered-inferred |
 | `unit/test_fault_matrix.py` | tests/unit/ | faults | temporary_sqlite | mocked | high | registered-inferred |
 | `unit/test_fault_reconcile.py` | tests/unit/ | faults | temporary_sqlite | none | medium | registered-inferred |
+| `unit/test_lifecycle_retention.py` | tests/unit/ | lifecycle | temporary_sqlite | none | high | registered-inferred |
 | `unit/test_memory_eval.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_memory_resolve.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_memory_store.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
@@ -67,10 +69,11 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_web_extract.py` | tests/unit/ | web | none | none | low | registered-inferred |
 | `unit/test_web_search.py` | tests/unit/ | web | none | mocked | medium | registered-inferred |
 
-## integration — L2 数据集成测试 (79 files)
+## integration — L2 数据集成测试 (80 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
+| `integration/test_activity_timeline_api.py` | tests/integration/ | activity | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_agent_multi_tool.py` | tests/integration/ | agent_tools | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_approval_gate.py` | tests/integration/ | approval | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_artifact_api.py` | tests/integration/ | artifacts | temporary_sqlite | none | high | registered-inferred |

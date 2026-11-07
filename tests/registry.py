@@ -1465,6 +1465,35 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+    # L1：活动时间线（spans/execs/artifacts 三源合并）
+    "unit/test_activity_timeline.py": TestSchema(
+        layer="unit",
+        domain="activity",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
+    # L1：数据生命周期（默认预演，确认才删）
+    "unit/test_lifecycle_retention.py": TestSchema(
+        layer="unit",
+        domain="lifecycle",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
+
+    # L2：活动时间线 API（挂真实 router，鉴权用 override）
+    "integration/test_activity_timeline_api.py": TestSchema(
+        layer="integration",
+        domain="activity",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
 }
 
 
