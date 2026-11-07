@@ -650,6 +650,15 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="low",
     ),
+    # W3：控制台并发竞态（重复取消 / 重复销毁 / 终态再取消）
+    "integration/test_console_concurrency.py": TestSchema(
+        layer="integration",
+        domain="platform_http",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
     # L2：单用户产品面（无注册/邀请入口）
     "integration/test_single_user_surface.py": TestSchema(
         layer="integration",

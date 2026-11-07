@@ -17,7 +17,7 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 313d4b78ad84a8f1 -->
+<!-- membership-digest: fa7bffb2c63ad118 -->
 
 ## unit — L1 单元测试 (19 files)
 
@@ -43,7 +43,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 | `unit/test_url_policy.py` | tests/unit/ | rss | none | mocked | high | registered-inferred |
 
-## integration — L2 数据集成测试 (72 files)
+## integration — L2 数据集成测试 (73 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -54,6 +54,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `integration/test_console_actions.py` | tests/integration/ | platform_http | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_console_api.py` | tests/integration/ | platform_http | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_console_cli.py` | tests/integration/ | console | temporary_sqlite | none | low | registered-inferred |
+| `integration/test_console_concurrency.py` | tests/integration/ | platform_http | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_console_replay.py` | tests/integration/ | platform_http | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_console_simulate.py` | tests/integration/ | platform_http | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_console_snapshot.py` | tests/integration/ | platform_http | temporary_sqlite | none | low | registered-inferred |

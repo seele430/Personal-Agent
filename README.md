@@ -73,7 +73,7 @@
 | 模型 | DeepSeek Chat（`deepseek-chat`） |
 | 语音 | Edge TTS（微软神经网络语音，免 key） |
 | 前端 | React 19 · TypeScript · Vite 8 |
-| 测试 | unittest（**905 个后端用例**）+ Playwright（46 条前端链路） |
+| 测试 | unittest（**908 个后端用例**）+ Playwright（47 条前端链路） |
 
 ---
 
@@ -170,7 +170,7 @@ Personal Agent/
 │   ├── BotsView.tsx        # Bot 管理
 │   ├── App.tsx             # 外壳与导航
 │   └── lib/tts.ts          # 语音合成（播放队列 + 预热缓存）
-├── tests/                  # 106 个测试文件 / 905 个用例
+├── tests/                  # 107 个测试文件 / 908 个用例
 └── scripts/
     ├── run-dev.ps1         # 开发环境一键起停
     ├── run_tests.py        # 全量测试
@@ -187,12 +187,12 @@ Personal Agent/
 
 （后端测试统一走受保护运行器：SQLite / socket 守卫 + 独立临时数据目录；`scripts/run_tests.py <layer>` 可单独跑某一层。）
 
-**905 个用例**（106 个测试文件，受保护运行器），覆盖：房间生命周期、阶段推进、投票加权、Bot 兜底、TTS 端点、
+**908 个用例**（107 个测试文件，受保护运行器），覆盖：房间生命周期、阶段推进、投票加权、Bot 兜底、TTS 端点、
 额度控制、任务调度、提醒投递；平台侧的认证 / 限流 / 审计 / 队列 / 调度也在其中。
 弹性这条线另有：控制器的稳定期与冷却、事件持久化、容量口径、快照分块降级、控制台写操作的幂等与鉴权、
 What-if 与真实决策同公式、回放的时间偏移与来源隔离。
 
-前端 Playwright 46 条（含平台控制台 12 条：五区渲染、单块失败降级、写操作确认框、非 owner 只读、移动端无横向溢出）：
+前端 Playwright 47 条（含平台控制台 13 条：五区渲染、单块失败降级、写操作确认框、非 owner 只读、移动端无横向溢出）：
 
 ```powershell
 cd frontend
@@ -224,7 +224,7 @@ node scripts\test-tts.cjs
 - **影响面**：没有配置 `PERSONAL_AGENT_PLATFORM_TOKEN` 的本机部署。
 - **问题**：未配置时 `/v1` 完全无认证。只监听 `127.0.0.1` 挡得住外部网络，却挡不住本机上的其它进程——任何本地程序都能创建沙箱并提交命令。
 - **修复**：未配置令牌时，`POST` / `PUT` / `PATCH` / `DELETE` 一律 401 `UNAUTHORIZED`（错误消息提示开关名）；`GET` 维持旧行为，只读监控不受影响。确实需要匿名写时显式设 `PERSONAL_AGENT_ALLOW_ANON_V1=1`，启动日志会打出「允许匿名访问」警告。控制台不受影响，它走用户会话与 owner 校验。
-- **验证**：`tests/integration/test_platform_auth.py` 10 条；平台与控制台 134 条；全量 **905 用例 PASS**。
+- **验证**：`tests/integration/test_platform_auth.py` 10 条；平台与控制台 134 条；全量 **908 用例 PASS**。
 
 细节见 `docs/journal.md` 的 D26.2 与 `docs/platform-contract.md`。
 
