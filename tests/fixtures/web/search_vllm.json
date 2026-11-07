@@ -1,0 +1,47 @@
+{
+  "code": 200,
+  "log_id": "fixture-20261107-0001",
+  "msg": null,
+  "data": {
+    "_type": "SearchResponse",
+    "queryContext": {
+      "originalQuery": "vllm pagedattention"
+    },
+    "webPages": {
+      "webSearchUrl": "https://bochaai.com/search?q=vllm+pagedattention",
+      "totalEstimatedMatches": 4,
+      "value": [
+        {
+          "id": "https://arxiv.org/abs/2309.06180",
+          "name": "Efficient Memory Management for Large Language Model Serving with PagedAttention",
+          "url": "https://arxiv.org/abs/2309.06180",
+          "displayUrl": "arxiv.org/abs/2309.06180",
+          "snippet": "High throughput serving of large language models requires batching many requests.",
+          "summary": "The paper introduces PagedAttention, an attention algorithm inspired by virtual memory paging, and vLLM, a serving system built on it.",
+          "siteName": "arXiv",
+          "datePublished": "2023-09-12T00:00:00+08:00"
+        },
+        {
+          "id": "no-url-entry",
+          "name": "条目缺少 URL，应被丢弃",
+          "url": "",
+          "snippet": "没有 URL 的结果对下游没有意义。"
+        },
+        {
+          "id": "javascript-url",
+          "name": "javascript 伪协议，应被丢弃",
+          "url": "javascript:alert(1)",
+          "snippet": "非 http(s) 协议一律过滤。"
+        },
+        {
+          "id": "https://docs.vllm.ai/en/latest/",
+          "name": "vLLM Documentation",
+          "url": "https://docs.vllm.ai/en/latest/",
+          "snippet": "vLLM is a fast and easy-to-use library for LLM inference and serving.",
+          "summary": "官方文档首页，包含安装、离线推理与服务部署指南。",
+          "siteName": "vLLM Docs"
+        }
+      ]
+    }
+  }
+}

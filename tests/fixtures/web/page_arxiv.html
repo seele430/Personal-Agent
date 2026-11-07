@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>[2309.06180] Efficient Memory Management for Large Language Model Serving with PagedAttention</title>
+<meta name="citation_author" content="Woosuk Kwon">
+<meta name="description" content="arXiv abstract page fixture">
+<link rel="stylesheet" href="/static/base.css">
+<script>window.dataLayer = window.dataLayer || [];</script>
+</head>
+<body>
+<header class="site-header">
+  <nav class="site-nav">
+    <a href="/">Home</a> <a href="/search">Search</a> <a href="/login">Login</a>
+    <span>Skip to main content</span>
+  </nav>
+</header>
+
+<main>
+  <h1 class="title mathjax">Title: Efficient Memory Management for Large Language Model Serving with PagedAttention</h1>
+
+  <div class="authors">
+    <span>Authors:</span> Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng
+  </div>
+
+  <blockquote class="abstract mathjax">
+    <span class="descriptor">Abstract:</span>
+    High throughput serving of large language models requires batching enough requests
+    together to fully utilize the hardware, but existing systems struggle because the
+    key-value cache for each request is large and grows dynamically. Memory is wasted by
+    fragmentation and by duplication across parallel samples. This work observes that the
+    inefficiency comes from how the cache is stored, not from the size of the model itself,
+    and proposes an attention algorithm inspired by operating system virtual memory paging.
+    The algorithm allows cache blocks to be stored non-contiguously, so nearly all of the
+    reserved memory can be used for actual tokens instead of padding. A serving system built
+    around this idea reaches substantially higher throughput than strong baselines on the
+    same hardware and latency target, and the gain is largest when sequences are long and
+    output lengths are variable. The implementation is released as an open source project
+    and has been adopted by several production deployments.
+  </blockquote>
+
+  <table class="comments">
+    <tr><td>Comments:</td><td>Accepted at SOSP 2023</td></tr>
+    <tr><td>Subjects:</td><td>Computation and Language (cs.CL)</td></tr>
+  </table>
+
+  <h2>Submission history</h2>
+  <p>From: Woosuk Kwon [view email]</p>
+  <p>This fixture is synthetic in structure but representative of an arXiv abstract page.</p>
+</main>
+
+<footer class="site-footer">
+  <p>About &middot; Help &middot; Contact &middot; Subscribe &middot; Copyright &middot; Privacy Policy</p>
+  <p>We gratefully acknowledge support from our sponsors and member institutions.</p>
+</footer>
+</body>
+</html>

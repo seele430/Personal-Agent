@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: fa7bffb2c63ad118 -->
+<!-- membership-digest: de6f569f7f613a55 -->
 
-## unit — L1 单元测试 (19 files)
+## unit — L1 单元测试 (22 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -42,8 +42,11 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_platform_sdk.py` | tests/unit/ | platform_sdk | none | none | low | registered-inferred |
 | `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 | `unit/test_url_policy.py` | tests/unit/ | rss | none | mocked | high | registered-inferred |
+| `unit/test_web_evidence.py` | tests/unit/ | web | temporary_sqlite | none | medium | registered-inferred |
+| `unit/test_web_extract.py` | tests/unit/ | web | none | none | low | registered-inferred |
+| `unit/test_web_search.py` | tests/unit/ | web | none | mocked | medium | registered-inferred |
 
-## integration — L2 数据集成测试 (73 files)
+## integration — L2 数据集成测试 (75 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -86,6 +89,8 @@ python scripts/run_tests.py integration       # 运行该层
 | `integration/test_test_safety.py` | tests/integration/ | test_infra | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_tier1_runner.py` | tests/integration/ | platform_exec | temporary_sqlite | none | high | registered-inferred |
 | `integration/test_trajectory_cli.py` | tests/integration/ | trajectory | temporary_sqlite | none | low | registered-inferred |
+| `integration/test_web_fetch_safety.py` | tests/integration/ | web | none | mocked | high | registered-inferred |
+| `integration/test_web_pipeline.py` | tests/integration/ | web | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_access_policy_dispatcher.py` | tests/ 根 | access_policy | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_admin_alerts.py` | tests/ 根 | alerting | temporary_sqlite | none | medium | registered-inferred |
 | `test_agent_stream.py` | tests/ 根 | agent_stream | temporary_sqlite | mocked | high | registered-inferred |

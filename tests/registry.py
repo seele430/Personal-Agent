@@ -181,9 +181,59 @@ TEST_SCHEMAS = {
         risk="low",
     ),
 
+    # L1：网页搜索 Provider（传输层注入，结果按不可信数据收敛）
+    "unit/test_web_search.py": TestSchema(
+        layer="unit",
+        domain="web",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+
+    # L1：正文抽取（静态 HTML 夹具，不联网）
+    "unit/test_web_extract.py": TestSchema(
+        layer="unit",
+        domain="web",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
+    # L1：证据库（临时 SQLite、SHA256 去重、引用绑定）
+    "unit/test_web_evidence.py": TestSchema(
+        layer="unit",
+        domain="web",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # ----------------------------------------------------------------
     # L2：数据集成测试（临时 SQLite）
     # ----------------------------------------------------------------
+
+    # L2：网页抓取安全边界（DNS 与会话注入，每一跳复检）
+    "integration/test_web_fetch_safety.py": TestSchema(
+        layer="integration",
+        domain="web",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="high",
+    ),
+
+    # L2：search→fetch→extract→cite 闭环（抓取与抽取注入）
+    "integration/test_web_pipeline.py": TestSchema(
+        layer="integration",
+        domain="web",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 
     # L2：提醒 SQLite 存储与并发
     "integration/test_reminder_store.py": TestSchema(
