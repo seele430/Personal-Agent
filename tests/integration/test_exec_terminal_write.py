@@ -81,6 +81,65 @@ class TerminalWriteTest(unittest.TestCase):
         self.assertEqual(row["error_code"], "EXEC_CANCELLED")
         self.assertEqual(row["stdout"], "out")
 
+    def test_second_writer_cannot_change_payload(self):
+        self.finish(EXEC_SUCCEEDED, error_code=None, result_code="OK")
+
+        self.store.finish(
+            self.exec_id,
+            state=EXEC_FAILED,
+            exit_code=1,
+            stdout="late",
+            stderr="late",
+            truncated=True,
+            error_code="LATE",
+            result_code="EXEC_FAILED",
+        )
+
+        row = self.store.get(self.exec_id)
+
+        self.assertEqual(row["state"], EXEC_SUCCEEDED)
+        self.assertEqual(row["stdout"], "out")
+        self.assertEqual(row["exit_code"], 0)
+        self.assertEqual(row["truncated"], 0)
+
+    def test_finished_at_is_not_rewritten(self):
+        self.finish(EXEC_SUCCEEDED, error_code=None, result_code="OK")
+        first = self.store.get(self.exec_id)["finished_at"]
+
+        self.finish(EXEC_FAILED, error_code="LATE")
+
+        self.assertEqual(self.store.get(self.exec_id)["finished_at"], first)
+
+    def test_all_terminal_states_are_accepted(self):
+        for state in (
+            EXEC_SUCCEEDED,
+            EXEC_FAILED,
+            EXEC_CANCELLED,
+            EXEC_TIMED_OUT,
+        ):
+            with self.subTest(state=state):
+                exec_id = self.create_exec()
+
+                self.assertTrue(
+                    self.store.finish(
+                        exec_id,
+                        state=state,
+                        exit_code=None,
+                        stdout="",
+                        stderr="",
+                        truncated=False,
+                        error_code="X",
+                        result_code="R",
+                    )
+                )
+                self.assertEqual(self.store.get(exec_id)["state"], state)
+
+    def test_running_exec_can_be_finished_once(self):
+        self.store.start(self.exec_id)
+
+        self.assertTrue(self.finish(EXEC_SUCCEEDED, error_code=None, result_code="OK"))
+        self.assertFalse(self.finish(EXEC_FAILED, error_code="LATE"))
+
     def test_non_terminal_state_is_rejected(self):
         for state in (EXEC_QUEUED, "running", "unknown"):
             with self.subTest(state=state):
