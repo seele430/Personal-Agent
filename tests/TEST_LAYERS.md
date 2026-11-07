@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 3a722a9a5ea65c68 -->
+<!-- membership-digest: 93d2cd9ed8c039b3 -->
 
-## unit — L1 单元测试 (34 files)
+## unit — L1 单元测试 (37 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -41,6 +41,9 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_activity_summary.py` | tests/unit/ | activity | none | none | low | registered-inferred |
 | `unit/test_agent_tool_limits.py` | tests/unit/ | reminder | none | mocked | medium | registered |
 | `unit/test_artifact_registry.py` | tests/unit/ | artifacts | temporary_sqlite | none | high | registered-inferred |
+| `unit/test_cost_ledger.py` | tests/unit/ | cost | none | none | low | registered-inferred |
+| `unit/test_fault_matrix.py` | tests/unit/ | faults | temporary_sqlite | mocked | high | registered-inferred |
+| `unit/test_fault_reconcile.py` | tests/unit/ | faults | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_memory_eval.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_memory_resolve.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_memory_store.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |

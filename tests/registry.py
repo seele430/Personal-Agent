@@ -292,6 +292,36 @@ TEST_SCHEMAS = {
         risk="low",
     ),
 
+    # L1：成本账本（失败运行也计入成本）
+    "unit/test_cost_ledger.py": TestSchema(
+        layer="unit",
+        domain="cost",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
+    # L1：六类故障注入（传输层/事务/runner/sender 边界）
+    "unit/test_fault_matrix.py": TestSchema(
+        layer="unit",
+        domain="faults",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="high",
+    ),
+
+    # L1：产物与 Outbox 对账
+    "unit/test_fault_reconcile.py": TestSchema(
+        layer="unit",
+        domain="faults",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：数据集成测试（临时 SQLite）
     # ----------------------------------------------------------------
 

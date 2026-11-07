@@ -314,7 +314,19 @@ class RepairLoop:
         )
 
     def _run(self, files: dict[str, str]) -> RunResult:
-        return self.runner(files, modules=self.fixture.test_modules, timeout=self.timeout)
+        try:
+            return self.runner(
+                files, modules=self.fixture.test_modules, timeout=self.timeout
+            )
+
+        except Exception as error:  # noqa: BLE001 - 执行器崩溃要记成失败轮，不能带崩闭环
+            return RunResult(
+                ok=False,
+                failures=0,
+                errors=1,
+                output=f"执行器崩溃：{type(error).__name__}: {error}"[:MAX_OUTPUT_CHARS],
+                duration_ms=0.0,
+            )
 
     def _apply(self, files: dict[str, str], proposed) -> list[str]:
         """只接受夹具里已存在的文件，且有大小上限。"""
