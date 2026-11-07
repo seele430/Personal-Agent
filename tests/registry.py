@@ -1532,6 +1532,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="medium",
     ),
+
+    # L1：运维 CLI（时间线 / 生命周期预演与执行）
+    "unit/test_ops_cli.py": TestSchema(
+        layer="unit",
+        domain="ops",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
 }
 
 
