@@ -30,7 +30,7 @@ OUT_DIR = (
     / "pa-w8-evidence-20261107"
 )
 
-#: 固定组合：web / memory / repair / artifact / score / fault 六个域
+#: 固定组合：web / memory / repair / artifact / score / fault / 真实入口 / diff / 远程
 MODULES = (
     "tests.unit.test_web_search",
     "tests.unit.test_web_extract",
@@ -40,8 +40,13 @@ MODULES = (
     "tests.unit.test_artifact_registry",
     "tests.unit.test_scorecard",
     "tests.unit.test_fault_matrix",
+    "tests.unit.test_remote_guard",
+    "tests.unit.test_remote_bridge",
     "tests.integration.test_web_pipeline",
     "tests.integration.test_artifact_api",
+    "tests.integration.test_main_app_routes",
+    "tests.integration.test_diff_api",
+    "tests.integration.test_activity_timeline_api",
 )
 
 ROUND_TIMEOUT = 180
