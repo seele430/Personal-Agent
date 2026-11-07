@@ -15,6 +15,7 @@ import time
 
 from src.remote.access_log import AccessLog, build_record, strip_query
 from src.remote.config import SAFE_METHODS, RemoteConfig
+from src.remote.bridge import mark_owner
 from src.remote.ratelimit import FailureLimiter, LimitPolicy
 
 
@@ -151,6 +152,10 @@ class RemoteGuard:
             await _send_json(send, status, FORBIDDEN_PATH)
 
         else:
+            self.limiter.record_success(client)
+            # 已通过令牌校验：把只读 owner 写进 ASGI state，供会话桥接使用
+            mark_owner(scope, self.config.owner_id)
+
             async def capture(message):
                 nonlocal status
 

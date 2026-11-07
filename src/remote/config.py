@@ -34,6 +34,7 @@ class RemoteConfig:
     allow_prefixes: tuple[str, ...] = DEFAULT_PREFIXES
     max_failures: int = 10
     block_seconds: int = 300
+    owner_id: str = ""
     reason: str = ""
 
     def __post_init__(self):
@@ -81,6 +82,7 @@ class RemoteConfig:
             "allow_prefixes": list(self.allow_prefixes),
             "max_failures": self.max_failures,
             "block_seconds": self.block_seconds,
+            "owner_configured": bool(self.owner_id),
             "cert": str(self.cert_path) if self.cert_path else None,
             "has_token": bool(self.token),
             "reason": self.reason,
@@ -102,6 +104,7 @@ def from_env(environ: dict | None = None) -> RemoteConfig:
         "log_path": _path(env.get("PERSONAL_AGENT_REMOTE_LOG")),
         "max_failures": int(env.get("PERSONAL_AGENT_REMOTE_MAX_FAILURES") or 10),
         "block_seconds": int(env.get("PERSONAL_AGENT_REMOTE_BLOCK_SECONDS") or 300),
+        "owner_id": (env.get("PERSONAL_AGENT_REMOTE_OWNER") or "").strip(),
     }
 
     if not requested:

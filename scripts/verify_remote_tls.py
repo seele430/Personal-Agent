@@ -110,12 +110,22 @@ def main() -> int:
     port = free_port(PORT)
     base = f"https://{HOST}:{port}"
 
+    # 造一个 owner 账号，并把它的 id 配给远程模式（owner 鉴权）
+    from src.config import build_paths
+    from src.core.auth_store import AuthStore
+
+    isolated_paths = build_paths(data_dir)
+    store = AuthStore(isolated_paths.auth_users_db)
+    store.init_db()
+    owner_id = store.bootstrap_owner("remoteowner", "tls-e2e-pass-1")["id"]
+
     env = dict(os.environ)
     env.update(
         {
             "PERSONAL_AGENT_DATA_DIR": str(data_dir),
             "PERSONAL_AGENT_REMOTE": "1",
             "PERSONAL_AGENT_REMOTE_TOKEN": TOKEN,
+            "PERSONAL_AGENT_REMOTE_OWNER": owner_id,
             "PERSONAL_AGENT_REMOTE_LOG": str(work / "access.jsonl"),
             "PERSONAL_AGENT_REMOTE_MAX_FAILURES": "10",
             "NO_PROXY": "*",

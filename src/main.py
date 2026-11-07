@@ -580,7 +580,22 @@ def _install_remote_guard(application):
 
     from src.remote.guard import RemoteGuard
 
-    return RemoteGuard(application, config)
+    wrapped = RemoteGuard(application, config)
+
+    # owner 鉴权（v1.2.4）：只有显式配置了 owner 才安装会话桥接。
+    # 没配就维持"令牌只过守卫、应用层仍要登录"，不默认成站长。
+    if config.owner_id:
+        from src.auth_api import bearer_scheme, get_auth_store, get_current_user
+        from src.remote.bridge import install
+
+        install(
+            application,
+            get_current_user,
+            bearer_scheme=bearer_scheme,
+            get_auth_store=get_auth_store,
+        )
+
+    return wrapped
 
 
 app = _install_remote_guard(app)

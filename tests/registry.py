@@ -1562,6 +1562,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="high",
     ),
+
+    # L1：远程令牌 → 只读 owner 会话桥接
+    "unit/test_remote_bridge.py": TestSchema(
+        layer="unit",
+        domain="remote",
+        database="none",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
 }
 
 
