@@ -50,6 +50,8 @@ class VideoSummary:
     keyframe_error: str = ""
     generated_at: str = ""
     usage: UsageTotals = UsageTotals()
+    truncated: bool = False
+    truncation: dict = field(default_factory=dict)
 
     @property
     def verified(self) -> bool:
@@ -65,6 +67,8 @@ class VideoSummary:
             "keyframe_error": self.keyframe_error,
             "verified": self.verified,
             "usage": self.usage.to_dict(),
+            "truncated": self.truncated,
+            "truncation": dict(self.truncation),
         }
 
 
@@ -141,7 +145,17 @@ def summarize_video(
         totals["completion"] += int(getattr(usage, "completion_tokens", 0) or 0)
         totals["total"] += int(getattr(usage, "total_tokens", 0) or 0)
 
-    points = summarize(transcript, completer=completer, usage_sink=collect_usage)
+    truncation: dict = {}
+
+    def collect_truncation(info) -> None:
+        truncation.update(info)
+
+    points = summarize(
+        transcript,
+        completer=completer,
+        usage_sink=collect_usage,
+        on_truncated=collect_truncation,
+    )
 
     if not points:
         raise VideoUnverified("没有定位到时间的要点，不生成总结")
@@ -163,4 +177,6 @@ def summarize_video(
         keyframe_error=keyframe_error,
         generated_at=datetime.now(timezone.utc).isoformat(),
         usage=UsageTotals(**totals),
+        truncated=bool(truncation),
+        truncation=truncation,
     )

@@ -14,7 +14,7 @@ from src.video.asr import Segment, Transcript
 
 
 CHUNK_SEGMENTS = 8
-MAX_CHUNKS = 6
+MAX_CHUNKS = 30
 MAX_POINTS = 20
 MAX_POINT_CHARS = 160
 
@@ -167,17 +167,24 @@ def summarize(
     completer=None,
     max_points: int = MAX_POINTS,
     usage_sink=None,
+    on_truncated=None,
 ) -> list[Point]:
     """逐块提炼要点，合并去重后返回（最多 max_points 条）。
 
     `usage_sink(usage)` 只对**真实 LLM 调用**触发；注入 completer 的测试路径
     不会回调，避免编造用量。
+
+    `on_truncated(info)` 在块数超过上限时触发——**不再静默丢弃**长视频的后半段。
     """
 
     if not transcript.segments:
         raise SummarizeError("没有可摘要的转写")
 
     chunks = chunk_segments(transcript.segments)
+    total_chunks = (len(transcript.segments) + CHUNK_SEGMENTS - 1) // CHUNK_SEGMENTS
+
+    if on_truncated is not None and total_chunks > len(chunks):
+        on_truncated({"total_chunks": total_chunks, "used_chunks": len(chunks)})
     points: list[Point] = []
     seen: set[str] = set()
 

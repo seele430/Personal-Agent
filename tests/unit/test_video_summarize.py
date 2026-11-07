@@ -209,5 +209,61 @@ class TestRealBranchUsage(unittest.TestCase):
             seen[0].prompt_tokens + seen[0].completion_tokens,
             seen[0].total_tokens,
         )
+class TestLongVideoCoverage(unittest.TestCase):
+    """长转写不能被静默截断：60 段 = 8 块，必须全部处理。"""
+
+    def test_all_chunks_processed(self):
+        calls = []
+
+        def completer(messages, chunk):
+            calls.append(chunk)
+
+            return {"points": []}
+
+        summarize(transcript(60), completer=completer)
+
+        self.assertEqual(len(calls), 8)
+
+    def test_truncation_callback_not_called_when_under_limit(self):
+        seen = []
+
+        def completer(messages, chunk):
+            return {"points": [{"text": "x", "segments": [chunk[0]]}]}
+
+        summarize(transcript(20), completer=completer, on_truncated=seen.append)
+
+        self.assertEqual(seen, [])
+
+    def test_truncation_callback_fires_over_limit(self):
+        seen = []
+        calls = []
+
+        def completer(messages, chunk):
+            calls.append(1)
+
+            return {"points": []}
+
+        # 300 段 = 38 块 > 30 上限
+        summarize(transcript(300), completer=completer, on_truncated=seen.append)
+
+        self.assertEqual(len(calls), 30)
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0]["total_chunks"], 38)
+        self.assertEqual(seen[0]["used_chunks"], 30)
+
+    def test_points_still_capped(self):
+        def completer(messages, chunk):
+            offset, items = chunk
+
+            return {
+                "points": [
+                    {"text": f"p{offset + i}", "segments": [offset + i]}
+                    for i in range(len(items))
+                ]
+            }
+
+        result = summarize(transcript(120), completer=completer, max_points=20)
+
+        self.assertEqual(len(result), 20)
 if __name__ == "__main__":
     unittest.main()

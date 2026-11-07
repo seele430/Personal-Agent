@@ -277,5 +277,19 @@ class TestUsageAggregation(PipelineCase):
                 cli.main(["--video", "demo.mp4", "--out", str(self.out)])
 
         self.assertIn("tokens", buffer.getvalue())
+class TestTruncation(PipelineCase):
+    def test_summary_has_truncation_fields(self):
+        payload = self.run_pipeline().to_dict()
+
+        self.assertIn("truncated", payload)
+        self.assertIn("truncation", payload)
+        self.assertFalse(payload["truncated"])
+
+    def test_long_transcript_sets_truncation(self):
+        # 300 段 → 38 块 > 30 上限
+        summary = self.run_pipeline(transcriber=FakeTranscriber(transcript(300)))
+
+        self.assertTrue(summary.truncated)
+        self.assertEqual(summary.truncation["used_chunks"], 30)
 if __name__ == "__main__":
     unittest.main()
