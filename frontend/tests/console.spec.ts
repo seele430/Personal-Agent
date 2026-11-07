@@ -198,6 +198,8 @@ function buildSnapshot(overrides: Record<string, unknown> = {}) {
       window_seconds: 900,
       interval_seconds: 30,
       sample_count: 3,
+      latest_sample_age_seconds: 12,
+      oldest_sample_age_seconds: 72,
       source: "ring_buffer",
       persisted: false,
       note: "单进程采样，进程重启即丢；不构成完整历史监控",
@@ -270,9 +272,13 @@ test("总览展示容量、控制器模式与最近决策", async ({ page }) => 
   await expect(page.getByRole("heading", { name: "扩缩容事件" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "趋势" })).toBeVisible();
 
-  // 趋势：窗口、样本量与真实折线
+  // 数据来源三态与趋势窗口/样本/年龄
+  await expect(page.getByText("数据来源", { exact: true })).toBeVisible();
+  await expect(page.getByText("实时", { exact: true })).toBeVisible();
   await expect(page.getByText(/采样间隔/)).toBeVisible();
   await expect(page.getByText(/样本 3/)).toBeVisible();
+  await expect(page.getByText(/最新样本/)).toBeVisible();
+  await expect(page.getByText(/12 秒前/)).toBeVisible();
   await expect(
     page.getByRole("img", { name: "队列与容量趋势" }),
   ).toBeVisible();
@@ -624,6 +630,44 @@ test("场景回放按时间轴展示持久事件", async ({ page }) => {
   await expect(page.getByText(/回放来自持久事件表/)).toBeVisible();
   await expect(page.getByRole("cell", { name: "0 → 1" })).toBeVisible();
   expect(url).toContain("source=live");
+
+  expectNoUnmockedApi(unexpected);
+});
+test("执行详情可以按 ID 下钻", async ({ page }) => {
+  const unexpected = await openConsole(page);
+
+  await page.route("**/api/console/executions/exec-1", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        exec_id: "exec-1",
+        sandbox_id: "sbx-1",
+        state: "succeeded",
+        exit_code: 0,
+        stdout: "hello from drill.\n",
+        stderr: "",
+        started_at: "2026-11-06T12:59:01+00:00",
+        finished_at: "2026-11-06T12:59:03+00:00",
+        truncated: false,
+        result_code: "EXEC_SUCCEEDED",
+        traceparent: "00-abc-def-01",
+      }),
+    });
+  });
+
+  await page.getByRole("button", { name: "执行", exact: true }).click();
+  await page.getByRole("button", { name: "详情 exec-1" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "执行详情" });
+
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("hello from drill.");
+  await expect(dialog).toContainText("EXEC_SUCCEEDED");
+  await expect(dialog).toContainText("00-abc-def-01");
+
+  await dialog.getByRole("button", { name: "关闭" }).click();
+  await expect(dialog).toHaveCount(0);
 
   expectNoUnmockedApi(unexpected);
 });

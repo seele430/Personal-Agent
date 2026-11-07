@@ -528,10 +528,21 @@ def _trends_block() -> dict:
 
     rows = trend_store.series(window_seconds=SERIES_WINDOW_SECONDS)
 
+    # 数据年龄：最新/最旧样本距现在多少秒（V2 §6.1-5 要求展示）。
+    ages = []
+
+    for sample in rows:
+        moment = _parse(sample.get("at"))
+
+        if moment is not None:
+            ages.append((datetime.now(timezone.utc) - moment).total_seconds())
+
     return {
         "window_seconds": SERIES_WINDOW_SECONDS,
         "interval_seconds": trend_store.interval_seconds(),
         "sample_count": len(rows),
+        "latest_sample_age_seconds": round(min(ages), 1) if ages else None,
+        "oldest_sample_age_seconds": round(max(ages), 1) if ages else None,
         "source": "ring_buffer",
         "persisted": False,
         "note": "单进程采样，进程重启即丢；不构成完整历史监控",

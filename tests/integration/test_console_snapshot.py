@@ -117,6 +117,12 @@ class ConsoleSnapshotTest(unittest.TestCase):
         self.assertIn("重启", data["note"])
         self.assertEqual(data["series"][0]["action"], "scale_out")
 
+        # 数据年龄：最新样本约 60 秒、最旧约 120 秒（V2 §6.1-5）
+        self.assertGreaterEqual(data["latest_sample_age_seconds"], 55)
+        self.assertLessEqual(data["latest_sample_age_seconds"], 75)
+        self.assertGreaterEqual(data["oldest_sample_age_seconds"], 115)
+        self.assertLessEqual(data["oldest_sample_age_seconds"], 135)
+
     def test_trends_drop_samples_outside_window(self):
         import time as _time
 

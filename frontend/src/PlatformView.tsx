@@ -198,11 +198,27 @@ type TrendsData = {
   window_seconds: number;
   interval_seconds: number;
   sample_count: number;
+  latest_sample_age_seconds: number | null;
+  oldest_sample_age_seconds: number | null;
   source: string;
   persisted: boolean;
   note: string;
   series: TrendSample[];
   exec_buckets: TrendBucket[];
+};
+
+type ExecutionDetail = {
+  exec_id: string;
+  sandbox_id: string;
+  state: string;
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  started_at: string | null;
+  finished_at: string | null;
+  truncated: boolean;
+  result_code: string | null;
+  traceparent: string | null;
 };
 
 type Simulation = {
@@ -310,6 +326,24 @@ function modeTone(mode: string | undefined): string {
   if (mode === "apply") return color.ok;
   if (mode === "compute_only") return color.warn;
   return color.muted;
+}
+
+/** 数据来源三态：实时 / 采样 / 仿真（V2 §2.5）。 */
+function sourceText(source: string | undefined): string {
+  if (source === "simulation") return "仿真";
+  if (source === "sampled") return "采样";
+  return "实时";
+}
+
+function sourceTone(source: string | undefined): string {
+  if (source === "simulation" || source === "sampled") return color.warn;
+  return color.ok;
+}
+
+function ageText(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined) return "—";
+  if (seconds < 90) return `${Math.round(seconds)} 秒前`;
+  return `${Math.round(seconds / 60)} 分钟前`;
 }
 
 function timeText(iso: string | null | undefined): string {
@@ -640,9 +674,102 @@ function TrendChart({ series }: { series: TrendSample[] }) {
   );
 }
 
+/** 执行详情：按 ID 读完整 stdout/stderr 与 trace（P0 §6.1-6 下钻）。 */
+function ExecDetailDialog({
+  detail,
+  onClose,
+}: {
+  detail: ExecutionDetail;
+  onClose: () => void;
+}) {
+  const block: React.CSSProperties = {
+    background: color.soft,
+    border: `1px solid ${color.line}`,
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 12,
+    fontFamily: "ui-monospace, Consolas, monospace",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-all",
+    maxHeight: 160,
+    overflow: "auto",
+    margin: "0 0 10px",
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15, 23, 42, 0.35)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        zIndex: 50,
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="执行详情"
+        style={{
+          background: "#fff",
+          borderRadius: 12,
+          padding: 18,
+          maxWidth: 560,
+          width: "100%",
+          maxHeight: "85vh",
+          overflowY: "auto",
+          boxShadow: "0 12px 32px rgba(15, 23, 42, 0.18)",
+        }}
+      >
+        <h3 style={{ margin: "0 0 10px", fontSize: 16, ...mono }}>
+          {detail.exec_id}
+        </h3>
+
+        <div style={row}>
+          <span>状态</span>
+          <strong>
+            {detail.state} · exit {detail.exit_code ?? "—"}
+            {detail.truncated ? " · 输出被截断" : ""}
+          </strong>
+        </div>
+        <div style={row}>
+          <span>结果码</span>
+          <span style={mono}>{detail.result_code ?? "—"}</span>
+        </div>
+        <div style={row}>
+          <span>开始 / 结束</span>
+          <span>
+            {timeText(detail.started_at)} / {timeText(detail.finished_at)}
+          </span>
+        </div>
+        <div style={{ ...row, borderBottom: "none" }}>
+          <span>traceparent</span>
+          <span style={{ ...mono, fontSize: 11 }}>
+            {detail.traceparent ?? "—"}
+          </span>
+        </div>
+
+        <p style={{ ...muted, margin: "10px 0 4px" }}>stdout</p>
+        <pre style={block}>{detail.stdout || "（空）"}</pre>
+
+        <p style={{ ...muted, margin: "0 0 4px" }}>stderr</p>
+        <pre style={block}>{detail.stderr || "（空）"}</pre>
+
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button type="button" onClick={onClose}>
+            关闭
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PlatformView({ authToken }: { authToken?: string }) {
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [error, setError] = useState("");
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [zone, setZone] = useState<Zone>("overview");
   const [updatedAt, setUpdatedAt] = useState<string>("");
@@ -662,6 +789,10 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
   const [ttlSeconds, setTtlSeconds] = useState("600");
   const [execSandbox, setExecSandbox] = useState("");
   const [execCommand, setExecCommand] = useState("cmd /c echo hello");
+
+  // 执行详情下钻
+  const [execDetail, setExecDetail] = useState<ExecutionDetail | null>(null);
+  const [execDetailBusy, setExecDetailBusy] = useState(false);
 
   // P2：What-if 模拟（只算不改）
   const [simRunning, setSimRunning] = useState("");
@@ -877,6 +1008,44 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
     }
   }, [authToken, simRunning, simQueued, simCurrent, simCapacity, simHeadroom]);
 
+  const openExecDetail = useCallback(
+    async (execId: string) => {
+      if (!authToken) return;
+
+      setExecDetailBusy(true);
+      setNotice(null);
+
+      try {
+        const response = await fetch(`/api/console/executions/${execId}`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+          cache: "no-store",
+        });
+        const data = (await response.json().catch(() => null)) as
+          | ExecutionDetail
+          | { error?: { message?: string } }
+          | null;
+
+        if (!response.ok) {
+          const message =
+            data && "error" in data ? data.error?.message : null;
+
+          setNotice({
+            tone: "error",
+            text: `执行详情：${message ?? `请求失败（${response.status}）`}`,
+          });
+          return;
+        }
+
+        setExecDetail(data as ExecutionDetail);
+      } catch {
+        setNotice({ tone: "error", text: "执行详情：无法连接后端" });
+      } finally {
+        setExecDetailBusy(false);
+      }
+    },
+    [authToken],
+  );
+
   const loadReplay = useCallback(async () => {
     if (!authToken) return;
 
@@ -978,6 +1147,13 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
         />
       ) : null}
 
+      {execDetail ? (
+        <ExecDetailDialog
+          detail={execDetail}
+          onClose={() => setExecDetail(null)}
+        />
+      ) : null}
+
       {!snapshot && !error ? <div style={card}>加载中…</div> : null}
 
       {snapshot ? (
@@ -1037,6 +1213,11 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
                     label="控制器"
                     value={modeText(elastic?.controller_mode)}
                     tone={modeTone(elastic?.controller_mode)}
+                  />
+                  <Chip
+                    label="数据来源"
+                    value={sourceText(snapshot.data_source)}
+                    tone={sourceTone(snapshot.data_source)}
                   />
                   <Chip
                     label="活跃 / 排队"
@@ -1156,7 +1337,9 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
                   <>
                     <p style={{ ...muted, margin: "0 0 8px" }}>
                       窗口 {snapshot.series_window} · 采样间隔{" "}
-                      {trends.interval_seconds}s · 样本 {trends.sample_count}
+                      {trends.interval_seconds}s · 样本 {trends.sample_count} ·
+                      最新样本 {ageText(trends.latest_sample_age_seconds)} · 来源
+                      采样（进程内环缓冲）
                     </p>
 
                     {trends.series.length >= 2 ? (
@@ -1577,7 +1760,10 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
                 </Card>
               ) : null}
 
-              <Card title="执行详情" subtitle="最近 10 条；详情按 ID 读取（P1 提供）。">
+              <Card
+                title="执行详情"
+                subtitle="最近 10 条；点「详情」按 ID 读取 stdout / stderr / trace。"
+              >
                 {executions && executions.recent.length > 0 ? (
                   <Scroll>
                     <table style={{ borderCollapse: "collapse", width: "100%" }}>
@@ -1600,31 +1786,40 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
                             <td style={td}>{timeText(item.created_at)}</td>
                             <td style={td}>{timeText(item.finished_at)}</td>
                             <td style={td}>
-                              {canWrite &&
-                              (item.state === "queued" || item.state === "running") ? (
+                              <span style={{ display: "inline-flex", gap: 6 }}>
                                 <button
                                   type="button"
-                                  aria-label={`取消 ${item.id}`}
-                                  disabled={busy !== ""}
-                                  onClick={() =>
-                                    setConfirm({
-                                      title: "取消执行",
-                                      message: `对象：${item.id}\n当前状态：${item.state}\n取消会终止正在运行的进程；已终态的执行重复取消不会产生第二条结果。`,
-                                      confirmText: "确认取消",
-                                      run: () =>
-                                        runAction("取消执行", () =>
-                                          post(
-                                            `/console/actions/executions/${item.id}/cancel`,
-                                          ),
-                                        ),
-                                    })
-                                  }
+                                  aria-label={`详情 ${item.id}`}
+                                  disabled={execDetailBusy}
+                                  onClick={() => void openExecDetail(item.id)}
                                 >
-                                  取消
+                                  详情
                                 </button>
-                              ) : (
-                                "—"
-                              )}
+                                {canWrite &&
+                                (item.state === "queued" ||
+                                  item.state === "running") ? (
+                                  <button
+                                    type="button"
+                                    aria-label={`取消 ${item.id}`}
+                                    disabled={busy !== ""}
+                                    onClick={() =>
+                                      setConfirm({
+                                        title: "取消执行",
+                                        message: `对象：${item.id}\n当前状态：${item.state}\n取消会终止正在运行的进程；已终态的执行重复取消不会产生第二条结果。`,
+                                        confirmText: "确认取消",
+                                        run: () =>
+                                          runAction("取消执行", () =>
+                                            post(
+                                              `/console/actions/executions/${item.id}/cancel`,
+                                            ),
+                                          ),
+                                      })
+                                    }
+                                  >
+                                    取消
+                                  </button>
+                                ) : null}
+                              </span>
                             </td>
                           </tr>
                         ))}
