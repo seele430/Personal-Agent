@@ -203,6 +203,42 @@ class TestAnswerCheck(EvalTestCase):
         self.assertFalse(merged.passed)
         self.assertTrue(any("无依据回答" in item for item in merged.problems))
 
+    def test_string_citations_are_accepted(self):
+        """真实模型会写 "citations": ["2"] —— 数字字符串是合法引用。"""
+
+        def answerer(context, question):
+            if not context:
+                return {"answer": "无", "citations": [], "insufficient": True}
+
+            return {
+                "answer": "有依据",
+                "citations": [str(context[0]["id"])],
+                "insufficient": False,
+            }
+
+        answers = self.evaluator.run_answer_check(answerer)
+
+        self.assertTrue(all(item.supported for item in answers))
+
+    def test_non_numeric_and_out_of_range_citations_are_rejected(self):
+        def answerer(context, question):
+            return {
+                "answer": "瞎引",
+                "citations": ["abc", True, 0, 999999, "999999"],
+                "insufficient": False,
+            }
+
+        answers = self.evaluator.run_answer_check(answerer)
+
+        self.assertTrue(all(not item.supported for item in answers))
+
+    def test_citation_coercion_deduplicates(self):
+        from src.memory.evaluation import _coerce_citation_ids
+
+        self.assertEqual(_coerce_citation_ids(["2", 2, "3"]), (2, 3))
+        self.assertEqual(_coerce_citation_ids("2"), ())
+        self.assertEqual(_coerce_citation_ids(["-1", "0", "x"]), ())
+
 
 if __name__ == "__main__":
     unittest.main()

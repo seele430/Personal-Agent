@@ -190,6 +190,39 @@ def load_dataset(path: str | Path | None = None) -> dict:
     return payload
 
 
+def _coerce_citation_ids(raw) -> tuple[int, ...]:
+    """把模型给的 citations 收敛成整数 id 序列。
+
+    真实模型常把 id 写成字符串（`"citations": ["2"]`）—— 2026-11-07 的
+    付费评测第一次就是这样，判据把合法引用全当成了"无引用"。
+    数字字符串按整数收下，**非数字、布尔、0 和负数一律丢弃**：
+    收的是"引用确实指向某条记忆"，不是放宽"有没有引用"。
+    """
+
+    if not isinstance(raw, list):
+        return ()
+
+    ids = []
+
+    for item in raw:
+        if isinstance(item, bool):
+            continue
+
+        if isinstance(item, int):
+            value = item
+
+        elif isinstance(item, str) and item.strip().isdigit():
+            value = int(item.strip())
+
+        else:
+            continue
+
+        if value >= 1 and value not in ids:
+            ids.append(value)
+
+    return tuple(ids)
+
+
 class MemoryEvaluator:
     def __init__(self, store: MemoryStore, dataset: dict):
         self.store = store
@@ -448,15 +481,7 @@ class MemoryEvaluator:
                 )
                 continue
 
-            citations = payload.get("citations") or []
-
-            if not isinstance(citations, list):
-                citations = []
-
-            citations = tuple(
-                int(item) for item in citations
-                if isinstance(item, int) and not isinstance(item, bool)
-            )
+            citations = _coerce_citation_ids(payload.get("citations"))
             insufficient = bool(payload.get("insufficient"))
             cites_valid = all(item in allowed for item in citations)
 
