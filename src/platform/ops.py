@@ -236,7 +236,7 @@ def submit_exec(
 
     if outcome == "full":
         # 预检之后被别人抢了位置：这条已经建出来的 exec 落失败。
-        ExecStore().finish(
+        wrote = ExecStore().finish(
             row["id"],
             state=EXEC_FAILED,
             exit_code=None,
@@ -246,6 +246,12 @@ def submit_exec(
             error_code="QUEUE_FULL",
             result_code="EXEC_FAILED",
         )
+
+        if not wrote:
+            logger.info(
+                "exec 已由其他路径落终态，跳过 QUEUE_FULL id=%s", row["id"]
+            )
+
         raise QueueFull("执行队列已满，请稍后重试")
 
     return row
@@ -278,7 +284,7 @@ def cancel_exec(exec_id: str) -> tuple[dict[str, Any], str]:
         # worker 可能正处在「已出队、还没置 running」的窗口里，顺手取消 token。
         exec_queue().cancel(exec_id)
         active_execs.cancel(exec_id)
-        ExecStore().finish(
+        wrote = ExecStore().finish(
             exec_id,
             state=EXEC_CANCELLED,
             exit_code=None,
@@ -288,6 +294,10 @@ def cancel_exec(exec_id: str) -> tuple[dict[str, Any], str]:
             error_code="EXEC_CANCELLED",
             result_code="EXEC_CANCELLED",
         )
+
+        if not wrote:
+            # 取消没抢到终态：说明执行侧先写了（超时/失败），如实返回当前状态。
+            logger.info("取消未抢到终态，返回当前状态 id=%s", exec_id)
 
         return ExecStore().get(exec_id), previous
 
@@ -370,7 +380,7 @@ def run_exec(
             traceparent=traceparent,
         )
 
-        store.finish(
+        wrote = store.finish(
             exec_id,
             state=outcome.status,
             exit_code=outcome.exit_code,
@@ -380,8 +390,11 @@ def run_exec(
             error_code=outcome.error_code,
             result_code=_result_code(outcome),
         )
+
+        if not wrote:
+            logger.info("exec 终态已被其他路径写入，保留先到者 id=%s", exec_id)
     except Exception as exc:  # noqa: BLE001 - 执行器崩溃也要给确定终态
-        store.finish(
+        if not store.finish(
             exec_id,
             state=EXEC_FAILED,
             exit_code=None,
@@ -390,7 +403,10 @@ def run_exec(
             truncated=False,
             error_code="INTERNAL_ERROR",
             result_code="EXEC_FAILED",
-        )
+        ):
+            logger.info(
+                "exec 崩溃终态未写入（已有终态），保留先到者 id=%s", exec_id
+            )
     finally:
         try:
             # 没有活动 exec 了 → running 回到 idle。
@@ -437,7 +453,7 @@ def expire_queued(item) -> None:
     if row["state"] != "queued":
         return
 
-    store.finish(
+    wrote = store.finish(
         item.exec_id,
         state=EXEC_TIMED_OUT,
         exit_code=None,
@@ -447,6 +463,11 @@ def expire_queued(item) -> None:
         error_code="QUEUE_TIMEOUT",
         result_code="EXEC_TIMED_OUT",
     )
+
+    if not wrote:
+        # 没抢到终态：说明别处先写了（取消/崩溃），不要再记一条超时审计。
+        logger.info("排队超时未抢到终态，跳过审计 id=%s", item.exec_id)
+        return
 
     try:
         AuditLog().record(

@@ -325,6 +325,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L2：终态唯一写（并发 finish 同一 exec 只允许一次成功）
+    "integration/test_exec_terminal_write.py": TestSchema(
+        layer="integration",
+        domain="platform",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
+
     # L2：记忆评测 CLI（免费档；付费档未确认即退出，不调模型）
     "integration/test_memory_eval_run.py": TestSchema(
         layer="integration",

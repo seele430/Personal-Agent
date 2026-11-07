@@ -159,18 +159,32 @@ class ExecStore:
         truncated: bool,
         error_code: str | None,
         result_code: str,
-    ) -> None:
+    ) -> bool:
+        """落终态，**只允许写一次**；返回是否真的写入。
+
+        守卫写在 SQL 的 WHERE 里：取消、超时、输出超限、启动对账可能同时
+        到达，第一个写入的胜出，后到的返回 ``False`` 且**不覆盖任何字段**
+        （包括 error_code / result_code）。
+
+        诚实边界：这是**应用层**唯一写，不是数据库约束 —— 本表没有触发器，
+        直接写 SQL 仍然能绕过。W1-b 的口径就是"守卫 + 并发断言"，不冒充
+        数据库级不变量。
+        """
+
         if state not in TERMINAL_EXEC_STATES:
             raise ValueError(f"非终态：{state}")
 
+        placeholders = ",".join("?" for _ in TERMINAL_EXEC_STATES)
+        terminal_states = sorted(TERMINAL_EXEC_STATES)
+
         with closing(self.connect()) as conn, conn:
-            conn.execute(
-                """
+            cursor = conn.execute(
+                f"""
                 UPDATE platform_execs
                 SET state = ?, exit_code = ?, stdout = ?, stderr = ?,
                     truncated = ?, error_code = ?, result_code = ?,
                     started_at = COALESCE(started_at, ?), finished_at = ?
-                WHERE id = ?
+                WHERE id = ? AND state NOT IN ({placeholders})
                 """,
                 (
                     state,
@@ -183,8 +197,11 @@ class ExecStore:
                     utc_now(),
                     utc_now(),
                     exec_id,
+                    *terminal_states,
                 ),
             )
+
+            return cursor.rowcount == 1
 
     def get(self, exec_id: str) -> dict[str, Any]:
         with closing(self.connect()) as conn:

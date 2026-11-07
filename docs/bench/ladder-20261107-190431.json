@@ -1,0 +1,46 @@
+[
+  {
+    "rps_target": 2,
+    "repeat": 0,
+    "cpu_avg_percent": 32.8,
+    "cpu_max_percent": 38.0,
+    "rss_avg_mb": 94.5,
+    "rss_max_mb": 94.8,
+    "submitted": 40,
+    "elapsed_seconds": 19.91,
+    "achieved_rps": 2.01,
+    "ok": 40,
+    "rejected_429": 0,
+    "other": 0,
+    "p50_ms": 422.0,
+    "p95_ms": 515.0,
+    "p99_ms": 531.0,
+    "max_ms": 531.0,
+    "queue_peak": 0,
+    "codes": {
+      "202": 40
+    }
+  },
+  {
+    "rps_target": 2,
+    "repeat": 1,
+    "cpu_avg_percent": 38.6,
+    "cpu_max_percent": 45.7,
+    "rss_avg_mb": 95.3,
+    "rss_max_mb": 95.6,
+    "submitted": 40,
+    "elapsed_seconds": 19.98,
+    "achieved_rps": 2.0,
+    "ok": 40,
+    "rejected_429": 0,
+    "other": 0,
+    "p50_ms": 453.0,
+    "p95_ms": 547.0,
+    "p99_ms": 578.0,
+    "max_ms": 578.0,
+    "queue_peak": 0,
+    "codes": {
+      "202": 40
+    }
+  }
+]

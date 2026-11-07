@@ -92,7 +92,7 @@ def _fail_interrupted_execs(store: ExecStore, summary: dict[str, int]) -> None:
             # 本进程里有活动 token：这是真在跑，不是孤儿。
             continue
 
-        store.finish(
+        wrote = store.finish(
             exec_id,
             state=EXEC_FAILED,
             exit_code=None,
@@ -102,6 +102,11 @@ def _fail_interrupted_execs(store: ExecStore, summary: dict[str, int]) -> None:
             error_code=INTERRUPTED_ERROR,
             result_code="EXEC_FAILED",
         )
+
+        if not wrote:
+            # 查询与落终态之间可能被别的路径先写了：只统计真正迁移的数量。
+            continue
+
         summary["execs_failed"] += 1
 
 
