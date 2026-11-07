@@ -87,6 +87,8 @@ def main() -> int:
     os.environ["PERSONAL_AGENT_SANDBOX_ROOT"] = str(data_dir / "sandboxes")
     os.environ["PERSONAL_AGENT_PLATFORM_REAPER"] = "0"
     os.environ["PERSONAL_AGENT_SANDBOX_GLOBAL_LIMIT"] = "0"
+    # 演示脚本直接打匿名 /v1；R6 之后需要显式声明。
+    os.environ.setdefault("PERSONAL_AGENT_ALLOW_ANON_V1", "1")
 
     from fastapi.testclient import TestClient
 

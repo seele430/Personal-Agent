@@ -111,6 +111,9 @@ def _enter(stack: ExitStack, container) -> config.Paths:
                 "PERSONAL_AGENT_PLATFORM_RATE_PER_MIN": "0",
                 # W3：测试不启动趋势采样线程，样本由用例自己喂，避免时序不确定。
                 "PERSONAL_AGENT_TRENDS": "0",
+                # R6 之后未配令牌时 /v1 写请求默认拒绝；既有用例都按
+                # 「本机开发」语义工作，这里显式放开，认证用例自己覆盖。
+                "PERSONAL_AGENT_ALLOW_ANON_V1": "1",
             },
             clear=False,
         )

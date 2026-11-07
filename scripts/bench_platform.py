@@ -298,6 +298,8 @@ def main() -> int:
             # 所以把限流调高，让 RATE_LIMITED 不参与曲线。
             "PERSONAL_AGENT_PLATFORM_RATE_PER_MIN": "1000000",
             "PERSONAL_AGENT_PLATFORM_RATE_BURST": "10000",
+            # 压测直接打匿名 /v1；R6 之后需要显式声明。
+            "PERSONAL_AGENT_ALLOW_ANON_V1": "1",
             "OPENAI_API_KEY": "invalid-local-test-key",
             "OPENAI_BASE_URL": "https://api.deepseek.com",
             "MODEL": "deepseek-flash",

@@ -83,9 +83,17 @@ async def lifespan(_app: FastAPI):
         )
 
     if platform_token() is None:
-        logger.warning(
-            "PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用"
-        )
+        if allow_anon_v1():
+            logger.warning(
+                "%s=1：/v1 写操作允许匿名访问，仅限本机开发",
+                ALLOW_ANON_ENV,
+            )
+        else:
+            logger.warning(
+                "PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 读可用，"
+                "写操作默认拒绝（本机开发可设 %s=1）",
+                ALLOW_ANON_ENV,
+            )
 
     # D26.1：启动时按保留期清理旧审计。
     try:
@@ -205,8 +213,21 @@ async def _trace_request(request, call_next):
 
 PLATFORM_TOKEN_ENV = "PERSONAL_AGENT_PLATFORM_TOKEN"
 
+# 未配置令牌时：/v1 的写请求默认拒绝；显式设 1 才恢复“匿名可写”的旧行为。
+ALLOW_ANON_ENV = "PERSONAL_AGENT_ALLOW_ANON_V1"
+WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
 # 审计查询前缀：已认证方不占限流额度（事故排查用）。
 _AUDIT_PATH_PREFIX = "/v1/audit"
+
+
+def allow_anon_v1() -> bool:
+    return os.getenv(ALLOW_ANON_ENV, "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 def platform_token() -> str | None:
@@ -334,6 +355,36 @@ async def _platform_auth(request, call_next):
             headers={
                 "Retry-After": str(limiter.retry_after_seconds(key)),
             },
+        )
+
+    # R6：未配置令牌时，写请求默认拒绝；读请求沿用旧行为。
+    # 注意 `authed` 在「未配令牌」模式下是 True（d26.2 的兼容语义），
+    # 所以这里必须显式看 platform_token()，不能只看 authed。
+    if (
+        platform_token() is None
+        and not allow_anon_v1()
+        and request.method.upper() in WRITE_METHODS
+    ):
+        _audit_denied(
+            request,
+            "auth.denied",
+            "UNAUTHORIZED",
+            auth_ok=False,
+        )
+        return JSONResponse(
+            status_code=401,
+            content={
+                "error": {
+                    "code": "UNAUTHORIZED",
+                    "message": (
+                        "未配置平台令牌：/v1 写操作默认拒绝；"
+                        f"本机开发需要时设置 {ALLOW_ANON_ENV}=1"
+                    ),
+                    "retryable": False,
+                    "request_id": None,
+                }
+            },
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not authed:

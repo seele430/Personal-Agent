@@ -121,8 +121,36 @@ class PlatformAuthTest(unittest.TestCase):
 
         self.assertEqual(blocked.status_code, 401, blocked.text)
 
-    def test_unset_token_keeps_legacy_behavior(self):
-        with patch.dict("os.environ", {"PERSONAL_AGENT_PLATFORM_TOKEN": ""}):
+    def test_unset_token_rejects_writes_by_default(self):
+        """R6：未配令牌时，/v1 写请求默认拒绝（不再等于本机开放）。"""
+
+        with patch.dict(
+            "os.environ",
+            {
+                "PERSONAL_AGENT_PLATFORM_TOKEN": "",
+                "PERSONAL_AGENT_ALLOW_ANON_V1": "0",
+            },
+        ):
+            blocked = self.create()
+            read = self.client.get("/v1/queue")
+
+        self.assertEqual(blocked.status_code, 401, blocked.text)
+        self.assertEqual(blocked.json()["error"]["code"], "UNAUTHORIZED")
+        self.assertIn("ALLOW_ANON_V1", blocked.json()["error"]["message"])
+
+        # 读请求沿用旧行为（只监听本机的边界仍在）
+        self.assertEqual(read.status_code, 200, read.text)
+
+    def test_unset_token_allows_writes_with_explicit_flag(self):
+        """显式 PERSONAL_AGENT_ALLOW_ANON_V1=1 时才恢复匿名可写。"""
+
+        with patch.dict(
+            "os.environ",
+            {
+                "PERSONAL_AGENT_PLATFORM_TOKEN": "",
+                "PERSONAL_AGENT_ALLOW_ANON_V1": "1",
+            },
+        ):
             response = self.create()
 
         self.assertEqual(response.status_code, 201, response.text)

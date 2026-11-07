@@ -54,6 +54,8 @@ def main() -> int:
             "PERSONAL_AGENT_PLATFORM_MAX_ACTIVE_EXECS": "1",
             "PERSONAL_AGENT_PLATFORM_QUEUE_SIZE": "1",
             "PERSONAL_AGENT_PLATFORM_RATE_PER_MIN": "0",
+            # 故障注入直接打匿名 /v1；R6 之后需要显式声明。
+            "PERSONAL_AGENT_ALLOW_ANON_V1": "1",
         }
     )
 
