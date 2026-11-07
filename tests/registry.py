@@ -272,6 +272,16 @@ TEST_SCHEMAS = {
         risk="low",
     ),
 
+    # L1：代码修复闭环（固定 bug 夹具 + 受限子进程执行器）
+    "unit/test_repair_loop.py": TestSchema(
+        layer="unit",
+        domain="repair",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：数据集成测试（临时 SQLite）
     # ----------------------------------------------------------------
 
