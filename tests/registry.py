@@ -322,6 +322,46 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L1：视频探测（ffprobe 事实读取）
+    "unit/test_video_probe.py": TestSchema(
+        layer="unit",
+        domain="video",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
+    # L1：语音转写（后端可注入）
+    "unit/test_video_asr.py": TestSchema(
+        layer="unit",
+        domain="video",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
+    # L1：分段摘要（时间戳必须来自转写）
+    "unit/test_video_summarize.py": TestSchema(
+        layer="unit",
+        domain="video",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L1：视频总结管线（三种无法验证路径）
+    "unit/test_video_pipeline.py": TestSchema(
+        layer="unit",
+        domain="video",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：数据集成测试（临时 SQLite）
     # ----------------------------------------------------------------
 

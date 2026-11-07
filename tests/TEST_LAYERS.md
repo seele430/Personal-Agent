@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 93d2cd9ed8c039b3 -->
+<!-- membership-digest: eea5b0cfec8e3687 -->
 
-## unit — L1 单元测试 (37 files)
+## unit — L1 单元测试 (41 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -57,6 +57,10 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_research_report.py` | tests/unit/ | research | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_scorecard.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 | `unit/test_url_policy.py` | tests/unit/ | rss | none | mocked | high | registered-inferred |
+| `unit/test_video_asr.py` | tests/unit/ | video | none | none | low | registered-inferred |
+| `unit/test_video_pipeline.py` | tests/unit/ | video | none | none | medium | registered-inferred |
+| `unit/test_video_probe.py` | tests/unit/ | video | none | none | low | registered-inferred |
+| `unit/test_video_summarize.py` | tests/unit/ | video | none | none | medium | registered-inferred |
 | `unit/test_web_evidence.py` | tests/unit/ | web | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_web_extract.py` | tests/unit/ | web | none | none | low | registered-inferred |
 | `unit/test_web_search.py` | tests/unit/ | web | none | mocked | medium | registered-inferred |
