@@ -1513,6 +1513,25 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="high",
     ),
+    # L1：产物 Diff（文本 unified / 二进制摘要）
+    "unit/test_diff_compare.py": TestSchema(
+        layer="unit",
+        domain="diff",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
+    # L2：Diff API（越权/缺失/不泄露绝对路径）
+    "integration/test_diff_api.py": TestSchema(
+        layer="integration",
+        domain="diff",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
 }
 
 

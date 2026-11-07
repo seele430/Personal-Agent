@@ -180,6 +180,31 @@ def artifact_preview(
     return _handle(preview_payload, artifact, path)
 
 
+@router.get("/{artifact_id}/diff/{other_id}")
+def artifact_diff(
+    artifact_id: str,
+    other_id: str,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """比较两个产物的内容差异（文本 unified diff / 二进制摘要）。"""
+
+    from src.diff.compare import DiffError, compare_files
+
+    registry = get_registry()
+    owner_id = _owner(user)
+
+    # 路径一律经 absolute_path（自带 owner 校验），越权由 _handle 映射成 403/404
+    a_path = _handle(registry.absolute_path, artifact_id, owner_id=owner_id)
+    b_path = _handle(registry.absolute_path, other_id, owner_id=owner_id)
+
+    try:
+        result = compare_files(a_path, b_path)
+
+    except DiffError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from None
+
+    return result.to_dict()
+
 @router.get("/{artifact_id}/content")
 def artifact_content(
     artifact_id: str,
