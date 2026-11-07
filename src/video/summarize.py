@@ -216,8 +216,28 @@ def summarize(
             seen.add(key)
             points.append(point)
 
-            if len(points) >= max_points:
-                return points
+    # 不早退：所有块都要跑（否则长视频只摘要前半段）。
+    # 超过上限时**两端锚定**等距抽样：首条与末条必留，中间均匀取。
+    if len(points) > max_points:
+        count = len(points)
+        picked = []
+
+        if max_points == 1:
+            indices = [count // 2]
+
+        else:
+            indices = [
+                int(round(index * (count - 1) / (max_points - 1)))
+                for index in range(max_points)
+            ]
+
+        for index in indices:
+            candidate = points[index]
+
+            if candidate not in picked:
+                picked.append(candidate)
+
+        points = picked
 
     return points
 

@@ -265,5 +265,64 @@ class TestLongVideoCoverage(unittest.TestCase):
         result = summarize(transcript(120), completer=completer, max_points=20)
 
         self.assertEqual(len(result), 20)
+class TestPointSpread(unittest.TestCase):
+    """要点上限不能变成"只摘要前半段"：所有块跑完再等距抽样。"""
+
+    def test_all_chunks_called_even_if_many_points(self):
+        calls = []
+
+        def completer(messages, chunk):
+            calls.append(1)
+            offset, items = chunk
+
+            return {
+                "points": [
+                    {"text": f"p{offset + i}", "segments": [offset + i]}
+                    for i in range(len(items))
+                ]
+            }
+
+        result = summarize(transcript(40), completer=completer, max_points=3)
+
+        self.assertEqual(len(calls), 5)
+        self.assertLessEqual(len(result), 3)
+
+    def test_spread_keeps_last_chunk(self):
+        def completer(messages, chunk):
+            offset, items = chunk
+
+            return {
+                "points": [
+                    {"text": f"p{offset + i}", "segments": [offset + i]}
+                    for i in range(len(items))
+                ]
+            }
+
+        result = summarize(transcript(40), completer=completer, max_points=3)
+        texts = [point.text for point in result]
+
+        self.assertTrue(any(text in ("p0", "p1", "p2", "p3") for text in texts))
+        self.assertTrue(any(text.startswith("p3") for text in texts))
+
+    def test_small_count_is_unchanged(self):
+        def completer(messages, chunk):
+            offset, items = chunk
+
+            return {"points": [{"text": f"x{offset}", "segments": [offset]}]}
+
+        result = summarize(transcript(20), completer=completer, max_points=20)
+
+        self.assertEqual(len(result), 3)
+
+    def test_points_stay_sorted_by_time(self):
+        def completer(messages, chunk):
+            offset, items = chunk
+
+            return {"points": [{"text": f"t{offset}", "segments": [offset]}]}
+
+        result = summarize(transcript(40), completer=completer, max_points=3)
+        starts = [point.start for point in result]
+
+        self.assertEqual(starts, sorted(starts))
 if __name__ == "__main__":
     unittest.main()
