@@ -369,6 +369,35 @@ class ResearchGraph:
 
     # ---- 证据摘要 ----------------------------------------------------
 
+    def _coverage_queries(self, *, limit: int = 4) -> tuple[str, ...]:
+        """来源不足时，从已抓证据的标题派生新查询（确定性，不调模型）。"""
+
+        store = self._evidence()
+        queries: list[str] = []
+
+        for evidence_id in self._evidence_ids[:limit]:
+            try:
+                record = store.get_source(evidence_id)
+
+            except Exception:  # noqa: BLE001 - 取不到标题就不派生
+                continue
+
+            if record is None or not record.title:
+                continue
+
+            title = record.title.strip()[:80]
+
+            if not title:
+                continue
+
+            for suffix in ("原文", "官方文档"):
+                candidate = f"{title} {suffix}"
+
+                if candidate not in queries:
+                    queries.append(candidate)
+
+        return tuple(queries[:limit])
+
     def _digest(self, evidence_ids: tuple[int, ...], *, limit: int = MAX_DIGEST_ITEMS):
         store = self._evidence()
         records = []
@@ -454,6 +483,12 @@ class ResearchGraph:
             self._transition(RESEARCHING, "analyst", f"补研：{reason}")
 
             gap_queries = tuple(item.query for item in analysis.gaps)
+
+            if not gap_queries:
+                # 没有缺口但来源不够时，别再跑一遍同样的查询：
+                # Evidence Store 按 URL+哈希去重，重跑只会命中同一批 URL。
+                # 改用"从已抓证据标题派生"的新查询，才可能带来新的唯一来源。
+                gap_queries = self._coverage_queries()
 
             if not gap_queries:
                 gap_queries = queries[: self._queries_per_round]
