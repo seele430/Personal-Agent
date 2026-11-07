@@ -282,6 +282,16 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L1：验收评分（机器代理 rubric + 硬门槛）
+    "unit/test_scorecard.py": TestSchema(
+        layer="unit",
+        domain="eval",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
     # L2：数据集成测试（临时 SQLite）
     # ----------------------------------------------------------------
 

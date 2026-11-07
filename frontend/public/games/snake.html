@@ -129,6 +129,8 @@
   });
 
   let state;
+  // 测试用 tick() 手动步进时必须关掉自动计时，否则两边抢着推进蛇头
+  let autoRun = true;
 
   function freshState() {
     return {
@@ -316,7 +318,7 @@
   let last = 0;
   function frame(now) {
     if (!last) last = now;
-    if (now - last >= TICK_MS) {
+    if (autoRun && now - last >= TICK_MS) {
       last = now;
       tick(1);
     }
@@ -331,6 +333,10 @@
     tick,
     reset,
     setDirection,
+    setAuto: (value) => {
+      autoRun = Boolean(value);
+      last = 0;
+    },
     state: () => ({
       score: state.score,
       alive: state.alive,

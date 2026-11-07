@@ -20,6 +20,12 @@ type SnakeState = {
 async function openGame(page: Page): Promise<void> {
   await page.goto("/games/snake.html");
   await expect(page.locator("canvas#board")).toBeVisible();
+
+  // 关掉自动计时：测试用 tick() 手动驱动，避免真实帧和手动步进互相抢
+  await page.evaluate(() => {
+    (window as unknown as { __snake: { setAuto: (v: boolean) => void } })
+      .__snake.setAuto(false);
+  });
 }
 
 async function state(page: Page): Promise<SnakeState> {

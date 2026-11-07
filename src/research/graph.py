@@ -89,7 +89,7 @@ STAGE_MAX_TOKENS = {
     "planner": 1024,
     "analyst": 3072,
     "writer": 4096,
-    "critic": 512,
+    "critic": 1024,
 }
 
 
