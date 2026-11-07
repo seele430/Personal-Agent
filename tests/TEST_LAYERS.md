@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: df89a467b7327526 -->
+<!-- membership-digest: 378bd9b405eaab03 -->
 
-## unit — L1 单元测试 (26 files)
+## unit — L1 单元测试 (30 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -39,6 +39,10 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_trends.py` | tests/ 根 | platform_elastic | temporary_sqlite | none | low | registered-inferred |
 | `test_whatif.py` | tests/ 根 | platform_elastic | none | none | low | registered-inferred |
 | `unit/test_agent_tool_limits.py` | tests/unit/ | reminder | none | mocked | medium | registered |
+| `unit/test_memory_eval.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
+| `unit/test_memory_resolve.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
+| `unit/test_memory_store.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
+| `unit/test_memory_versions.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_platform_sdk.py` | tests/unit/ | platform_sdk | none | none | low | registered-inferred |
 | `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 | `unit/test_research_graph.py` | tests/unit/ | research | temporary_sqlite | mocked | medium | registered-inferred |
@@ -50,7 +54,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_web_extract.py` | tests/unit/ | web | none | none | low | registered-inferred |
 | `unit/test_web_search.py` | tests/unit/ | web | none | mocked | medium | registered-inferred |
 
-## integration — L2 数据集成测试 (76 files)
+## integration — L2 数据集成测试 (77 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -67,6 +71,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `integration/test_console_snapshot.py` | tests/integration/ | platform_http | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_default_node_renewal.py` | tests/integration/ | platform_nodes | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_guarded_asyncio.py` | tests/integration/ | test_infra | none | none | low | registered-inferred |
+| `integration/test_memory_eval_run.py` | tests/integration/ | memory | temporary_sqlite | mocked | medium | registered-inferred |
 | `integration/test_platform_alerts.py` | tests/integration/ | platform_alerts | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_platform_api.py` | tests/integration/ | platform_http | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_platform_audit.py` | tests/integration/ | platform_audit | temporary_sqlite | none | medium | registered-inferred |

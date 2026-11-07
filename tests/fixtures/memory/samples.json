@@ -1,0 +1,1149 @@
+{
+ "version": 1,
+ "owner_id": "u-eval",
+ "note": "W3 60 条记忆评测：20 偏好 + 20 项目事实 + 10 冲突 + 5 删除 + 5 不可回答",
+ "items": [
+  {
+   "ref": "pref_language",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_language",
+   "text": "用户偏好中文回答，技术术语保留英文原词",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_timezone",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_timezone",
+   "text": "用户时区是 Asia/Shanghai，所有时间按北京时间显示",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_terminal",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_terminal",
+   "text": "用户终端用 PowerShell 7，脚本要兼容 Windows",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_editor",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_editor",
+   "text": "用户编辑器是 VS Code，偏好深色主题",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_style",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_style",
+   "text": "代码风格用四空格缩进，行宽不超过 100 字符",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_comment",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_comment",
+   "text": "注释写中文，变量名写英文",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_test",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_test",
+   "text": "改代码必须跑测试，不允许跳过失败用例",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_commit",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_commit",
+   "text": "提交信息用 conventional commits 前缀",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_docs",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_docs",
+   "text": "文档写结论先行，再给证据",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_naming",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_naming",
+   "text": "文件名用短横线分隔，不用下划线",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_daily",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_daily",
+   "text": "日报只写进展、阻塞、下一步三块",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_meeting",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_meeting",
+   "text": "会议纪要要写决策和负责人",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_hardware",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_hardware",
+   "text": "笔记本 16G 内存，不要建议跑大模型",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_coffee",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_coffee",
+   "text": "用户下午喝茶不喝咖啡",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_sleep",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_sleep",
+   "text": "用户作息是凌晨一点睡，早上九点起",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_commute",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_commute",
+   "text": "通勤单程四十分钟，地铁上可以看文档",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_game",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_game",
+   "text": "用户玩射击类游戏，需要低延迟",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_camera",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_camera",
+   "text": "拍照偏好自然光，不喜欢滤镜",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_music",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_music",
+   "text": "工作时听纯音乐，不听带歌词的",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "pref_email",
+   "kind": "preference",
+   "layer": "identity",
+   "trust": "user_confirmed",
+   "key": "pref_email",
+   "text": "邮件只收重要通知，营销邮件直接归档",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_db",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_db",
+   "text": "Personal Agent 的运行时数据存在 SQLite 里，共九个库",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_tests",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_tests",
+   "text": "后端测试入口是 scripts/run_tests.py backend",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_tool_cap",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_tool_cap",
+   "text": "普通聊天每轮最多调用一次工具",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_disk",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_disk",
+   "text": "项目产物和备份放在 E 盘",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_model",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_model",
+   "text": "默认模型是 deepseek-flash",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_port",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_port",
+   "text": "DSH 网页界面端口每次启动可能变化",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_evidence",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_evidence",
+   "text": "网页证据存在 evidence.db，可一键清空",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_research",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_research",
+   "text": "研究运行账本在 research.db",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_comfy",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_comfy",
+   "text": "ComfyUI 默认端口 8188，用完即停",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_vram",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_vram",
+   "text": "显卡是 RTX 4050 Laptop，显存 6GB",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_python",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_python",
+   "text": "真实 Python 在 E 盘，版本 3.12.7",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_proxy",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_proxy",
+   "text": "系统代理 7890 是死配置，跑 Python 联网前要设 NO_PROXY",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_ssh",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_ssh",
+   "text": "git 走 SSH 443 直连，不需要代理",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_workspace",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_workspace",
+   "text": "工作区是 default-workspace 目录",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_log",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_log",
+   "text": "测试失败日志落在 dot run 目录",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_branch",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_branch",
+   "text": "主仓库分支是 main，提交前要核验状态",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_gate",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_gate",
+   "text": "改项目代码需要先出计划文件并取得同意",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_eval",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_eval",
+   "text": "记忆评测共六十条样本",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_repo",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_repo",
+   "text": "Personal Agent 仓库在用户目录下的 Personal Agent 文件夹",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "fact_demo",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "platform_verified",
+   "key": "fact_demo",
+   "text": "演示视频放在 docs 目录",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "cg_db_old",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_db_old",
+   "text": "项目数据库用 SQLite",
+   "conflict_group": "cg_db",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "cg_db_new",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_db_new",
+   "text": "项目数据库改用 PostgreSQL",
+   "conflict_group": "cg_db",
+   "valid_from": "2026-06-01T00:00:00+00:00",
+   "supersedes_ref": "cg_db_old"
+  },
+  {
+   "ref": "cg_disk_old",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_disk_old",
+   "text": "项目放在 C 盘",
+   "conflict_group": "cg_disk",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "cg_disk_new",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_disk_new",
+   "text": "项目改放 F 盘",
+   "conflict_group": "cg_disk",
+   "valid_from": "2026-06-01T00:00:00+00:00",
+   "supersedes_ref": "cg_disk_old"
+  },
+  {
+   "ref": "cg_model_old",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_model_old",
+   "text": "默认模型是 deepseek-flash",
+   "conflict_group": "cg_model",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "cg_model_new",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_model_new",
+   "text": "默认模型换成 deepseek-chat",
+   "conflict_group": "cg_model",
+   "valid_from": "2026-06-01T00:00:00+00:00",
+   "supersedes_ref": "cg_model_old"
+  },
+  {
+   "ref": "cg_framework_old",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_framework_old",
+   "text": "测试框架用 unittest",
+   "conflict_group": "cg_framework",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "cg_framework_new",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_framework_new",
+   "text": "测试框架统一用 pytest",
+   "conflict_group": "cg_framework",
+   "valid_from": "2026-06-01T00:00:00+00:00",
+   "supersedes_ref": "cg_framework_old"
+  },
+  {
+   "ref": "cg_port_old",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_port_old",
+   "text": "服务端口随机分配",
+   "conflict_group": "cg_port",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "cg_port_new",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_port_new",
+   "text": "服务端口固定 8000",
+   "conflict_group": "cg_port",
+   "valid_from": "2026-06-01T00:00:00+00:00",
+   "supersedes_ref": "cg_port_old"
+  },
+  {
+   "ref": "cg_lang_old",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_lang_old",
+   "text": "新项目用 JavaScript",
+   "conflict_group": "cg_lang",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "cg_lang_new",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_lang_new",
+   "text": "新项目用 TypeScript",
+   "conflict_group": "cg_lang",
+   "valid_from": "2026-06-01T00:00:00+00:00",
+   "supersedes_ref": "cg_lang_old"
+  },
+  {
+   "ref": "cg_driver_old",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_driver_old",
+   "text": "显卡驱动固定 572.61",
+   "conflict_group": "cg_driver",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "cg_driver_new",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_driver_new",
+   "text": "显卡驱动固定 617.14",
+   "conflict_group": "cg_driver",
+   "valid_from": "2026-06-01T00:00:00+00:00",
+   "supersedes_ref": "cg_driver_old"
+  },
+  {
+   "ref": "cg_pyver_old",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_pyver_old",
+   "text": "运行时用 Python 3.12",
+   "conflict_group": "cg_pyver",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "cg_pyver_new",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_pyver_new",
+   "text": "运行时统一 Python 3.13",
+   "conflict_group": "cg_pyver",
+   "valid_from": "2026-06-01T00:00:00+00:00",
+   "supersedes_ref": "cg_pyver_old"
+  },
+  {
+   "ref": "cg_branch_old",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_branch_old",
+   "text": "默认分支是 main",
+   "conflict_group": "cg_branch",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "cg_branch_new",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_branch_new",
+   "text": "默认分支改成 develop",
+   "conflict_group": "cg_branch",
+   "valid_from": "2026-06-01T00:00:00+00:00",
+   "supersedes_ref": "cg_branch_old"
+  },
+  {
+   "ref": "cg_runner_old",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_runner_old",
+   "text": "跑测用 run_tests 脚本",
+   "conflict_group": "cg_runner",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "cg_runner_new",
+   "kind": "project_fact",
+   "layer": "project",
+   "trust": "user_confirmed",
+   "key": "cg_runner_new",
+   "text": "跑测改用 make test",
+   "conflict_group": "cg_runner",
+   "valid_from": "2026-06-01T00:00:00+00:00",
+   "supersedes_ref": "cg_runner_old"
+  },
+  {
+   "ref": "del_code",
+   "kind": "episode",
+   "layer": "session",
+   "trust": "user_confirmed",
+   "key": "del_code",
+   "text": "临时访问码是 omega-7731，用完作废",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "del_wifi",
+   "kind": "episode",
+   "layer": "session",
+   "trust": "user_confirmed",
+   "key": "del_wifi",
+   "text": "办公室 Wi-Fi 密码是 bamboo-42",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "del_coupon",
+   "kind": "episode",
+   "layer": "session",
+   "trust": "user_confirmed",
+   "key": "del_coupon",
+   "text": "优惠券编号 CPN-8891 已过期",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "del_meeting",
+   "kind": "episode",
+   "layer": "session",
+   "trust": "user_confirmed",
+   "key": "del_meeting",
+   "text": "临时会议室编号是 Room-Z9",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  },
+  {
+   "ref": "del_draft",
+   "kind": "episode",
+   "layer": "session",
+   "trust": "user_confirmed",
+   "key": "del_draft",
+   "text": "草稿文件名是 draft-kappa.md",
+   "valid_from": "2026-01-01T00:00:00+00:00"
+  }
+ ],
+ "samples": [
+  {
+   "id": "p01",
+   "category": "preference",
+   "query": "术语保留英文",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_language"
+   ]
+  },
+  {
+   "id": "p02",
+   "category": "preference",
+   "query": "时区按北京时间",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_timezone"
+   ]
+  },
+  {
+   "id": "p03",
+   "category": "preference",
+   "query": "终端用 PowerShell",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_terminal"
+   ]
+  },
+  {
+   "id": "p04",
+   "category": "preference",
+   "query": "编辑器偏好深色主题",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_editor"
+   ]
+  },
+  {
+   "id": "p05",
+   "category": "preference",
+   "query": "四空格缩进",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_style"
+   ]
+  },
+  {
+   "id": "p06",
+   "category": "preference",
+   "query": "注释写中文",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_comment"
+   ]
+  },
+  {
+   "id": "p07",
+   "category": "preference",
+   "query": "不允许跳过失败用例",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_test"
+   ]
+  },
+  {
+   "id": "p08",
+   "category": "preference",
+   "query": "提交信息用前缀",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_commit"
+   ]
+  },
+  {
+   "id": "p09",
+   "category": "preference",
+   "query": "文档结论先行",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_docs"
+   ]
+  },
+  {
+   "id": "p10",
+   "category": "preference",
+   "query": "文件名用短横线",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_naming"
+   ]
+  },
+  {
+   "id": "p11",
+   "category": "preference",
+   "query": "日报只写三块",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_daily"
+   ]
+  },
+  {
+   "id": "p12",
+   "category": "preference",
+   "query": "会议纪要写负责人",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_meeting"
+   ]
+  },
+  {
+   "id": "p13",
+   "category": "preference",
+   "query": "内存只有 16G",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_hardware"
+   ]
+  },
+  {
+   "id": "p14",
+   "category": "preference",
+   "query": "下午喝茶",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_coffee"
+   ]
+  },
+  {
+   "id": "p15",
+   "category": "preference",
+   "query": "凌晨一点睡",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_sleep"
+   ]
+  },
+  {
+   "id": "p16",
+   "category": "preference",
+   "query": "通勤单程四十分钟",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_commute"
+   ]
+  },
+  {
+   "id": "p17",
+   "category": "preference",
+   "query": "玩射击类游戏",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_game"
+   ]
+  },
+  {
+   "id": "p18",
+   "category": "preference",
+   "query": "拍照偏好自然光",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_camera"
+   ]
+  },
+  {
+   "id": "p19",
+   "category": "preference",
+   "query": "工作听纯音乐",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_music"
+   ]
+  },
+  {
+   "id": "p20",
+   "category": "preference",
+   "query": "营销邮件直接归档",
+   "expect": "hit",
+   "expected_keys": [
+    "pref_email"
+   ]
+  },
+  {
+   "id": "f01",
+   "category": "project_fact",
+   "query": "运行时数据存在 SQLite",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_db"
+   ]
+  },
+  {
+   "id": "f02",
+   "category": "project_fact",
+   "query": "后端测试入口",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_tests"
+   ]
+  },
+  {
+   "id": "f03",
+   "category": "project_fact",
+   "query": "每轮最多调用一次工具",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_tool_cap"
+   ]
+  },
+  {
+   "id": "f04",
+   "category": "project_fact",
+   "query": "产物和备份放 E 盘",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_disk"
+   ]
+  },
+  {
+   "id": "f05",
+   "category": "project_fact",
+   "query": "默认模型 deepseek-flash",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_model"
+   ]
+  },
+  {
+   "id": "f06",
+   "category": "project_fact",
+   "query": "网页界面端口会变",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_port"
+   ]
+  },
+  {
+   "id": "f07",
+   "category": "project_fact",
+   "query": "网页证据一键清空",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_evidence"
+   ]
+  },
+  {
+   "id": "f08",
+   "category": "project_fact",
+   "query": "研究运行账本",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_research"
+   ]
+  },
+  {
+   "id": "f09",
+   "category": "project_fact",
+   "query": "ComfyUI 默认端口",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_comfy"
+   ]
+  },
+  {
+   "id": "f10",
+   "category": "project_fact",
+   "query": "显存只有 6GB",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_vram"
+   ]
+  },
+  {
+   "id": "f11",
+   "category": "project_fact",
+   "query": "真实 Python 在 E 盘",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_python"
+   ]
+  },
+  {
+   "id": "f12",
+   "category": "project_fact",
+   "query": "代理 7890 是死配置",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_proxy"
+   ]
+  },
+  {
+   "id": "f13",
+   "category": "project_fact",
+   "query": "git 走 SSH 443",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_ssh"
+   ]
+  },
+  {
+   "id": "f14",
+   "category": "project_fact",
+   "query": "工作区目录名",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_workspace"
+   ]
+  },
+  {
+   "id": "f15",
+   "category": "project_fact",
+   "query": "测试失败日志落盘位置",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_log"
+   ]
+  },
+  {
+   "id": "f16",
+   "category": "project_fact",
+   "query": "提交前核验状态",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_branch"
+   ]
+  },
+  {
+   "id": "f17",
+   "category": "project_fact",
+   "query": "改项目代码要先出计划",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_gate"
+   ]
+  },
+  {
+   "id": "f18",
+   "category": "project_fact",
+   "query": "记忆评测共六十条",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_eval"
+   ]
+  },
+  {
+   "id": "f19",
+   "category": "project_fact",
+   "query": "仓库所在文件夹",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_repo"
+   ]
+  },
+  {
+   "id": "f20",
+   "category": "project_fact",
+   "query": "演示视频放在哪",
+   "expect": "hit",
+   "expected_keys": [
+    "fact_demo"
+   ]
+  },
+  {
+   "id": "c01",
+   "category": "conflict",
+   "query": "数据库用 PostgreSQL",
+   "expect": "current",
+   "expected_keys": [
+    "cg_db_new"
+   ],
+   "conflict_group": "cg_db"
+  },
+  {
+   "id": "c02",
+   "category": "conflict",
+   "query": "项目放 F 盘",
+   "expect": "current",
+   "expected_keys": [
+    "cg_disk_new"
+   ],
+   "conflict_group": "cg_disk"
+  },
+  {
+   "id": "c03",
+   "category": "conflict",
+   "query": "默认模型换成 chat",
+   "expect": "current",
+   "expected_keys": [
+    "cg_model_new"
+   ],
+   "conflict_group": "cg_model"
+  },
+  {
+   "id": "c04",
+   "category": "conflict",
+   "query": "测试框架统一 pytest",
+   "expect": "current",
+   "expected_keys": [
+    "cg_framework_new"
+   ],
+   "conflict_group": "cg_framework"
+  },
+  {
+   "id": "c05",
+   "category": "conflict",
+   "query": "端口固定 8000",
+   "expect": "current",
+   "expected_keys": [
+    "cg_port_new"
+   ],
+   "conflict_group": "cg_port"
+  },
+  {
+   "id": "c06",
+   "category": "conflict",
+   "query": "新项目用 TypeScript",
+   "expect": "current",
+   "expected_keys": [
+    "cg_lang_new"
+   ],
+   "conflict_group": "cg_lang"
+  },
+  {
+   "id": "c07",
+   "category": "conflict",
+   "query": "驱动固定 617",
+   "expect": "current",
+   "expected_keys": [
+    "cg_driver_new"
+   ],
+   "conflict_group": "cg_driver"
+  },
+  {
+   "id": "c08",
+   "category": "conflict",
+   "query": "运行时统一 Python 3.13",
+   "expect": "current",
+   "expected_keys": [
+    "cg_pyver_new"
+   ],
+   "conflict_group": "cg_pyver"
+  },
+  {
+   "id": "c09",
+   "category": "conflict",
+   "query": "默认分支改成 develop",
+   "expect": "current",
+   "expected_keys": [
+    "cg_branch_new"
+   ],
+   "conflict_group": "cg_branch"
+  },
+  {
+   "id": "c10",
+   "category": "conflict",
+   "query": "跑测改用 make",
+   "expect": "current",
+   "expected_keys": [
+    "cg_runner_new"
+   ],
+   "conflict_group": "cg_runner"
+  },
+  {
+   "id": "d01",
+   "category": "deletion",
+   "query": "临时访问码 omega",
+   "expect": "no_hit",
+   "delete_key": "del_code"
+  },
+  {
+   "id": "d02",
+   "category": "deletion",
+   "query": "办公室 Wi-Fi 密码 bamboo",
+   "expect": "no_hit",
+   "delete_key": "del_wifi"
+  },
+  {
+   "id": "d03",
+   "category": "deletion",
+   "query": "优惠券编号 CPN",
+   "expect": "no_hit",
+   "delete_key": "del_coupon"
+  },
+  {
+   "id": "d04",
+   "category": "deletion",
+   "query": "临时会议室编号 Room",
+   "expect": "no_hit",
+   "delete_key": "del_meeting"
+  },
+  {
+   "id": "d05",
+   "category": "deletion",
+   "query": "草稿文件名 draft",
+   "expect": "no_hit",
+   "delete_key": "del_draft"
+  },
+  {
+   "id": "u01",
+   "category": "unanswerable",
+   "query": "用户的护照号码是多少",
+   "expect": "no_hit"
+  },
+  {
+   "id": "u02",
+   "category": "unanswerable",
+   "query": "银行卡后四位是什么",
+   "expect": "no_hit"
+  },
+  {
+   "id": "u03",
+   "category": "unanswerable",
+   "query": "公司股票代码是多少",
+   "expect": "no_hit"
+  },
+  {
+   "id": "u04",
+   "category": "unanswerable",
+   "query": "上个月的航班号是哪一班",
+   "expect": "no_hit"
+  },
+  {
+   "id": "u05",
+   "category": "unanswerable",
+   "query": "护照签发地在哪个城市",
+   "expect": "no_hit"
+  }
+ ]
+}

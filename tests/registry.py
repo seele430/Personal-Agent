@@ -275,10 +275,60 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    # L1：记忆条目存储（同库新表、有效期、删除派生）
+    "unit/test_memory_store.py": TestSchema(
+        layer="unit",
+        domain="memory",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L1：冲突解析（当前有效事实、信任等级、supersedes 链）
+    "unit/test_memory_resolve.py": TestSchema(
+        layer="unit",
+        domain="memory",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L1：版本快照与回滚
+    "unit/test_memory_versions.py": TestSchema(
+        layer="unit",
+        domain="memory",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    # L1：60 条记忆评测（免费指标 + 替身作答）
+    "unit/test_memory_eval.py": TestSchema(
+        layer="unit",
+        domain="memory",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     # L2：研究端到端脚本（离线脚本化模型 + 固定证据，可复现）
     "integration/test_research_run.py": TestSchema(
         layer="integration",
         domain="research",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+
+    # L2：记忆评测 CLI（免费档；付费档未确认即退出，不调模型）
+    "integration/test_memory_eval_run.py": TestSchema(
+        layer="integration",
+        domain="memory",
         database="temporary_sqlite",
         authentication="none",
         external_network="mocked",
