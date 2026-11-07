@@ -1542,6 +1542,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="high",
     ),
+
+    # L1：远程失败限速（阈值/冷却/清零/隔离）
+    "unit/test_remote_ratelimit.py": TestSchema(
+        layer="unit",
+        domain="remote",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
 }
 
 

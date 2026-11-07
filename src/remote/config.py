@@ -32,6 +32,8 @@ class RemoteConfig:
     key_path: Path | None = None
     log_path: Path | None = None
     allow_prefixes: tuple[str, ...] = DEFAULT_PREFIXES
+    max_failures: int = 10
+    block_seconds: int = 300
     reason: str = ""
 
     def __post_init__(self):
@@ -39,6 +41,13 @@ class RemoteConfig:
             raise RemoteConfigError("port 必须在 1..65535")
 
         if self.enabled:
+            for name, value in (
+                ("max_failures", self.max_failures),
+                ("block_seconds", self.block_seconds),
+            ):
+                if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                    raise RemoteConfigError(f"{name} 必须是 ≥1 的整数")
+
             if len(self.token) < MIN_TOKEN_LENGTH:
                 raise RemoteConfigError(
                     f"远程模式要求令牌 ≥ {MIN_TOKEN_LENGTH} 字符"
@@ -70,6 +79,8 @@ class RemoteConfig:
             "port": self.port,
             "host": self.host,
             "allow_prefixes": list(self.allow_prefixes),
+            "max_failures": self.max_failures,
+            "block_seconds": self.block_seconds,
             "cert": str(self.cert_path) if self.cert_path else None,
             "has_token": bool(self.token),
             "reason": self.reason,
@@ -89,6 +100,8 @@ def from_env(environ: dict | None = None) -> RemoteConfig:
         "cert_path": _path(env.get("PERSONAL_AGENT_REMOTE_CERT")),
         "key_path": _path(env.get("PERSONAL_AGENT_REMOTE_KEY")),
         "log_path": _path(env.get("PERSONAL_AGENT_REMOTE_LOG")),
+        "max_failures": int(env.get("PERSONAL_AGENT_REMOTE_MAX_FAILURES") or 10),
+        "block_seconds": int(env.get("PERSONAL_AGENT_REMOTE_BLOCK_SECONDS") or 300),
     }
 
     if not requested:

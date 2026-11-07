@@ -15,6 +15,7 @@ import time
 
 from src.remote.access_log import AccessLog, build_record, strip_query
 from src.remote.config import SAFE_METHODS, RemoteConfig
+from src.remote.ratelimit import FailureLimiter, LimitPolicy
 
 
 UNAUTHORIZED = {
@@ -25,6 +26,8 @@ UNAUTHORIZED = {
 FORBIDDEN_METHOD = {"error": "forbidden", "detail": "远程只允许只读方法"}
 
 FORBIDDEN_PATH = {"error": "forbidden", "detail": "该路径不在远程白名单"}
+
+TOO_MANY = {"error": "too_many_attempts", "detail": "失败次数过多，请稍后再试"}
 
 
 def _header(scope, name: bytes) -> str:
@@ -60,7 +63,7 @@ def client_address(scope) -> str:
     return str(client[0]) if client else ""
 
 
-async def _send_json(send, status: int, payload: dict) -> None:
+async def _send_json(send, status: int, payload: dict, *, headers=None) -> None:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
     await send(
@@ -70,6 +73,7 @@ async def _send_json(send, status: int, payload: dict) -> None:
             "headers": [
                 (b"content-type", b"application/json; charset=utf-8"),
                 (b"content-length", str(len(body)).encode()),
+                *(headers or []),
             ],
         }
     )
@@ -79,10 +83,23 @@ async def _send_json(send, status: int, payload: dict) -> None:
 class RemoteGuard:
     """包装一个 ASGI 应用。"""
 
-    def __init__(self, app, config: RemoteConfig, *, log: AccessLog | None = None):
+    def __init__(
+        self,
+        app,
+        config: RemoteConfig,
+        *,
+        log: AccessLog | None = None,
+        limiter: FailureLimiter | None = None,
+    ):
         self.app = app
         self.config = config
         self.log = log or (AccessLog(config.log_path) if config.log_path else None)
+        self.limiter = limiter or FailureLimiter(
+            LimitPolicy(
+                max_failures=config.max_failures,
+                block_seconds=config.block_seconds,
+            )
+        )
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http" or not self.config.usable:
@@ -95,12 +112,32 @@ class RemoteGuard:
         # 防御性剥离 query：正常 ASGI 里 path 不含 query，但不该依赖调用方守规矩
         path = strip_query(scope.get("path") or "/")
         token = extract_token(scope)
+        client = client_address(scope)
         status = 200
         note = ""
+
+        allowed, retry_after = self.limiter.allow(client)
+
+        if not allowed:
+            status = 429
+            note = "rate limited"
+            await _send_json(
+                send,
+                status,
+                TOO_MANY,
+                headers=[(b"retry-after", str(retry_after).encode())],
+            )
+            self._record(
+                method=method, path=path, scope=scope, status=status,
+                duration_ms=(time.perf_counter() - started) * 1000, note=note,
+            )
+
+            return
 
         if not token or token != self.config.token:
             status = 401
             note = "bad token"
+            self.limiter.record_failure(client)
             await _send_json(send, status, UNAUTHORIZED)
 
         elif method not in SAFE_METHODS:

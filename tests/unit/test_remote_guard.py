@@ -241,5 +241,51 @@ class TestPassthrough(unittest.TestCase):
         self.assertEqual(app.calls, 1)
 
 
+class TestRateLimit(GuardCase):
+    """失败限速：超阈值 → 429 + Retry-After；成功一次清零。"""
+
+    def build_limited(self, **overrides):
+        return self.build(max_failures=2, block_seconds=60, **overrides)
+
+    def test_repeated_bad_token_becomes_429(self):
+        guard = self.build_limited()
+
+        self.run_call(guard, "GET", "/api/artifacts")
+        self.run_call(guard, "GET", "/api/artifacts")
+        sent = self.run_call(guard, "GET", "/api/artifacts")
+
+        self.assertEqual(status_of(sent), 429)
+        headers = dict(sent[0]["headers"])
+
+        self.assertIn(b"retry-after", headers)
+
+    def test_success_resets_failures(self):
+        guard = self.build_limited()
+
+        self.run_call(guard, "GET", "/api/artifacts")
+        self.run_call(
+            guard,
+            "GET",
+            "/api/artifacts",
+            headers=[(b"authorization", f"Bearer {TOKEN}".encode())],
+        )
+        sent = self.run_call(guard, "GET", "/api/artifacts")
+
+        self.assertEqual(status_of(sent), 401)
+
+    def test_other_client_not_blocked(self):
+        guard = self.build_limited()
+        self.run_call(guard, "GET", "/api/artifacts")
+        self.run_call(guard, "GET", "/api/artifacts")
+
+        sent = self.run_call(
+            guard,
+            "GET",
+            "/api/artifacts",
+            headers=[(b"authorization", f"Bearer {TOKEN}".encode())],
+            client=("10.0.0.10", 99),
+        )
+
+        self.assertEqual(status_of(sent), 200)
 if __name__ == "__main__":
     unittest.main()
