@@ -240,5 +240,137 @@ class TestInitialPrompt(unittest.TestCase):
         )
 
         self.assertEqual(len(backend.transcribe(self.audio).segments), 1)
+class TestFasterWhisperBackend(unittest.TestCase):
+    """faster-whisper 后端：可注入、术语偏置透传、wav 校验。"""
+
+    def setUp(self):
+        self._temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temporary.cleanup)
+        self.root = Path(self._temporary.name)
+        self.model_dir = self.root / "model"
+        self.model_dir.mkdir()
+        self.audio = self.root / "a.wav"
+
+        import wave
+
+        with wave.open(str(self.audio), "wb") as handle:
+            handle.setnchannels(1)
+            handle.setsampwidth(2)
+            handle.setframerate(16_000)
+            handle.writeframes(b"\x00\x00" * 1600)
+
+    def fake_model(self, captured):
+        class Segment:
+            def __init__(self, start, end, text):
+                self.start = start
+                self.end = end
+                self.text = text
+
+        class Info:
+            language = "zh"
+
+        class Model:
+            def transcribe(self, samples, **kwargs):
+                captured.update(kwargs)
+                captured["samples"] = samples
+
+                return iter([Segment(0.0, 1.0, "你好"), Segment(1.0, 2.0, " ")]), Info()
+
+        return Model()
+
+    def test_name(self):
+        from src.video.asr import FasterWhisperTranscriber
+
+        self.assertEqual(
+            FasterWhisperTranscriber(self.model_dir).name, "faster-whisper"
+        )
+
+    def test_missing_model_dir(self):
+        from src.video.asr import FasterWhisperTranscriber, TranscriptError
+
+        backend = FasterWhisperTranscriber(self.root / "nope")
+
+        with self.assertRaises(TranscriptError):
+            backend.transcribe(self.audio)
+
+    def test_rejects_non_wav(self):
+        from src.video.asr import FasterWhisperTranscriber, TranscriptError
+
+        other = self.root / "a.mp3"
+        other.write_bytes(b"x")
+        backend = FasterWhisperTranscriber(
+            self.model_dir, model_factory=lambda: self.fake_model({})
+        )
+
+        with self.assertRaises(TranscriptError):
+            backend.transcribe(other)
+
+    def test_transcribes_and_skips_blank(self):
+        from src.video.asr import FasterWhisperTranscriber
+
+        captured = {}
+        backend = FasterWhisperTranscriber(
+            self.model_dir, model_factory=lambda: self.fake_model(captured)
+        )
+
+        result = backend.transcribe(self.audio)
+
+        self.assertEqual(result.language, "zh")
+        self.assertEqual(result.text, "你好")
+        self.assertEqual(len(result.segments), 1)
+
+    def test_prompt_forwarded(self):
+        from src.video.asr import FasterWhisperTranscriber
+
+        captured = {}
+        backend = FasterWhisperTranscriber(
+            self.model_dir,
+            initial_prompt="PagedAttention",
+            model_factory=lambda: self.fake_model(captured),
+        )
+
+        backend.transcribe(self.audio)
+
+        self.assertEqual(captured.get("initial_prompt"), "PagedAttention")
+
+    def test_empty_prompt_is_none(self):
+        from src.video.asr import FasterWhisperTranscriber
+
+        captured = {}
+        backend = FasterWhisperTranscriber(
+            self.model_dir, model_factory=lambda: self.fake_model(captured)
+        )
+
+        backend.transcribe(self.audio)
+
+        self.assertIsNone(captured.get("initial_prompt"))
+
+    def test_samples_are_float(self):
+        from src.video.asr import FasterWhisperTranscriber
+
+        captured = {}
+        backend = FasterWhisperTranscriber(
+            self.model_dir, model_factory=lambda: self.fake_model(captured)
+        )
+
+        backend.transcribe(self.audio)
+
+        self.assertAlmostEqual(float(captured["samples"][0]), 0.0)
+
+    def test_model_loaded_once(self):
+        from src.video.asr import FasterWhisperTranscriber
+
+        calls = []
+
+        def factory():
+            calls.append(1)
+
+            return self.fake_model({})
+
+        backend = FasterWhisperTranscriber(self.model_dir, model_factory=factory)
+        backend.transcribe(self.audio)
+        backend.transcribe(self.audio)
+
+        self.assertEqual(len(calls), 1)
 if __name__ == "__main__":
     unittest.main()

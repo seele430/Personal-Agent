@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.video.asr import WhisperTranscriber  # noqa: E402
+from src.video.asr import FasterWhisperTranscriber, WhisperTranscriber  # noqa: E402
 from src.video.pipeline import render_report, summarize_video  # noqa: E402
 from src.video.probe import VideoError, VideoUnverified  # noqa: E402
 
@@ -82,6 +82,8 @@ def main(argv=None) -> int:
     parser.add_argument("--video", required=True)
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--model", default="base")
+    parser.add_argument("--backend", choices=("openai", "faster"), default="openai")
+    parser.add_argument("--model-dir", default="")
     parser.add_argument("--language", default=None)
     parser.add_argument(
         "--prompt",
@@ -95,11 +97,24 @@ def main(argv=None) -> int:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    transcriber = WhisperTranscriber(
-        model_name=args.model,
-        language=args.language,
-        initial_prompt=args.prompt,
-    )
+    if args.backend == "faster":
+        if not args.model_dir:
+            print("--backend faster 需要 --model-dir（faster-whisper 模型目录）")
+
+            return 2
+
+        transcriber = FasterWhisperTranscriber(
+            args.model_dir,
+            language=args.language or "zh",
+            initial_prompt=args.prompt,
+        )
+
+    else:
+        transcriber = WhisperTranscriber(
+            model_name=args.model,
+            language=args.language,
+            initial_prompt=args.prompt,
+        )
 
     try:
         summary = summarize_video(

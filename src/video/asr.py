@@ -150,6 +150,109 @@ class WhisperTranscriber:
         )
 
 
+class FasterWhisperTranscriber:
+    """faster-whisper 后端（CPU int8）。
+
+    为什么单独一个类：`faster_whisper.WhisperModel` 的输入是路径或 numpy 样本，
+    返回的 segments 是**生成器 + 属性访问**，与 openai-whisper 的 dict 不同。
+    另外本地 `av` 与 faster-whisper 的 decode_audio 不兼容，这里用标准库读 wav
+    再传 numpy，绕开 av。
+    """
+
+    name = "faster-whisper"
+
+    def __init__(
+        self,
+        model_dir: str | Path,
+        *,
+        compute_type: str = "int8",
+        device: str = "cpu",
+        language: str | None = "zh",
+        initial_prompt: str = "",
+        model_factory=None,
+    ):
+        self.model_dir = Path(model_dir)
+        self.compute_type = compute_type
+        self.device = device
+        self.language = language
+        self.initial_prompt = initial_prompt
+        self._factory = model_factory
+        self._model = None
+
+    def _get_model(self):
+        if self._model is not None:
+            return self._model
+
+        if not self.model_dir.is_dir():
+            raise TranscriptError(f"faster-whisper 模型目录不存在：{self.model_dir}")
+
+        factory = self._factory
+
+        if factory is None:
+            try:
+                from faster_whisper import WhisperModel
+
+            except ImportError as error:
+                raise TranscriptError("未安装 faster-whisper") from error
+
+            factory = lambda: WhisperModel(  # noqa: E731
+                str(self.model_dir), device=self.device, compute_type=self.compute_type
+            )
+
+        self._model = factory()
+
+        return self._model
+
+    def transcribe(self, audio_path: str | Path) -> Transcript:
+        path = Path(audio_path)
+
+        if not path.is_file():
+            raise TranscriptError(f"音频不存在：{path}")
+
+        if path.suffix.lower() != ".wav":
+            raise TranscriptError("faster-whisper 后端目前只支持 wav（管线总是抽 wav）")
+
+        model = self._get_model()
+        samples = _read_wav_samples(path)
+
+        segments_iter, info = model.transcribe(
+            samples,
+            language=self.language,
+            beam_size=5,
+            vad_filter=True,
+            initial_prompt=self.initial_prompt or None,
+        )
+
+        segments = tuple(
+            Segment(start=float(item.start), end=float(item.end), text=str(item.text).strip())
+            for item in segments_iter
+            if str(getattr(item, "text", "")).strip()
+        )
+
+        return Transcript(
+            language=str(getattr(info, "language", None) or "unknown"),
+            segments=segments,
+        )
+
+
+def _read_wav_samples(path: Path):
+    """读 16 kHz 单声道 PCM wav，返回 [-1, 1] 的 float32 数组。"""
+
+    import wave
+
+    import numpy as np
+
+    with wave.open(str(path), "rb") as handle:
+        if handle.getframerate() != 16_000:
+            raise TranscriptError(
+                f"wav 采样率必须是 16000，实际 {handle.getframerate()}"
+            )
+
+        raw = handle.readframes(handle.getnframes())
+
+    return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+
+
 def render_transcript(transcript: Transcript, *, limit: int = 200) -> str:
     """把转写渲染成 `[start-end] 文本` 的行，供报告引用。"""
 
