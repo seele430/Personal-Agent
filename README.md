@@ -23,7 +23,8 @@
 
 - 首次启动：登录页变成「创建站长账号」，之后不再有注册入口；
 - 不暴露邀请码 HTTP 接口（`/auth/register`、`/auth/invite` 均未注册路由）；
-- 邀请码表与相关运行时代码已删除；旧库里的历史表不读取、不迁移。
+- 邀请码表与相关运行时代码已删除；旧库里的历史表不读取、不迁移；
+- 对外暴露时配置 `PERSONAL_AGENT_PLATFORM_TOKEN`；若走反向代理，需让代理改写来源并显式信任它（见 `docs/platform-contract.md`）。
 
 ---
 
@@ -156,7 +157,7 @@ Personal Agent/
 │   ├── BotsView.tsx        # Bot 管理
 │   ├── App.tsx             # 外壳与导航
 │   └── lib/tts.ts          # 语音合成（播放队列 + 预热缓存）
-├── tests/                  # 56 个测试文件 / 617 个用例
+├── tests/                  # 104 个测试文件 / 885 个用例
 └── scripts/
     ├── run-dev.ps1         # 开发环境一键起停
     ├── run_tests.py        # 全量测试
@@ -168,11 +169,13 @@ Personal Agent/
 ## 测试
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\run_tests.py
+.\scripts\test.ps1 backend
 ```
 
-**617 个用例**，覆盖：房间生命周期、阶段推进、投票加权、Bot 兜底、TTS 端点、
-额度控制、任务调度、提醒投递。
+（后端测试统一走受保护运行器：SQLite / socket 守卫 + 独立临时数据目录；`scripts/run_tests.py <layer>` 可单独跑某一层。）
+
+**885 个用例**（104 个测试文件，受保护运行器），覆盖：房间生命周期、阶段推进、投票加权、Bot 兜底、TTS 端点、
+额度控制、任务调度、提醒投递；平台侧的认证 / 限流 / 审计 / 队列 / 调度也在其中。
 
 前端有一个 Playwright 自测（验证语音的播放队列不被 stop 卡死）：
 
@@ -180,6 +183,20 @@ Personal Agent/
 $env:NODE_PATH = "frontend\node_modules"
 node scripts\test-tts.cjs
 ```
+
+---
+
+## 安全修复记录
+
+### 2026-11-07：`/v1` 限流按调用方分桶
+
+- **影响面**：配置了 `PERSONAL_AGENT_PLATFORM_TOKEN` 的部署。未配置令牌时（本机模式）按来源主机分桶，不受影响。
+- **问题**：限流桶的键取的是服务端自己配的令牌，所有调用方共用一个桶；未认证请求也会消耗额度，持续打满即可让持正确令牌的客户端收到 429。同一处代码还有两个小口子：非 ASCII 的 `Authorization` 会触发 500；`/v1/audit` 的免限流对匿名请求也生效。
+- **修复**：键改为 `tok:<出示令牌指纹>`（已认证）/ `anon:<来源主机>`（未认证）；中间件仍为「限流 → 认证」，失败认证继续受约束；令牌比较改 UTF-8 字节；`/v1/audit` 免限流仅对已认证生效；桶字典加上限，且只回收「已满且闲置」的桶。
+- **验证**：`tests/integration/test_platform_audit.py` 20 条用例；全量 885 用例 PASS。
+- **致谢**：感谢 Matt（[@mattabate](https://github.com/mattabate)）私下报告该问题。
+
+细节见 `docs/journal.md` 的 D26.2 与 `docs/platform-contract.md`。
 
 ---
 
