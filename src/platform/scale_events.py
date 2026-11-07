@@ -190,21 +190,37 @@ class ScaleEventStore:
         data.update(describe(str(data["action"]), str(data["reason"])))
         return data
 
-    def recent(self, limit: int = 20) -> list[dict]:
+    def recent(
+        self,
+        limit: int = 20,
+        *,
+        source: str | None = None,
+    ) -> list[dict]:
         limit = max(0, min(int(limit), 200))
 
         if limit == 0:
             return []
 
         with closing(self.connect()) as conn:
-            rows = conn.execute(
-                """
-                SELECT * FROM platform_scale_events
-                ORDER BY at DESC, rowid DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
+            if source is None:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM platform_scale_events
+                    ORDER BY at DESC, rowid DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM platform_scale_events
+                    WHERE source = ?
+                    ORDER BY at DESC, rowid DESC
+                    LIMIT ?
+                    """,
+                    (source, limit),
+                ).fetchall()
 
         return [self.describe_row(row) for row in rows]
 

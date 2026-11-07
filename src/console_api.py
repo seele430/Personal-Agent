@@ -945,3 +945,96 @@ def console_simulate(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
+
+# ======================================================================
+# 场景回放（P2 §8.1）
+#
+# 只读持久事件；不重放副作用、不改写审计、不混入实时趋势。
+# ======================================================================
+
+
+@router.get("/replay")
+def console_replay(
+    limit: int = Query(default=50, ge=1, le=200),
+    source: str = Query(default="live"),
+    user: dict = Depends(get_current_user),
+):
+    from src.platform.scale_events import SOURCES, ScaleEventStore
+
+    if source not in SOURCES:
+        raise HTTPException(status_code=400, detail=f"未知 source：{source}")
+
+    store = ScaleEventStore()
+    events = list(reversed(store.recent(limit, source=source)))
+
+    if not events:
+        return {
+            "source": source,
+            "event_count": 0,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "first_at": None,
+            "last_at": None,
+            "span_seconds": 0.0,
+            "steps": [],
+            "summary": {
+                "scale_up": 0,
+                "scale_down": 0,
+                "max_capacity": None,
+                "min_capacity": None,
+            },
+            "note": (
+                "没有该来源的扩缩容事件；可先跑 scripts/demo_elastic_loop.py，"
+                "或打开控制器并施加负载"
+            ),
+        }
+
+    def parse(value):
+        try:
+            return datetime.fromisoformat(str(value))
+        except ValueError:
+            return None
+
+    start = parse(events[0]["at"]) or datetime.now(timezone.utc)
+    end = parse(events[-1]["at"]) or start
+
+    steps = []
+    previous = None
+
+    for index, event in enumerate(events, 1):
+        moment = parse(event["at"])
+        offset = round((moment - start).total_seconds(), 3) if moment else 0.0
+        gap = (
+            round((moment - previous).total_seconds(), 3)
+            if (moment is not None and previous is not None)
+            else 0.0
+        )
+
+        steps.append(
+            {
+                **event,
+                "seq": index,
+                "offset_seconds": offset,
+                "since_previous_seconds": gap,
+            }
+        )
+        previous = moment if moment is not None else previous
+
+    summary = {
+        "scale_up": sum(1 for item in events if item["action"] == "scale_up"),
+        "scale_down": sum(1 for item in events if item["action"] == "scale_down"),
+        "max_capacity": max(int(item["after_capacity"]) for item in events),
+        "min_capacity": min(int(item["before_capacity"]) for item in events),
+        "span_seconds": round((end - start).total_seconds(), 3),
+    }
+
+    return {
+        "source": source,
+        "event_count": len(events),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "first_at": events[0]["at"],
+        "last_at": events[-1]["at"],
+        "span_seconds": summary["span_seconds"],
+        "steps": steps,
+        "summary": summary,
+        "note": "回放来自持久事件表；不改写审计，也不混入实时趋势",
+    }

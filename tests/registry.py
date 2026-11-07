@@ -641,6 +641,15 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="low",
     ),
+    # W3：控制台场景回放（只读持久事件、来源隔离）
+    "integration/test_console_replay.py": TestSchema(
+        layer="integration",
+        domain="platform_http",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="low",
+    ),
     # L2：单用户产品面（无注册/邀请入口）
     "integration/test_single_user_surface.py": TestSchema(
         layer="integration",

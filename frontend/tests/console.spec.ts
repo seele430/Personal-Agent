@@ -561,3 +561,69 @@ test("What-if 模拟只出仿真结果，不动真实容量", async ({ page }) =
 
   expectNoUnmockedApi(unexpected);
 });
+test("场景回放按时间轴展示持久事件", async ({ page }) => {
+  const unexpected = await openConsole(page);
+  let url = "";
+
+  const step = (
+    seq: number,
+    offset: number,
+    action: string,
+    label: string,
+    title: string,
+    before: number,
+    after: number,
+    running: number,
+    queued: number,
+  ) => ({
+    id: `evt-${seq}`,
+    seq,
+    at: `2026-11-06T13:0${seq}:00+00:00`,
+    offset_seconds: offset,
+    since_previous_seconds: seq === 1 ? 0 : 60,
+    action,
+    reason: action === "scale_up" ? "load_above_capacity" : "load_below_capacity",
+    label,
+    title,
+    before_capacity: before,
+    after_capacity: after,
+    running,
+    queued,
+    source: "live",
+  });
+
+  await page.route("**/api/console/replay*", async (route) => {
+    url = route.request().url();
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        source: "live",
+        event_count: 3,
+        generated_at: "2026-11-06T13:05:00+00:00",
+        first_at: "2026-11-06T13:01:00+00:00",
+        last_at: "2026-11-06T13:03:00+00:00",
+        span_seconds: 120,
+        steps: [
+          step(1, 0, "scale_up", "scale_out", "扩容", 0, 1, 9, 1),
+          step(2, 60, "scale_up", "scale_out", "扩容", 1, 2, 9, 1),
+          step(3, 120, "scale_down", "scale_in", "缩容", 2, 1, 0, 0),
+        ],
+        summary: { scale_up: 2, scale_down: 1, max_capacity: 2, min_capacity: 0 },
+        note: "回放来自持久事件表；不改写审计，也不混入实时趋势",
+      }),
+    });
+  });
+
+  await page.getByRole("button", { name: "弹性", exact: true }).click();
+  await page.getByTestId("replay-load").click();
+
+  await expect(page.getByText(/共 3 条/)).toBeVisible();
+  await expect(page.getByText("回放 · live")).toBeVisible();
+  await expect(page.getByText(/回放来自持久事件表/)).toBeVisible();
+  await expect(page.getByRole("cell", { name: "0 → 1" })).toBeVisible();
+  expect(url).toContain("source=live");
+
+  expectNoUnmockedApi(unexpected);
+});

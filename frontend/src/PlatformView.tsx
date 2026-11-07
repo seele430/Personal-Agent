@@ -222,6 +222,40 @@ type Simulation = {
   cooldown: { seconds: number; note: string };
 };
 
+type ReplayStep = {
+  id: string;
+  seq: number;
+  at: string;
+  offset_seconds: number;
+  since_previous_seconds: number;
+  action: string;
+  reason: string;
+  label: string;
+  title: string;
+  before_capacity: number;
+  after_capacity: number;
+  running: number;
+  queued: number;
+  source: string;
+};
+
+type ReplayData = {
+  source: string;
+  event_count: number;
+  generated_at: string;
+  first_at: string | null;
+  last_at: string | null;
+  span_seconds: number;
+  steps: ReplayStep[];
+  summary: {
+    scale_up: number;
+    scale_down: number;
+    max_capacity: number | null;
+    min_capacity: number | null;
+  };
+  note: string;
+};
+
 type Snapshot = {
   generated_at: string;
   series_window: string;
@@ -638,6 +672,11 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
   const [simBusy, setSimBusy] = useState(false);
   const [simulation, setSimulation] = useState<Simulation | null>(null);
 
+  // P2：场景回放（只读持久事件）
+  const [replay, setReplay] = useState<ReplayData | null>(null);
+  const [replayBusy, setReplayBusy] = useState(false);
+  const [replaySource, setReplaySource] = useState("live");
+
   const load = useCallback(async () => {
     if (!authToken) return;
 
@@ -837,6 +876,34 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
       setSimBusy(false);
     }
   }, [authToken, simRunning, simQueued, simCurrent, simCapacity, simHeadroom]);
+
+  const loadReplay = useCallback(async () => {
+    if (!authToken) return;
+
+    setReplayBusy(true);
+    setNotice(null);
+
+    try {
+      const response = await fetch(
+        `/api/console/replay?limit=50&source=${replaySource}`,
+        {
+          headers: { Authorization: `Bearer ${authToken}` },
+          cache: "no-store",
+        },
+      );
+
+      if (!response.ok) {
+        setNotice({ tone: "error", text: `回放：请求失败（${response.status}）` });
+        return;
+      }
+
+      setReplay((await response.json()) as ReplayData);
+    } catch {
+      setNotice({ tone: "error", text: "回放：无法连接后端" });
+    } finally {
+      setReplayBusy(false);
+    }
+  }, [authToken, replaySource]);
 
   const queue = snapshot?.queue.data ?? null;
   const nodes = snapshot?.nodes.data ?? null;
@@ -1808,6 +1875,136 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
                   </Scroll>
                 ) : (
                   <Empty text="暂无事件。" />
+                )}
+              </Card>
+
+              <Card
+                title="场景回放"
+                subtitle="按持久事件重放真实扩缩容；只读，不改写审计，也不混入实时趋势。"
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    marginBottom: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <select
+                    data-testid="replay-source"
+                    value={replaySource}
+                    onChange={(event) => setReplaySource(event.target.value)}
+                    style={{ padding: "5px 8px" }}
+                  >
+                    <option value="live">live（真实）</option>
+                    <option value="simulation">simulation（仿真）</option>
+                  </select>
+                  <button
+                    data-testid="replay-load"
+                    type="button"
+                    disabled={replayBusy}
+                    onClick={() => void loadReplay()}
+                  >
+                    {replayBusy ? "加载中…" : "加载回放"}
+                  </button>
+                  <span style={{ ...muted, color: color.warn }}>
+                    回放 · {replaySource}
+                  </span>
+                </div>
+
+                {replay ? (
+                  replay.event_count === 0 ? (
+                    <Empty text={replay.note} />
+                  ) : (
+                    <>
+                      <p style={{ ...muted, margin: "0 0 6px" }}>
+                        共 {replay.event_count} 条 · 跨度{" "}
+                        {Math.round(replay.span_seconds)} 秒 · 扩{" "}
+                        {replay.summary.scale_up} / 缩{" "}
+                        {replay.summary.scale_down} · 容量{" "}
+                        {replay.summary.min_capacity} – {replay.summary.max_capacity}
+                      </p>
+
+                      <div
+                        aria-hidden="true"
+                        style={{
+                          position: "relative",
+                          height: 30,
+                          borderBottom: `1px solid ${color.line}`,
+                          marginBottom: 10,
+                        }}
+                      >
+                        {replay.steps.map((step) => {
+                          const span =
+                            replay.span_seconds > 0 ? replay.span_seconds : 1;
+                          const left = Math.max(
+                            0,
+                            Math.min(100, (step.offset_seconds / span) * 100),
+                          );
+
+                          return (
+                            <span
+                              key={step.id}
+                              title={`${labelOf(step)} ${step.before_capacity} → ${step.after_capacity}`}
+                              style={{
+                                position: "absolute",
+                                left: `${left}%`,
+                                top: 10,
+                                width: 10,
+                                height: 10,
+                                borderRadius: 999,
+                                transform: "translateX(-50%)",
+                                background:
+                                  step.action === "scale_up"
+                                    ? color.ok
+                                    : color.warn,
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+
+                      <Scroll>
+                        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                          <thead>
+                            <tr>
+                              <th style={th}>#</th>
+                              <th style={th}>偏移（秒）</th>
+                              <th style={th}>动作</th>
+                              <th style={th}>容量</th>
+                              <th style={th}>输入</th>
+                              <th style={th}>距上一步</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {replay.steps.map((step) => (
+                              <tr key={step.id}>
+                                <td style={td}>{step.seq}</td>
+                                <td style={td}>{step.offset_seconds.toFixed(1)}</td>
+                                <td style={td}>
+                                  {labelOf(step)} · {step.title}
+                                </td>
+                                <td style={td}>
+                                  {step.before_capacity} → {step.after_capacity}
+                                </td>
+                                <td style={td}>
+                                  {step.running} / {step.queued}
+                                </td>
+                                <td style={td}>
+                                  {step.since_previous_seconds.toFixed(1)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </Scroll>
+
+                      <p style={{ ...muted, margin: "8px 0 0" }}>{replay.note}</p>
+                    </>
+                  )
+                ) : (
+                  <Empty text="点「加载回放」读取持久事件；没有事件时可先跑 scripts/demo_elastic_loop.py。" />
                 )}
               </Card>
             </>
