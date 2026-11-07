@@ -70,3 +70,17 @@ TypeError: 'NoneType' object is not subscriptable
 - 两个不同 host 拿到同一个 `tok:a5de5fc006e8`
 - 审计 actor 为 `tok:a5de5fc006e8`
 - `Bearer 令牌` 触发 `TypeError: comparing strings with non-ASCII characters is not supported`
+
+## 6. 收尾：全量 PASS
+
+修掉 `test_route_pipeline` 的本机编码假失败（子进程固定 UTF-8）后：
+
+```
+Files: 104
+Cases: 885
+Duration: 448.27s
+Result: PASS
+```
+
+即本次改动前后 885 用例全部通过，0 failure / 0 error。
+

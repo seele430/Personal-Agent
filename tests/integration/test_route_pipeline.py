@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -24,6 +25,10 @@ class RoutePipelineTest(unittest.TestCase):
                     temp,
                 ],
                 cwd=str(ROOT),
+                # 子进程默认按本机 locale 编码输出；中文 Windows 是 cp936，
+                # 与下面的 encoding="utf-8" 会对不上，reader 线程解码失败后
+                # stdout/stderr 会变成 None。固定成 UTF-8，跨平台一致。
+                env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

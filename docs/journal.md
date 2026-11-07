@@ -240,3 +240,10 @@
   - 启动拒绝「已设置但全是空白」的 `PERSONAL_AGENT_PLATFORM_TOKEN`：过去这种配置会被静默当作未配置、无认证运行。
 - 验收：`tests/integration/test_platform_audit.py` 从 11 条扩到 **20 条全绿**（新增：匿名不消耗 tok 桶、不同 host 不同桶、匿名审计 actor 为 `anon:`、异常 Authorization 六种输入不 500、`/v1/audit` 豁免需认证、空闲满桶回收、被抽干的桶不回收）。全量 **104 文件 / 885 用例**，1 error —— 仍是 `test_route_pipeline` 那条与本改动无关的环境既有错误，488 秒。证据：`docs/evidence/d26-2-backend-tests.txt`。
 - 遗留：① 单令牌下 `tok:` 桶仍是所有合法客户端共用，按客户端限流需先支持多令牌；② 反代部署必须显式配置可信代理（见 `platform-contract.md`），否则 `request.client.host` 全是代理地址、匿名桶会合并；③ 限流仍是进程内的，多 worker 各算各的。
+## 测试基建 — 2026-11-07 修 route_pipeline 的本机假失败
+
+- 现象：`test_pipeline_produces_chart_and_trace` 在中文 Windows 上稳定报 `TypeError: 'NoneType' object is not subscriptable`（`result.stderr[-2000:]`），但用例本身在 CI 一直绿。
+- 根因：`demo_route_pipeline.py` 按**本机 locale**（中文 Windows = cp936）往管道写中文，测试侧 `encoding="utf-8"` 解码；`subprocess` 的 reader 线程解码失败后静默死掉，`CompletedProcess` 变成 `returncode=0` 但 `stdout`/`stderr` 都是 `None`。而 `assertEqual(..., result.stderr[-2000:])` 的 msg 参数**先求值**，于是先炸在 `None[-2000:]`，看起来像断言失败、其实是编码错配。
+- 修法：给子进程加 `env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}`，让输出编码与解码假设一致；不动产品代码，CI 与本地行为统一。
+- 验收：该用例本机转绿；全量 **104 文件 / 885 用例 PASS，448.27 秒**（此前同一条稳定 error）。
+
