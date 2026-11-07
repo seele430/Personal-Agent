@@ -1,0 +1,72 @@
+# D26.2 限流分桶修复：后端回归证据
+
+日期：2026-11-07
+
+## 1. 目标模块
+
+```
+.venv\Scripts\python.exe tests\integration\test_platform_audit.py
+Ran 20 tests in 4.507s
+OK
+```
+
+（同层 `test_platform_auth.py`：Ran 9 tests, OK。）
+
+## 2. 全量后端（受保护运行器）
+
+```
+cd "C:\Users\123\Personal Agent"
+.venv\Scripts\python.exe scripts\run_guarded_tests.py backend
+
+Files: 104
+Cases: 885
+Failures: 0
+Errors: 1
+Duration: 488.38s
+Result: FAIL
+```
+
+## 3. 与基线的差异
+
+| | 基线（改动前） | 改动后 |
+|---|---|---|
+| 文件 | 104 | 104 |
+| 用例 | 876 | **885**（+9） |
+| 失败 | 0 | 0 |
+| 错误 | 1 | **1（同一条）** |
+| 耗时 | 459.92s | 488.38s |
+
+基线那条错误：
+
+```
+ERROR: test_pipeline_produces_chart_and_trace
+(integration.test_route_pipeline.RoutePipelineTest)
+TypeError: 'NoneType' object is not subscriptable
+  tests\integration\test_route_pipeline.py:33
+```
+
+`result.stderr[-2000:]` 中的 `stderr` 为 `None`。该用例在本机改动前即失败，
+与限流/认证改动无关（本次未触碰路由管线与 subprocess 捕获），记录为环境既有问题。
+
+## 4. 新增用例（9 条）
+
+| 用例 | 断言 |
+|---|---|
+| `test_anonymous_traffic_does_not_drain_token_bucket` | 10 次匿名请求后，两次带正确令牌仍 200 |
+| `test_distinct_hosts_get_distinct_anonymous_keys` | 不同来源 host 的匿名键不相等且以 `anon:` 开头 |
+| `test_valid_token_uses_token_key` | 正确令牌落 `tok:` 键 |
+| `test_anonymous_denials_are_audited_under_anon_actor` | 匿名拒绝的审计 actor 以 `anon:` 开头 |
+| `test_malformed_authorization_is_401_not_500` | 缺头 / 空值 / `Bearer` 后空 / `Basic` / 8 KB 超长 → 401 |
+| `test_non_ascii_authorization_is_401_not_500` | `Bearer 令牌` 直接调中间件 → 401（改动前 TypeError） |
+| `test_audit_exemption_requires_auth` | 匿名连打 `/v1/audit`：第一次 401、第二次 429 |
+| `test_idle_full_buckets_are_reclaimed` | 50 个一次性键后桶数 ≤ 11（上限 10 + 当前） |
+| `test_drained_bucket_is_never_reclaimed` | 被抽干的桶保留且额度未被重置 |
+
+## 5. 红→绿记录
+
+改动前同一模块：`Ran 16 tests ... FAILED (failures=3, errors=1)`
+
+- 匿名打满后合法令牌 429（`429 != 200`）
+- 两个不同 host 拿到同一个 `tok:a5de5fc006e8`
+- 审计 actor 为 `tok:a5de5fc006e8`
+- `Bearer 令牌` 触发 `TypeError: comparing strings with non-ASCII characters is not supported`

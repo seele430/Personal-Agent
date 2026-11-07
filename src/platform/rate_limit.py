@@ -62,12 +62,65 @@ class RateLimiter:
         rate_per_minute: int,
         burst: int,
         clock=time.monotonic,
+        max_buckets: int = 4096,
+        idle_ttl_seconds: float = 300.0,
     ):
         self.rate_per_second = rate_per_minute / 60.0
         self.capacity = float(burst)
         self.clock = clock
+        self.max_buckets = max_buckets
+        self.idle_ttl_seconds = idle_ttl_seconds
         self._buckets: dict[str, _Bucket] = {}
         self._lock = threading.Lock()
+
+    def _sweep(self, now: float) -> None:
+        """回收「令牌已满」的空闲桶；调用方必须已持锁。
+
+        只回收满桶：满桶与新建的桶完全等价，丢掉不改变任何调用方的额度。
+        被消耗过的桶一律保留 —— 否则攻击者只要触发回收就能重获突发额度，
+        修复等于没做。
+        """
+
+        if self.max_buckets <= 0 or len(self._buckets) <= self.max_buckets:
+            return
+
+        def effective_tokens(bucket: _Bucket) -> float:
+            # 桶只在被访问时才补令牌；回收判断必须自己把这段时间算上，
+            # 否则「很久没碰过的满桶」会被误判成空桶，永远收不掉。
+            return min(
+                self.capacity,
+                bucket.tokens
+                + max(0.0, now - bucket.updated_at) * self.rate_per_second,
+            )
+
+        expired = [
+            key
+            for key, bucket in self._buckets.items()
+            if now - bucket.updated_at >= self.idle_ttl_seconds
+            and effective_tokens(bucket) >= self.capacity
+        ]
+
+        for key in expired:
+            self._buckets.pop(key, None)
+
+        if len(self._buckets) <= self.max_buckets:
+            return
+
+        # 仍超限：从最老的满桶开始收，绝不碰欠额度的桶。
+        full = sorted(
+            (
+                key
+                for key, bucket in self._buckets.items()
+                if effective_tokens(bucket) >= self.capacity
+            ),
+            key=lambda key: self._buckets[key].updated_at,
+        )
+
+        for key in full:
+            if len(self._buckets) <= self.max_buckets:
+                break
+
+            self._buckets.pop(key, None)
 
     def allow(self, key: str) -> bool:
         """取一个令牌；成功返回 True。"""
@@ -92,6 +145,7 @@ class RateLimiter:
                 return False
 
             bucket.tokens -= 1.0
+            self._sweep(now)
             return True
 
     def retry_after_seconds(self, key: str) -> int:

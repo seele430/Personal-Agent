@@ -94,6 +94,11 @@ secrets.compare_digest(candidate_hash, stored_hash)           # 常量时间比�
 - 客户端 IP 取真实连接来源（`request.client.host`），**不信任 `X-Forwarded-For`**
   —— 否则限流形同虚设。
 
+> 同一条规则也适用于 `/v1` 平台令牌的分桶（D26.2，2026-11-07）：已认证方按出示
+> 令牌的指纹、匿名方按 `request.client.host` 分桶，不读客户端自报的转发头。
+> 反代部署必须显式配置可信代理（`--proxy-headers --forwarded-allow-ips=<代理IP>`），
+> 否则来源不可信、匿名桶会合并。细节见 `platform-contract.md`。
+
 ---
 
 ## 3. 邀请码（已删除，2026-11-06）

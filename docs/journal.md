@@ -228,3 +228,15 @@
   - 单用户全局上限：`PERSONAL_AGENT_SANDBOX_GLOBAL_LIMIT`（默认 8，0=不限），在 create 的同一事务里按「所有租户未回收沙箱合计」检查；租户配额保留为第二层。
 - 验收：`tests/integration/test_platform_scheduling.py` **5 条全绿**（least-loaded 轮流、cordon 跳过、容量满 429 CAPACITY_EXCEEDED、全局上限 1、回收后释放）；全量 **87 文件 / 771 用例 PASS，227.95 秒**。证据：`docs/evidence/d44-scheduling-backend-tests.txt`。
 - 未做：审查列出的其余缺口（runner PID 持久化与真实孤儿回收、完整 spans 与 trajectory JSONL 导出、10 分钟压测/重复/资源数据、告警冷却与磁盘故障注入、README/PLAN-STATUS/简历数据、G3 视频）仍待补。
+## D26.2 — 2026-11-07 限流分桶修复（外部报告触发）
+
+- 背景：外部报告（Matt）指出 `/v1` 限流桶的键取的是**服务端自己配的令牌**，一旦配置 `PERSONAL_AGENT_PLATFORM_TOKEN`，所有调用方共用一个桶；匿名方把桶打空就能让持正确令牌的客户端持续 429。本地核实属实（引入于 `7ee9349` d26），且他给的修法「先认证、再按调用方限流」会拆掉 D26 为「401 可无限重试」加的防护，因此**只改键、不动顺序**。
+- 实现：
+  - `_actor_key_and_auth()`：已认证 → `tok:<出示令牌的 sha256 前 12 位>`；未认证 → `anon:<client.host>`；令牌未配置（本机模式）→ `host:<host>` 且视为已认证。中间件顺序仍是「限流 → 认证」，认证结论只算一次，认证分支复用，避免键函数与认证各解析一次后漂移。
+  - `_bearer_of()` 统一解析 Authorization；比较改用 **UTF-8 字节** —— `compare_digest` 对非 ASCII `str` 直接抛 `TypeError`（发一个 `Authorization: Bearer 令牌` 就能打出 500），这是既有缺陷，一并修掉。
+  - `/v1/audit` 免限流改为**仅认证通过时生效**；匿名打它会落 `anon` 桶并被 429，不再有免限流口子。
+  - `_audit_denied` 的 `detail` 增 `auth_ok`，审计能区分匿名与已认证。
+  - 桶回收：`RateLimiter` 新增 `max_buckets`（默认 4096）/ `idle_ttl_seconds`（默认 300），只回收**令牌已满**的空闲桶；被打空的桶一律保留 —— 否则攻击者触发回收就能重获突发额度。回收判断按时间折算有效令牌数（桶只在被访问时才补令牌，直接读 `tokens` 会把「很久没碰的满桶」误判成空桶）。
+  - 启动拒绝「已设置但全是空白」的 `PERSONAL_AGENT_PLATFORM_TOKEN`：过去这种配置会被静默当作未配置、无认证运行。
+- 验收：`tests/integration/test_platform_audit.py` 从 11 条扩到 **20 条全绿**（新增：匿名不消耗 tok 桶、不同 host 不同桶、匿名审计 actor 为 `anon:`、异常 Authorization 六种输入不 500、`/v1/audit` 豁免需认证、空闲满桶回收、被抽干的桶不回收）。全量 **104 文件 / 885 用例**，1 error —— 仍是 `test_route_pipeline` 那条与本改动无关的环境既有错误，488 秒。证据：`docs/evidence/d26-2-backend-tests.txt`。
+- 遗留：① 单令牌下 `tok:` 桶仍是所有合法客户端共用，按客户端限流需先支持多令牌；② 反代部署必须显式配置可信代理（见 `platform-contract.md`），否则 `request.client.host` 全是代理地址、匿名桶会合并；③ 限流仍是进程内的，多 worker 各算各的。

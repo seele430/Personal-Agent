@@ -73,6 +73,15 @@ async def lifespan(_app: FastAPI):
         logger.exception("启动对账失败")
 
     # D25：没配令牌就明确说清楚，别让人以为 /v1 已经受保护。
+    # 但「设了却全是空白」不算没配 —— 那等于静默关掉认证，必须拒绝启动。
+    raw_token = os.getenv(PLATFORM_TOKEN_ENV, "")
+
+    if raw_token and not raw_token.strip():
+        raise RuntimeError(
+            "PERSONAL_AGENT_PLATFORM_TOKEN 已设置但内容全是空白；"
+            "要么填真实令牌，要么删除该变量"
+        )
+
     if platform_token() is None:
         logger.warning(
             "PERSONAL_AGENT_PLATFORM_TOKEN 未配置：/v1 无认证，只能在本机使用"
@@ -196,6 +205,9 @@ async def _trace_request(request, call_next):
 
 PLATFORM_TOKEN_ENV = "PERSONAL_AGENT_PLATFORM_TOKEN"
 
+# 审计查询前缀：已认证方不占限流额度（事故排查用）。
+_AUDIT_PATH_PREFIX = "/v1/audit"
+
 
 def platform_token() -> str | None:
     """平台访问令牌；未配置返回 None（此时 /v1 保持本机可用的既有行为）。"""
@@ -203,20 +215,64 @@ def platform_token() -> str | None:
     return os.getenv(PLATFORM_TOKEN_ENV, "").strip() or None
 
 
-def _platform_actor_key(request) -> str:
-    """限流与审计的键：令牌指纹优先，其次来源主机。"""
+def _bearer_of(request) -> str | None:
+    """取 Bearer 值；缺头 / 非 Bearer / 空值一律 None。
+
+    全进程只在这里解析 Authorization，认证中间件复用它的结论，避免
+    「键函数」和「认证」各自解析后对同一请求给出不同判断。
+    """
+
+    header = request.headers.get("authorization", "")
+    scheme, _, value = header.partition(" ")
+
+    if scheme.lower() != "bearer":
+        return None
+
+    value = value.strip()
+
+    return value or None
+
+
+def _actor_key_and_auth(request) -> tuple[str, bool]:
+    """返回 (限流/审计键, 是否已认证)。
+
+    键描述的是「谁」，不是「服务端配了什么」：已认证方按出示令牌的指纹
+    分桶，未认证方按来源主机分桶。否则匿名流量会和合法客户端共用同一个
+    桶，把对方额度打空。
+    """
 
     token = platform_token()
+    client = getattr(request, "client", None)
+    host = getattr(client, "host", None) or "unknown"
 
-    if token:
-        return "tok:" + hashlib.sha256(token.encode("utf-8")).hexdigest()[:12]
+    if token is None:
+        return f"host:{host}", True
 
-    host = request.client.host if request.client else "unknown"
+    provided = _bearer_of(request)
 
-    return f"host:{host}"
+    # 用 UTF-8 字节比较：非 ASCII 的 str 直接进 compare_digest 会 TypeError。
+    valid = provided is not None and hmac.compare_digest(
+        provided.encode("utf-8"),
+        token.encode("utf-8"),
+    )
+
+    if valid:
+        return (
+            "tok:" + hashlib.sha256(provided.encode("utf-8")).hexdigest()[:12],
+            True,
+        )
+
+    return f"anon:{host}", False
 
 
-def _audit_denied(request, event: str, code: str) -> None:
+def _platform_actor_key(request) -> str:
+    """限流与审计的键；认证结论由 `_actor_key_and_auth` 提供。"""
+
+    return _actor_key_and_auth(request)[0]
+
+
+
+def _audit_denied(request, event: str, code: str, *, auth_ok: bool) -> None:
     """拒绝路径的审计；写失败不影响响应。"""
 
     try:
@@ -225,7 +281,7 @@ def _audit_denied(request, event: str, code: str) -> None:
             outcome="denied",
             code=code,
             actor=_platform_actor_key(request),
-            detail={"path": request.url.path},
+            detail={"path": request.url.path, "auth_ok": auth_ok},
         )
     except Exception:  # noqa: BLE001 - 审计是旁路
         logger.exception("审计写入失败 event=%s", event)
@@ -233,7 +289,11 @@ def _audit_denied(request, event: str, code: str) -> None:
 
 @app.middleware("http")
 async def _platform_auth(request, call_next):
-    """D25/D26：/v1 的 Bearer 认证 + 进程内限流。
+    """D25/D26：/v1 的进程内限流 + Bearer 认证。
+
+    顺序是「限流 → 认证」而不是反过来：D25 的遗留是 401 可以无限重试，
+    D26 有意让失败认证也付出限流成本。真正要修的是键 —— 它必须描述
+    调用方，否则匿名流量会和合法客户端抢同一个桶。
 
     配了 `PERSONAL_AGENT_PLATFORM_TOKEN` 就强制校验；没配则放行并在启动时
     打警告 —— 未配置意味着「只监听本机」这条边界还在生效。
@@ -243,16 +303,24 @@ async def _platform_auth(request, call_next):
     if not request.url.path.startswith("/v1"):
         return await call_next(request)
 
-    key = _platform_actor_key(request)
+    key, authed = _actor_key_and_auth(request)
     limiter = get_limiter()
 
-    # 审计查询要能在事故中随取随用，不占限流额度（认证仍然要过）。
+    # 审计查询要能在事故中随取随用，不占限流额度；但只对已认证方开放，
+    # 否则匿名请求可以无限打 /v1/audit，等于开了个免限流口子。
+    audit_exempt = authed and request.url.path.startswith(_AUDIT_PATH_PREFIX)
+
     if (
         limiter is not None
-        and not request.url.path.startswith("/v1/audit")
+        and not audit_exempt
         and not limiter.allow(key)
     ):
-        _audit_denied(request, "rate_limited", "RATE_LIMITED")
+        _audit_denied(
+            request,
+            "rate_limited",
+            "RATE_LIMITED",
+            auth_ok=authed,
+        )
         return JSONResponse(
             status_code=429,
             content={
@@ -268,18 +336,13 @@ async def _platform_auth(request, call_next):
             },
         )
 
-    token = platform_token()
-
-    if token is None:
-        return await call_next(request)
-
-    header = request.headers.get("authorization", "")
-    scheme, _, provided = header.partition(" ")
-
-    if scheme.lower() != "bearer" or not hmac.compare_digest(
-        provided.strip(), token
-    ):
-        _audit_denied(request, "auth.denied", "UNAUTHORIZED")
+    if not authed:
+        _audit_denied(
+            request,
+            "auth.denied",
+            "UNAUTHORIZED",
+            auth_ok=False,
+        )
         return JSONResponse(
             status_code=401,
             content={

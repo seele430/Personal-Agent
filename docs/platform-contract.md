@@ -247,6 +247,22 @@ failed → reclaimed
 > 启动时按 `PERSONAL_AGENT_AUDIT_RETENTION_DAYS`（默认 30，`0` = 永久保留）
 > 清理过期记录。
 >
+> D26.2（2026-11-07）：限流桶改为**按调用方**分桶 —— 已认证方按出示令牌的
+> 指纹（`tok:`），未认证方按来源主机（`anon:`），令牌未配置时按主机
+> （`host:`）。匿名流量因此打不满合法客户端的额度；中间件顺序仍是
+> 「限流 → 认证」（失败认证继续付出限流成本）。`/v1/audit` 的免限流**只对
+> 已认证方生效**，匿名打它会 401 / 429。异常 Authorization（缺头、空值、
+> 非 Bearer、非 ASCII、超长）一律 401，不再有 500 路径。桶字典有回收上限
+> （只回收已满且闲置的桶，被抽干的桶保留）。
+>
+> **反代部署**：本服务按 `request.client.host` 取来源，**不读**客户端自报的
+> `X-Forwarded-For`。若前面有 nginx 等代理，必须显式信任代理并让它改写来源
+> （`uvicorn --proxy-headers --forwarded-allow-ips=<代理IP>`），否则所有请求
+> 的来源都是代理地址、匿名桶会合并成一个。
+>
+> 已知边界：单令牌下 `tok:` 桶仍是**所有合法客户端共用**，要做到按客户端
+> 限流需要先支持多令牌；限流仍是进程内的，多 worker 各算各的。
+>
 > D30（2026-11-04）：有界执行队列已实现。全局并发上限
 > `PERSONAL_AGENT_PLATFORM_MAX_ACTIVE_EXECS`（默认 4）、等待队列
 > `PERSONAL_AGENT_PLATFORM_QUEUE_SIZE`（默认 16）；两者都满时返回
