@@ -252,6 +252,26 @@ TEST_SCHEMAS = {
     ),
 
     # ----------------------------------------------------------------
+    # L1：产物登记与路径安全（临时 SQLite，越界/穿越/符号链接）
+    "unit/test_artifact_registry.py": TestSchema(
+        layer="unit",
+        domain="artifacts",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
+
+    # L1：中文活动摘要（纯函数聚合 span）
+    "unit/test_activity_summary.py": TestSchema(
+        layer="unit",
+        domain="activity",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
     # L2：数据集成测试（临时 SQLite）
     # ----------------------------------------------------------------
 
@@ -343,6 +363,16 @@ TEST_SCHEMAS = {
         authentication="none",
         external_network="mocked",
         risk="medium",
+    ),
+
+    # L2：产物 API（鉴权替身 + 临时产物库，覆盖 4xx 安全用例）
+    "integration/test_artifact_api.py": TestSchema(
+        layer="integration",
+        domain="artifacts",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
     ),
 
     # L2：提醒 SQLite 存储与并发

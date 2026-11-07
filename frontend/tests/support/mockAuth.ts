@@ -67,6 +67,26 @@ export async function installReminderMocks(page: Page): Promise<void> {
 
 export const INBOX_API = "**/api/inbox";
 
+export const ARTIFACTS_API = "**/api/artifacts";
+
+/**
+ * 产物列表的默认 mock：空。
+ *
+ * W4 之后已登录页面一打开就会取一次产物列表（聊天区上方的产物条）。
+ * 既有用例都靠 `expectNoUnmockedApi` 兜底，不给默认空列表的话
+ * 它们会因为"多了个没 mock 的请求"集体失败 —— 那是测试准备问题，
+ * 不是应用回归。要断言真实产物的用例在 setup 之后再注册自己的 route。
+ */
+export async function installArtifactMocks(page: Page): Promise<void> {
+  await page.route(ARTIFACTS_API, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [] }),
+    }),
+  );
+}
+
 /**
  * 收件箱的默认 mock：空列表。
  *
@@ -152,6 +172,9 @@ export async function installAuthMocks(
   // 任务中心打开时会取收件箱；没打开的用例不会命中，
   // 但兜底放着可以让所有用例共用同一套 setup。
   await installInboxMocks(page);
+
+  // W4：产物条在已登录页面一打开就会取列表，默认空。
+  await installArtifactMocks(page);
 }
 
 export function expectNoUnmockedApi(unexpected: string[]): void {

@@ -9,30 +9,21 @@ import {
 
 import BotsView from "./BotsView";
 import PlatformView from "./PlatformView";
+import ArtifactSidebar from "./components/ArtifactSidebar";
+import { ChatMessages, Composer } from "./chat/ChatView";
+import {
+  draftStorageKey,
+  loadDraft,
+  loadMessages,
+  saveMessages,
+} from "./chat/storage";
+import type {
+  ActivitySummaryPayload,
+  ArtifactMeta,
+  ChatResponse,
+  Message,
+} from "./chat/types";
 
-type MessageStatus =
-  | "pending"
-  | "sent"
-  | "unknown"
-  | "rejected"
-  | "cancelled";
-
-type Message = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  status: MessageStatus;
-  requestId?: string;
-  replyTo?: string;
-};
-
-type ChatResponse = {
-  request_id?: string;
-  status?: string;
-  reply?: string | null;
-  code?: string;
-  detail?: string;
-};
 
 type ReminderStatusValue =
   | "pending"
@@ -309,94 +300,10 @@ async function readDetail(
   return fallback;
 }
 
-const CHAT_KEY = "personal-agent-dev-chat";
-const DRAFT_KEY = "personal-agent-dev-draft";
-
 type AppProps = {
   authToken?: string;
   userId?: string;
 };
-
-// 已登录用户使用独立的浏览器缓存。
-function chatStorageKey(userId?: string): string {
-  return userId
-    ? `personal-agent-user-${userId}-chat`
-    : CHAT_KEY;
-}
-
-function draftStorageKey(userId?: string): string {
-  return userId
-    ? `personal-agent-user-${userId}-draft`
-    : DRAFT_KEY;
-}
-
-function saveMessages(
-  messages: Message[],
-  userId?: string
-) {
-  try {
-    sessionStorage.setItem(
-      chatStorageKey(userId),
-      JSON.stringify(messages.slice(-100))
-    );
-  } catch {
-    // 缓存失败不影响聊天
-  }
-}
-
-function loadMessages(userId?: string): Message[] {
-  try {
-    const raw = sessionStorage.getItem(
-      chatStorageKey(userId)
-    );
-
-    if (!raw) return [];
-
-    const parsed: unknown = JSON.parse(raw);
-
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .filter(
-        (item): item is Message =>
-          typeof item === "object" &&
-          item !== null &&
-          typeof item.id === "string" &&
-          typeof item.content === "string" &&
-          (item.role === "user" ||
-            item.role === "assistant") &&
-          [
-            "pending",
-            "sent",
-            "unknown",
-            "rejected",
-            "cancelled",
-          ].includes(item.status)
-      )
-      .slice(-100)
-      .map((item) => ({
-        ...item,
-        status:
-          item.status === "pending" && !item.requestId
-            ? "unknown"
-            : item.status,
-      }));
-  } catch {
-    return [];
-  }
-}
-
-function loadDraft(userId?: string): string {
-  try {
-    return (
-      sessionStorage.getItem(
-        draftStorageKey(userId)
-      ) ?? ""
-    );
-  } catch {
-    return "";
-  }
-}
 
 async function readJson(
   response: Response
@@ -434,6 +341,103 @@ export default function App(
 
   const [checkingId, setCheckingId] =
     useState<string | null>(null);
+
+  // W4：产物卡片 + 预览侧栏 + 活动摘要
+  const [artifacts, setArtifacts] = useState<ArtifactMeta[]>([]);
+  const [activeArtifactId, setActiveArtifactId] =
+    useState<string | null>(null);
+  const [activitySummary, setActivitySummary] =
+    useState<ActivitySummaryPayload | null>(null);
+
+  useEffect(() => {
+    if (!authToken) return;
+
+    let cancelled = false;
+
+    async function loadArtifacts() {
+      try {
+        const response = await fetch("/api/artifacts", {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+
+        if (!response.ok) return;
+
+        const payload = (await response.json()) as {
+          items?: ArtifactMeta[];
+        };
+
+        if (!cancelled) setArtifacts(payload.items ?? []);
+      } catch {
+        // 产物列表失败不影响聊天
+      }
+    }
+
+    void loadArtifacts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken]);
+
+  // 深链：刷新页面后按 #artifact=<id> 恢复侧栏
+  useEffect(() => {
+    const match = /#artifact=([^&]+)/.exec(window.location.hash);
+
+    if (match) setActiveArtifactId(decodeURIComponent(match[1]));
+  }, []);
+
+  useEffect(() => {
+    if (activeArtifactId === null) {
+      if (window.location.hash) {
+        history.replaceState(null, "", window.location.pathname);
+      }
+
+      return;
+    }
+
+    const next = `#artifact=${encodeURIComponent(activeArtifactId)}`;
+
+    if (window.location.hash !== next) {
+      history.replaceState(null, "", next);
+    }
+  }, [activeArtifactId]);
+
+  useEffect(() => {
+    const runId = artifacts[0]?.run_id;
+
+    if (!authToken || !runId) {
+      setActivitySummary(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadSummary() {
+      try {
+        const response = await fetch(
+          `/api/activity/${encodeURIComponent(runId)}/summary`,
+          { headers: { Authorization: `Bearer ${authToken}` } },
+        );
+
+        if (!response.ok) return;
+
+        const payload = (await response.json()) as ActivitySummaryPayload;
+
+        if (!cancelled) setActivitySummary(payload);
+      } catch {
+        // 摘要失败不影响主流程
+      }
+    }
+
+    void loadSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [artifacts, authToken]);
+
+  const activeArtifact =
+    artifacts.find((item) => item.id === activeArtifactId) ?? null;
 
   const [view, setView] = useState<
     | "chat"
@@ -2318,200 +2322,39 @@ export default function App(
           </section>
         ) : (
           <>
-        <section className="chat-area">
-          {messages.length === 0 && (
-            <div className="welcome">
-              <div className="welcome-logo">
-                ✳
-              </div>
+        <ChatMessages
+          messages={messages}
+          pendingApproval={pendingApproval}
+          decideApproval={(decision) => void decideApproval(decision)}
+          sending={sending}
+          activeTool={activeTool || null}
+          finishedTool={finishedTool || null}
+          checkingId={checkingId}
+          queryStatus={(requestId) => void queryStatus(requestId)}
+          bottomRef={bottomRef}
+          artifacts={artifacts}
+          activeArtifactId={activeArtifactId}
+          onOpenArtifact={(artifactId) => setActiveArtifactId(artifactId)}
+          activity={activitySummary}
+        />
 
-              <h1>今天有什么新想法？</h1>
+        <Composer
+          error={error}
+          input={input}
+          setInput={setInput}
+          sending={sending}
+          handleKeyDown={handleKeyDown}
+          sendMessage={sendMessage}
+          cancelActiveRun={cancelActiveRun}
+        />
 
-              <p>
-                欢迎来到 Personal Agent。
-                <br />
-                你的智能工作空间，从一次对话开始。
-              </p>
-
-              <div className="welcome-tip">
-                一个简洁、可靠、不断成长的 AI 助手
-              </div>
-            </div>
-          )}
-
-          <div className="message-container">
-            {messages.map((message) => (
-              <article
-                className={`message ${message.role}`}
-                key={message.id}
-              >
-                <div className="message-avatar">
-                  {message.role === "assistant"
-                    ? "✦"
-                    : "我"}
-                </div>
-
-                <div className="message-body">
-                  <div className="message-name">
-                    {message.role === "assistant"
-                      ? "Personal Agent"
-                      : "你"}
-                  </div>
-
-                  <div className="message-content">
-                    {message.content}
-                  </div>
-
-                  {message.status === "pending" && (
-                    <div className="message-status">
-                      等待回复…
-                    </div>
-                  )}
-
-                  {message.status === "unknown" && (
-                    <div className="message-status warning">
-                      请求结果尚未确认
-                    </div>
-                  )}
-
-                  {message.status === "rejected" && (
-                    <div className="message-status warning">
-                      未发送成功 · AI 未执行
-                    </div>
-                  )}
-
-                  {message.status === "cancelled" && (
-                    <div className="message-status">
-                      已取消本次回复
-                    </div>
-                  )}
-
-                  {message.role === "user" &&
-                    message.requestId &&
-                    (
-                      message.status === "pending" ||
-                      message.status === "unknown"
-                    ) && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void queryStatus(
-                            message.requestId!
-                          )
-                        }
-                        disabled={
-                          checkingId ===
-                          message.requestId
-                        }
-                        aria-label="查询结果"
-                      >
-                        {checkingId === message.requestId
-                          ? "查询中…"
-                          : "查询结果"}
-                      </button>
-                    )}
-                </div>
-              </article>
-            ))}
-
-            {pendingApproval && (
-              <div className="approval-card" role="alertdialog" aria-label="工具审批">
-                <div className="approval-title">
-                  工具「{pendingApproval.tool}」需要你的批准
-                </div>
-                <pre className="approval-preview">{pendingApproval.preview}</pre>
-                <div className="approval-actions">
-                  <button
-                    type="button"
-                    onClick={() => void decideApproval("approve")}
-                  >
-                    批准执行
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => void decideApproval("reject")}
-                  >
-                    拒绝
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {sending && (
-              <div className="loading" role="status">
-                <div className="spinner" />
-
-                <span>
-                  {pendingApproval
-                    ? "等待你批准工具调用…"
-                    : activeTool
-                      ? `正在执行工具：${activeTool}（Esc 停止）`
-                      : finishedTool
-                        ? `工具 ${finishedTool} 已完成，正在生成回答…`
-                        : "助手正在生成，按 Esc 停止…"}
-                </span>
-              </div>
-            )}
-
-            <div ref={bottomRef} />
-          </div>
-        </section>
-
-        <div className="input-section">
-          {error && (
-            <div className="error-box" role="alert">
-              {error}
-            </div>
-          )}
-
-          <form
-            className="input-box"
-            onSubmit={sendMessage}
-          >
-            <textarea
-              aria-label="输入聊天消息"
-              placeholder="向 Personal Agent 发送消息..."
-              value={input}
-              onChange={(event) =>
-                setInput(event.target.value)
-              }
-              onKeyDown={handleKeyDown}
-              disabled={sending}
-              maxLength={8000}
-              rows={2}
-            />
-
-            <div className="input-actions">
-              <span>
-                Enter 发送 · Shift + Enter 换行
-              </span>
-
-              {sending ? (
-                <button
-                  type="button"
-                  onClick={cancelActiveRun}
-                  aria-label="停止生成"
-                >
-                  停止 Esc
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={!input.trim()}
-                  aria-label="发送 ↑"
-                >
-                  发送 ↑
-                </button>
-              )}
-            </div>
-          </form>
-
-          <p className="footer-note">
-            当前为本地开发版 ·
-            聊天记录暂存于当前浏览器标签页
-          </p>
-        </div>
+        {activeArtifact && (
+          <ArtifactSidebar
+            artifact={activeArtifact}
+            authToken={authToken}
+            onClose={() => setActiveArtifactId(null)}
+          />
+        )}
           </>
         )}
       </main>

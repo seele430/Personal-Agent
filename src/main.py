@@ -39,6 +39,9 @@ from src.platform.trends import start_sampler, stop_sampler
 from src.reminder_api import router as reminder_router
 from src.tts_api import router as tts_router
 from src.teams_api import router as teams_router
+from src.activity_api import router as activity_router
+from src.artifacts_api import router as artifacts_router
+
 from src.usage_api import router as usage_router
 
 logger = logging.getLogger("personal_agent.main")
@@ -467,6 +470,12 @@ app.include_router(inbox_router)
 
 # 团队任务分配（与聊天室并行）
 app.include_router(teams_router)
+
+# 产物登记、四类预览与安全下载（W4）
+app.include_router(artifacts_router)
+
+# 中文活动摘要卡（W4）
+app.include_router(activity_router)
 
 
 # ==========================================
