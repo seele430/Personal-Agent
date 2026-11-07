@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from src.core.trace_context import span
 
 
-router = APIRouter(tags=["语音"])
+router = APIRouter(prefix="/api", tags=["语音"])
 logger = logging.getLogger("personal_agent.tts")
 
 

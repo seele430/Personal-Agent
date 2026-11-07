@@ -1552,6 +1552,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="medium",
     ),
+
+    # L2：真实入口路由（直接打 src.main.app，覆盖 /api 命名空间）
+    "integration/test_main_app_routes.py": TestSchema(
+        layer="integration",
+        domain="api",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
 }
 
 

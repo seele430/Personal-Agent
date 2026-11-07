@@ -17,7 +17,7 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: c7134e9d12c33182 -->
+<!-- membership-digest: e834c6b46782f031 -->
 
 ## unit — L1 单元测试 (50 files)
 
@@ -74,7 +74,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_web_extract.py` | tests/unit/ | web | none | none | low | registered-inferred |
 | `unit/test_web_search.py` | tests/unit/ | web | none | mocked | medium | registered-inferred |
 
-## integration — L2 数据集成测试 (81 files)
+## integration — L2 数据集成测试 (82 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -95,6 +95,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `integration/test_diff_api.py` | tests/integration/ | diff | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_exec_terminal_write.py` | tests/integration/ | platform | temporary_sqlite | none | high | registered-inferred |
 | `integration/test_guarded_asyncio.py` | tests/integration/ | test_infra | none | none | low | registered-inferred |
+| `integration/test_main_app_routes.py` | tests/integration/ | api | temporary_sqlite | none | high | registered-inferred |
 | `integration/test_memory_eval_run.py` | tests/integration/ | memory | temporary_sqlite | mocked | medium | registered-inferred |
 | `integration/test_platform_alerts.py` | tests/integration/ | platform_alerts | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_platform_api.py` | tests/integration/ | platform_http | temporary_sqlite | none | medium | registered-inferred |

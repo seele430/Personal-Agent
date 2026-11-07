@@ -482,27 +482,22 @@ app.include_router(activity_router)
 # 桌面版：兼容 /api 前缀
 # ==========================================
 #
-# 开发时是 Vite 代理把 `/api/*` 转成 `/*` 再打给后端；
-# 打包成桌面应用后没有代理，前端照样请求 `/api/bots`，
-# 直接打后端就 404。这里把前缀剥掉，让两种模式共用同一套路由。
+# 规范前缀就是 `/api`：所有 router、后端集成测试、Playwright mock、前端调用
+# 都用 `/api/...`。这里**不再剥前缀**——2026-11-04 那版曾把 `/api/artifacts`
+# 改写成 `/artifacts`，导致真实入口下所有接口 404（见 pa-v122-evidence 的
+# BLOCKER-api-prefix.md）。现在只保留一条有用行为：`/api/*` 方法不匹配时
+# 统一回 404，不要让 SPA 兜底把它变成页面或 405。
 @app.middleware("http")
-async def _strip_api_prefix(request, call_next):
-    path = request.url.path
-
-    is_api = path.startswith("/api/")
-    if is_api:
-        stripped = path[4:]
-        request.scope["path"] = stripped
-        request.scope["raw_path"] = stripped.encode("utf-8")
-        # SPA 回退不能吞掉 /api/*：标记一下，让兜底路由继续返回 404。
-        request.scope["_was_api_prefix"] = True
+async def _api_method_not_allowed_to_404(request, call_next):
+    is_api = request.url.path.startswith("/api/")
 
     response = await call_next(request)
-    # 未知 /api 路径（含方法不匹配）统一 404，不要落到前端回退去变成 405/页面。
+
     if is_api and response.status_code == 405:
         from fastapi.responses import JSONResponse
 
         return JSONResponse({"detail": "Not Found"}, status_code=404)
+
     return response
 
 
@@ -568,3 +563,24 @@ def _mount_frontend() -> None:
 
 
 _mount_frontend()
+
+
+# ==========================================
+# 远程只读模式（v1.2）：只在显式开启时包装整个 app
+# ==========================================
+# 守卫不装载 = 远程开关形同虚设（2026-11-08 的 P0 之一）。
+# 默认关闭：没设 PERSONAL_AGENT_REMOTE=1 与足够长的令牌时不包装。
+def _install_remote_guard(application):
+    from src.remote.config import from_env
+
+    config = from_env()
+
+    if not config.usable:
+        return application
+
+    from src.remote.guard import RemoteGuard
+
+    return RemoteGuard(application, config)
+
+
+app = _install_remote_guard(app)

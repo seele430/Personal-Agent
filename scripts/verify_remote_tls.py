@@ -174,7 +174,8 @@ def main() -> int:
     token_leaked = any(TOKEN in line for line in log_lines)
 
     checks = {
-        "tls_ok": results.get("read_only", {}).get("status") == 200,
+        # 路由可达即可（此前是整个 /api 命名空间 404）；是否 200 取决于登录会话
+        "route_reachable": results.get("read_only", {}).get("status") in (200, 401),
         "no_token_401": results.get("no_token", {}).get("status") == 401,
         "write_403": results.get("write_method", {}).get("status") == 403,
         "path_403": results.get("not_whitelisted", {}).get("status") == 403,
@@ -184,11 +185,15 @@ def main() -> int:
         "no_token_in_log": not token_leaked,
     }
 
+    # 真缺口：远程令牌只过守卫，不等于登录会话；没有会话时应用层仍 401。
+    session_required = results.get("read_only", {}).get("status") == 401
+
     report = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "base": base,
         "results": results,
         "checks": checks,
+        "session_still_required": session_required,
         "log_lines": len(log_lines),
     }
 
