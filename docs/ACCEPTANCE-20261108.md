@@ -99,11 +99,12 @@ LibreOffice/Office 转换、模型 fallback、Sleep A/B、GPU 压测。
 | 项 | 原计划 | 实际 | 处理 |
 |---|---|---|---|
 | 运行时 | portable 7z（约 2 GB） | 源码路线：ComfyUI **0.3.40** + torch 2.5.1+cu121 | 记为实现变更（portable 下载停在 74.7% 且固实块不可部分解压） |
-| A2 命令 | `python -m pytest tests -q` | `python -m unittest discover -s tests`（**32 例**） | 记为命令变更；**未静默替换**，需 owner 确认或补 pytest 证据 |
+| A2 命令 | `python -m pytest tests -q` | **原命令已补跑：32 passed, 2 subtests**（0.49 s）；unittest 备选 32 OK | ✅ **已用原命令验证**（2026-11-09，`pa-b1-evidence-20261108/pytest.log`） |
 | 模型体积 | 约 2 GB | SD1.5 实际 **3.97 GB** | 磁盘预算已核实（E 盘余 137 GB） |
 | 版本 | 路线图锁定版本 | 0.3.40（master 的 comfy_kitchen 与 torch 2.5 不兼容） | 记录原因 |
 
-**B1 结论**：A1–A6 功能证据通过；**原命令/版本合规待确认**。
+**B1 结论**：A1–A6 功能证据通过；A2 已用**原命令 pytest** 验证（32 passed / 2 subtests）。
+**仍待 owner 确认的只有版本与实现路线**：ComfyUI 0.3.40 源码路线（原计划 portable 包）。
 
 ---
 
