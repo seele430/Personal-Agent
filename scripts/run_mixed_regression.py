@@ -47,6 +47,7 @@ MODULES = (
     "tests.integration.test_main_app_routes",
     "tests.integration.test_diff_api",
     "tests.integration.test_activity_timeline_api",
+    "tests.unit.test_comfy_tools",
     "tests.unit.test_remote_ratelimit",
     "tests.unit.test_collab_cli",
     "tests.unit.test_lifecycle_files",
