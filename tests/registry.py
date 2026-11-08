@@ -1652,6 +1652,16 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="low",
     ),
+
+    # L1：文档一致性（README 计数 / GPU 常量漂移）
+    "unit/test_docs_consistency.py": TestSchema(
+        layer="unit",
+        domain="docs",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
 }
 
 
