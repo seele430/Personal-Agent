@@ -1,28 +1,43 @@
 """ComfyUI 图生图工具：把本地 ComfyUI 接进对话。
 
-设计约束：
+**GPU 保护（2026-11-08 0x116 VIDEO_TDR_FAILURE 蓝屏后加，别删）**：
 
-- **只做 PA 需要的极小客户端**，与工作区里的 `comfy_agent` 包互不依赖；
-- **policy = ask**：会用 GPU、会写文件，默认要人工确认，不让模型自己决定跑图；
-- 服务未起 / 超时 / 参数错，一律给中文短句，不把 urllib 的 traceback 丢给模型；
-- handler 只在 tier1 runner 子进程里执行（与 sandbox_tools 同一约定），
-  因此这里**不**做工作区路径限制——图片由 ComfyUI 自己从它的 input 目录读。
+- 步数硬上限 30（默认 20）：6 GB 显存跑高步数容易触发 TDR；
+- 输入图任一边 > 768 时，工作流里先 `ImageScale` 到 512（读不到尺寸就按大图处理）；
+- 调用前读 `/system_stats`，空闲显存 < 2500 MB 直接中文拒绝，**不发 /prompt**；
+- 同一进程内禁止并发出图（第二个调用立即拒绝）；
+- batch 固定 1（工作流里没有 batch 维度）；超时默认 120 s；
+- ComfyUI 必须用 `comfy-agent/scripts/start-comfyui-safe.ps1` 启动
+  （`--lowvram --reserve-vram 1`，启动前强制检查空闲显存 ≥ 3 GB）。
 
 环境变量：
 
 - ``PA_COMFY_URL``：默认 ``http://127.0.0.1:8188``
-- ``PA_COMFY_TIMEOUT``：轮询上限秒数，默认 180
+- ``PA_COMFY_TIMEOUT``：轮询上限秒数，默认 120
+- ``PA_COMFY_INPUT_DIR``：ComfyUI 的 input 目录（用于读图片尺寸；读不到就按大图缩放）
 """
 
 from __future__ import annotations
 
 import json
 import os
+import struct
+import threading
 import time
 import urllib.error
 import urllib.request
 
+from pathlib import Path
 from typing import Any
+
+
+MAX_STEPS = 30
+DEFAULT_TIMEOUT = 120.0
+MIN_FREE_VRAM_MB = 2500
+MAX_INPUT_SIDE = 768
+TARGET_SIDE = 512
+
+_GPU_LOCK = threading.Lock()
 
 
 COMFY_TOOL = {
@@ -30,8 +45,8 @@ COMFY_TOOL = {
     "function": {
         "name": "comfy_img2img",
         "description": (
-            "用本机 ComfyUI 对一张已有图片做图生图，返回生成图片的绝对路径。"
-            "需要本机 ComfyUI 正在运行；会占用 GPU。"
+            "用本机 ComfyUI 对一张已有图片做图生图，返回生成图片的文件名。"
+            "需要本机 ComfyUI 正在运行；会占用 GPU（低显存模式，单张）。"
         ),
         "parameters": {
             "type": "object",
@@ -50,7 +65,7 @@ COMFY_TOOL = {
                 },
                 "steps": {
                     "type": "integer",
-                    "description": "采样步数 1-150，默认 20",
+                    "description": "采样步数 1-30，默认 20（上限 30，防显存超时）",
                 },
                 "cfg": {"type": "number", "description": "CFG 强度，默认 7.0"},
                 "denoise": {"type": "number", "description": "去噪强度 0-1，默认 0.6"},
@@ -107,10 +122,16 @@ def comfy_url() -> str:
 
 def timeout_seconds() -> float:
     try:
-        return float(os.environ.get("PA_COMFY_TIMEOUT", "180"))
+        return float(os.environ.get("PA_COMFY_TIMEOUT", str(DEFAULT_TIMEOUT)))
 
     except ValueError:
-        return 180.0
+        return DEFAULT_TIMEOUT
+
+
+def input_dir() -> Path | None:
+    raw = os.environ.get("PA_COMFY_INPUT_DIR", "").strip()
+
+    return Path(raw) if raw else None
 
 
 def _request(method: str, path: str, payload: dict | None = None) -> Any:
@@ -148,6 +169,84 @@ def _request(method: str, path: str, payload: dict | None = None) -> Any:
         raise RuntimeError("ComfyUI 返回的不是 JSON") from None
 
 
+def free_vram_mb() -> int | None:
+    """读 /system_stats 里的空闲显存（MB）。读不到返回 None（不误判）。"""
+
+    stats = _request("GET", "/system_stats")
+    devices = stats.get("devices") or []
+
+    for device in devices:
+        value = device.get("vram_free")
+
+        if isinstance(value, (int, float)) and value > 0:
+            return int(value // (1024 * 1024))
+
+    system = stats.get("system") or {}
+    value = system.get("vram_free")
+
+    if isinstance(value, (int, float)) and value > 0:
+        return int(value // (1024 * 1024))
+
+    return None
+
+
+def image_size(path: Path) -> tuple[int, int] | None:
+    """读 PNG/JPEG 头部拿尺寸；读不到返回 None（调用方按大图处理）。"""
+
+    try:
+        data = path.read_bytes()[:65536]
+
+    except OSError:
+        return None
+
+    if len(data) >= 24 and data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR":
+        width, height = struct.unpack(">II", data[16:24])
+
+        return int(width), int(height)
+
+    if data[:2] == b"\xff\xd8":
+        index = 2
+
+        while index + 9 < len(data):
+            if data[index] != 0xFF:
+                index += 1
+
+                continue
+
+            marker = data[index + 1]
+
+            if marker in (0xC0, 0xC1, 0xC2):
+                height, width = struct.unpack(">HH", data[index + 5 : index + 9])
+
+                return int(width), int(height)
+
+            if marker in (0xD8, 0xD9):
+                index += 2
+
+                continue
+
+            length = struct.unpack(">H", data[index + 2 : index + 4])[0]
+            index += 2 + length
+
+    return None
+
+
+def needs_downscale(image_name: str) -> bool:
+    """任一边 > 768 或尺寸未知 → 需要缩到 512。"""
+
+    base = input_dir()
+
+    if base is None:
+        return True
+
+    size = image_size(base / image_name)
+
+    if size is None:
+        return True
+
+    return max(size) > MAX_INPUT_SIDE
+
+
 def build_workflow(
     *,
     image_name: str,
@@ -157,6 +256,7 @@ def build_workflow(
     cfg: float = 7.0,
     denoise: float = 0.6,
     seed: int = 0,
+    downscale: bool = True,
 ) -> dict:
     if not image_name:
         raise ValueError("image_path 不能为空")
@@ -164,8 +264,8 @@ def build_workflow(
     if not prompt:
         raise ValueError("prompt 不能为空")
 
-    if not 1 <= int(steps) <= 150:
-        raise ValueError("steps 必须在 1..150")
+    if not 1 <= int(steps) <= MAX_STEPS:
+        raise ValueError(f"steps 必须在 1..{MAX_STEPS}（显存保护上限）")
 
     if not 0.0 < float(denoise) <= 1.0:
         raise ValueError("denoise 必须在 (0, 1]")
@@ -182,6 +282,19 @@ def build_workflow(
     workflow["6"]["inputs"]["text"] = prompt
     workflow["7"]["inputs"]["text"] = negative
     workflow["8"]["inputs"]["image"] = image_name
+
+    if downscale:
+        workflow["11"] = {
+            "class_type": "ImageScale",
+            "inputs": {
+                "image": ["8", 0],
+                "upscale_method": "lanczos",
+                "width": TARGET_SIDE,
+                "height": TARGET_SIDE,
+                "crop": "disabled",
+            },
+        }
+        workflow["5"]["inputs"]["pixels"] = ["11", 0]
 
     return workflow
 
@@ -207,55 +320,75 @@ def _arguments(tool_call) -> dict:
 def comfy_img2img(tool_call, cancel_token=None) -> dict[str, Any]:
     args = _arguments(tool_call)
 
-    workflow = build_workflow(
-        image_name=str(args.get("image_path") or "").strip(),
-        prompt=str(args.get("prompt") or "").strip(),
-        negative=str(args.get("negative") or "blurry, low quality"),
-        steps=int(args.get("steps") or 20),
-        cfg=float(args.get("cfg") or 7.0),
-        denoise=float(args.get("denoise") or 0.6),
-        seed=int(args.get("seed") or 0),
-    )
+    if not _GPU_LOCK.acquire(blocking=False):
+        raise RuntimeError("已有出图任务在跑，请等它结束（禁止串行连跑）")
 
-    if cancel_token is not None:
-        cancel_token.check()
+    try:
+        image_name = str(args.get("image_path") or "").strip()
 
-    queued = _request("POST", "/prompt", {"prompt": workflow, "client_id": "personal-agent"})
-    prompt_id = queued.get("prompt_id")
+        workflow = build_workflow(
+            image_name=image_name,
+            prompt=str(args.get("prompt") or "").strip(),
+            negative=str(args.get("negative") or "blurry, low quality"),
+            steps=int(args.get("steps") or 20),
+            cfg=float(args.get("cfg") or 7.0),
+            denoise=float(args.get("denoise") or 0.6),
+            seed=int(args.get("seed") or 0),
+            downscale=needs_downscale(image_name),
+        )
 
-    if not isinstance(prompt_id, str) or not prompt_id:
-        raise RuntimeError("ComfyUI 没有返回 prompt_id")
-
-    deadline = time.monotonic() + timeout_seconds()
-
-    while time.monotonic() < deadline:
         if cancel_token is not None:
             cancel_token.check()
 
-        history = _request("GET", f"/history/{prompt_id}")
-        entry = history.get(prompt_id) or {}
-        outputs = entry.get("outputs") or {}
-        names = [
-            image["filename"]
-            for node in outputs.values()
-            for image in (node.get("images") or [])
-            if image.get("filename")
-        ]
+        free = free_vram_mb()
 
-        if names:
-            return {
-                "success": True,
-                "prompt_id": prompt_id,
-                "images": names,
-                "path": names[0],
-            }
+        if free is not None and free < MIN_FREE_VRAM_MB:
+            raise RuntimeError(
+                f"显存不足：空闲 {free} MB < {MIN_FREE_VRAM_MB} MB，"
+                "先关掉游戏/浏览器或其他占显存的程序再试（不发请求）"
+            )
 
-        if (entry.get("status") or {}).get("status_str") == "error":
-            raise RuntimeError("ComfyUI 执行失败，看看它的控制台输出")
+        queued = _request(
+            "POST", "/prompt", {"prompt": workflow, "client_id": "personal-agent"}
+        )
+        prompt_id = queued.get("prompt_id")
 
-        time.sleep(1.5)
+        if not isinstance(prompt_id, str) or not prompt_id:
+            raise RuntimeError("ComfyUI 没有返回 prompt_id")
 
-    raise RuntimeError(f"等待出图超时（{timeout_seconds():.0f} 秒）")
+        deadline = time.monotonic() + timeout_seconds()
+
+        while time.monotonic() < deadline:
+            if cancel_token is not None:
+                cancel_token.check()
+
+            history = _request("GET", f"/history/{prompt_id}")
+            entry = history.get(prompt_id) or {}
+            outputs = entry.get("outputs") or {}
+            names = [
+                image["filename"]
+                for node in outputs.values()
+                for image in (node.get("images") or [])
+                if image.get("filename")
+            ]
+
+            if names:
+                return {
+                    "success": True,
+                    "prompt_id": prompt_id,
+                    "images": names,
+                    "path": names[0],
+                }
+
+            if (entry.get("status") or {}).get("status_str") == "error":
+                raise RuntimeError("ComfyUI 执行失败，看看它的控制台输出")
+
+            time.sleep(1.5)
+
+        raise RuntimeError(f"等待出图超时（{timeout_seconds():.0f} 秒）")
+
+    finally:
+        _GPU_LOCK.release()
 
 
 TOOL_DEFINITIONS = (

@@ -109,6 +109,29 @@ class TestSuccess(ToolsApiCase):
 
         self.assertNotEqual(response.status_code, 200)
 
+    def test_low_vram_is_503(self):
+        with patch.object(
+            tools_api.comfy_tools,
+            "comfy_img2img",
+            side_effect=RuntimeError(
+                "显存不足：空闲 1200 MB < 2500 MB，先关掉游戏/浏览器"
+            ),
+        ):
+            response = self.post({"image_path": "a.png", "prompt": "x"})
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("显存不足", response.json()["detail"])
+
+    def test_concurrent_run_is_503(self):
+        with patch.object(
+            tools_api.comfy_tools,
+            "comfy_img2img",
+            side_effect=RuntimeError("已有出图任务在跑，请等它结束（禁止串行连跑）"),
+        ):
+            response = self.post({"image_path": "a.png", "prompt": "x"})
+
+        self.assertEqual(response.status_code, 503)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -55,11 +55,15 @@ def img2img(payload: dict, user: dict = Depends(get_current_user)) -> dict:
     except RuntimeError as error:
         message = str(error)
 
+        # 503 = 服务当前不可用（没启动 / 显存不够 / 已有任务在跑），不是执行失败
         if "未运行" in message:
             raise HTTPException(
                 status_code=503,
                 detail=f"{message}（提示：先运行 ComfyUI，再试）",
             ) from None
+
+        if "显存不足" in message or "已有出图任务" in message:
+            raise HTTPException(status_code=503, detail=message) from None
 
         raise HTTPException(status_code=502, detail=message) from None
 
