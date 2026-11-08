@@ -1612,6 +1612,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="medium",
     ),
+
+    # L2：ComfyUI 图生图端点（401/400/503/502/200）
+    "integration/test_tools_api.py": TestSchema(
+        layer="integration",
+        domain="tools",
+        database="none",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
 }
 
 

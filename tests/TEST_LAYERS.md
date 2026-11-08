@@ -17,7 +17,7 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: c9653f4a9ec27bb4 -->
+<!-- membership-digest: 47732f52045723a4 -->
 
 ## unit — L1 单元测试 (54 files)
 
@@ -78,7 +78,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_web_extract.py` | tests/unit/ | web | none | none | low | registered-inferred |
 | `unit/test_web_search.py` | tests/unit/ | web | none | mocked | medium | registered-inferred |
 
-## integration — L2 数据集成测试 (83 files)
+## integration — L2 数据集成测试 (84 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -127,6 +127,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `integration/test_task_pipeline.py` | tests/integration/ | monitor | temporary_sqlite | mocked | high | registered-inferred |
 | `integration/test_test_safety.py` | tests/integration/ | test_infra | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_tier1_runner.py` | tests/integration/ | platform_exec | temporary_sqlite | none | high | registered-inferred |
+| `integration/test_tools_api.py` | tests/integration/ | tools | none | none | high | registered-inferred |
 | `integration/test_trajectory_cli.py` | tests/integration/ | trajectory | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_video_api.py` | tests/integration/ | video | temporary_sqlite | none | high | registered-inferred |
 | `integration/test_web_fetch_safety.py` | tests/integration/ | web | none | mocked | high | registered-inferred |

@@ -40,6 +40,7 @@ from src.reminder_api import router as reminder_router
 from src.tts_api import router as tts_router
 from src.teams_api import router as teams_router
 from src.activity_api import router as activity_router
+from src.tools_api import router as tools_router
 from src.video_api import router as video_router
 from src.artifacts_api import router as artifacts_router
 
@@ -477,6 +478,9 @@ app.include_router(artifacts_router)
 
 # 中文活动摘要卡（W4）
 app.include_router(activity_router)
+
+# ComfyUI 图生图（v1.6，需登录；远程白名单不含 /api/tools）
+app.include_router(tools_router)
 
 # 视频总结（v1.1.11，受控同步接口）
 app.include_router(video_router)
