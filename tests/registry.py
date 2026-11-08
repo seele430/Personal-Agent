@@ -1662,6 +1662,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="low",
     ),
+
+    # L1：知识分块不变量（不丢内容 / 块长上限 / 结构边界）
+    "unit/test_chunker.py": TestSchema(
+        layer="unit",
+        domain="knowledge",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
 }
 
 
