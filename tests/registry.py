@@ -1632,6 +1632,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="medium",
     ),
+
+    # L1：GPU 保护自检（四条约束漂移检测）
+    "unit/test_gpu_guard.py": TestSchema(
+        layer="unit",
+        domain="tools",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
 }
 
 
