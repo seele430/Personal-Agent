@@ -1592,6 +1592,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="high",
     ),
+
+    # L1：文件生命周期（报告/日志/关键帧，预演+确认）
+    "unit/test_lifecycle_files.py": TestSchema(
+        layer="unit",
+        domain="lifecycle",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
 }
 
 
