@@ -11,6 +11,7 @@ import BotsView from "./BotsView";
 import PlatformView from "./PlatformView";
 import ActivityTimeline from "./components/ActivityTimeline";
 import VideoSummaryPanel from "./components/VideoSummaryPanel";
+import ComfyImagePanel from "./components/ComfyImagePanel";
 import ArtifactSidebar from "./components/ArtifactSidebar";
 import { ChatMessages, Composer } from "./chat/ChatView";
 import {
@@ -348,6 +349,7 @@ export default function App(
   const [artifacts, setArtifacts] = useState<ArtifactMeta[]>([]);
   const [showTimeline, setShowTimeline] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
+  const [showComfy, setShowComfy] = useState(false);
   const [activeArtifactId, setActiveArtifactId] =
     useState<string | null>(null);
   const [activitySummary, setActivitySummary] =
@@ -2387,6 +2389,21 @@ export default function App(
           <VideoSummaryPanel
             authToken={authToken}
             onClose={() => setShowVideo(false)}
+          />
+        )}
+
+        <button
+          type="button"
+          className="comfy-toggle"
+          onClick={() => setShowComfy(true)}
+        >
+          图生图
+        </button>
+
+        {showComfy && (
+          <ComfyImagePanel
+            authToken={authToken}
+            onClose={() => setShowComfy(false)}
           />
         )}
           </>

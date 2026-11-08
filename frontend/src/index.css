@@ -1524,3 +1524,33 @@ textarea {
   bottom: 24px;
   z-index: 19;
 }
+
+/* v1.6.3 图生图面板 */
+.comfy-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 120px;
+  width: min(440px, calc(100vw - 32px));
+  max-height: 70vh;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 22;
+}
+
+.comfy-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.comfy-toggle {
+  position: fixed;
+  right: 16px;
+  bottom: 104px;
+  z-index: 19;
+}
