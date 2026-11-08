@@ -223,10 +223,31 @@ npx playwright test tests/console.spec.ts # 只看平台控制台
 .\scripts\comfy_once.ps1 -Prompt "a cat on a chair" -Image input.png -Steps 8
 ```
 
+### 视频转写：精度档位（2026-11-08 实测）
+
+同一段 60 句 / 238.8 s 合成素材，faster-whisper **CPU int8**，按关键词计命中：
+
+| 模型 | 命中 | 命中率 | 耗时 |
+|---|---|---|---|
+| `faster-whisper-medium`（默认） | 52/60 | **86.7%** | ~10 min |
+| `faster-whisper-large-v3` | 56/60 | **93.3%** | 11.4 min |
+
+- 短素材（20 句）是 **95%**，已通过；**长素材 93.3%，仍未达 95%，记为 partial**；
+- **不要开 `--prompt` 术语偏置**：三次实测都变差（medium 52→51、large-v3 56→48、80%）；
+- 关 VAD、把 beam 调到 10 都无收益（56→56，耗时 +45%）；
+- large-v3 内存占用比 medium 更高（未精确量化），16 GB 机器上留意。
+
+精度优先时：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\summarize_video.py <视频> --backend faster --model-dir E:\AppData\models\faster-whisper-large-v3
+```
+
 > **GPU 保护**：本机 6 GB 显存，2026-11-08 曾因 ComfyUI + 视频转写同跑触发
 > `0x116 VIDEO_TDR_FAILURE` 蓝屏。之后定为硬约束：ComfyUI 只能用
 > `comfy-agent\scripts\start-comfyui-safe.ps1` 启动（显存 ≥3 GB、`--lowvram --reserve-vram 1`），
 > `steps ≤ 30`、`vram_free < 2500 MB` 直接拒绝、`batch = 1`、用完即停。
+> 视频转写固定 `device=cpu`、ffmpeg 不开 hwaccel。
 > 细节与自检清单见 [`docs/gpu-protection.md`](docs/gpu-protection.md)。
 
 前端有一个 Playwright 自测（验证语音的播放队列不被 stop 卡死）：
