@@ -175,6 +175,18 @@ export async function installAuthMocks(
 
   // W4：产物条在已登录页面一打开就会取列表，默认空。
   await installArtifactMocks(page);
+  await installActivityTimelineMocks(page);
+}
+
+
+async function installActivityTimelineMocks(page: Page): Promise<void> {
+  await page.route("**/api/activity/timeline*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ events: [], count: 0 }),
+    }),
+  );
 }
 
 export function expectNoUnmockedApi(unexpected: string[]): void {

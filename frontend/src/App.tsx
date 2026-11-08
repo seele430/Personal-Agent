@@ -9,6 +9,7 @@ import {
 
 import BotsView from "./BotsView";
 import PlatformView from "./PlatformView";
+import ActivityTimeline from "./components/ActivityTimeline";
 import ArtifactSidebar from "./components/ArtifactSidebar";
 import { ChatMessages, Composer } from "./chat/ChatView";
 import {
@@ -344,6 +345,7 @@ export default function App(
 
   // W4：产物卡片 + 预览侧栏 + 活动摘要
   const [artifacts, setArtifacts] = useState<ArtifactMeta[]>([]);
+  const [showTimeline, setShowTimeline] = useState(false);
   const [activeArtifactId, setActiveArtifactId] =
     useState<string | null>(null);
   const [activitySummary, setActivitySummary] =
@@ -2353,6 +2355,21 @@ export default function App(
             artifact={activeArtifact}
             authToken={authToken}
             onClose={() => setActiveArtifactId(null)}
+          />
+        )}
+
+        <button
+          type="button"
+          className="timeline-toggle"
+          onClick={() => setShowTimeline(true)}
+        >
+          活动
+        </button>
+
+        {showTimeline && (
+          <ActivityTimeline
+            authToken={authToken}
+            onClose={() => setShowTimeline(false)}
           />
         )}
           </>

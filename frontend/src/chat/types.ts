@@ -66,3 +66,13 @@ export type ActivitySummaryPayload = {
   duration_ms: number;
   text: string;
 };
+
+
+export type TimelineEvent = {
+  ts: string;
+  source: string;
+  event_id: string;
+  title: string;
+  status?: string;
+  detail?: string;
+};

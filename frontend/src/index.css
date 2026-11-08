@@ -1390,3 +1390,54 @@ textarea {
     overflow-wrap: anywhere;
   }
 }
+
+/* v1.3.4 活动时间线面板（只读） */
+.activity-timeline {
+  position: fixed;
+  right: 16px;
+  bottom: 88px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: 60vh;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 20;
+}
+
+.activity-timeline header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.activity-timeline ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.activity-timeline li {
+  display: grid;
+  grid-template-columns: 120px 48px 1fr auto;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid #eee;
+  font-size: 13px;
+}
+
+.timeline-time,
+.timeline-source,
+.timeline-status {
+  color: #666;
+}
+
+.timeline-toggle {
+  position: fixed;
+  right: 16px;
+  bottom: 56px;
+  z-index: 19;
+}
