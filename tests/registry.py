@@ -1582,6 +1582,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="medium",
     ),
+
+    # L2：视频总结 API（鉴权/路径/时长/422 语义）
+    "integration/test_video_api.py": TestSchema(
+        layer="integration",
+        domain="video",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="high",
+    ),
 }
 
 
