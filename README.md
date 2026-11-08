@@ -187,18 +187,47 @@ Personal Agent/
 
 （后端测试统一走受保护运行器：SQLite / socket 守卫 + 独立临时数据目录；`scripts/run_tests.py <layer>` 可单独跑某一层。）
 
-**916 个用例**（107 个测试文件，受保护运行器），覆盖：房间生命周期、阶段推进、投票加权、Bot 兜底、TTS 端点、
+**1632 个用例**（154 个已登记测试文件，受保护运行器），覆盖：房间生命周期、阶段推进、投票加权、Bot 兜底、TTS 端点、
 额度控制、任务调度、提醒投递；平台侧的认证 / 限流 / 审计 / 队列 / 调度也在其中。
 弹性这条线另有：控制器的稳定期与冷却、事件持久化、容量口径、快照分块降级、控制台写操作的幂等与鉴权、
 What-if 与真实决策同公式、回放的时间偏移与来源隔离。
+视频这条线另有：probe / 音轨 / 转写 / 要点采样 / 关键帧 / 截断标记。
 
-前端 Playwright 47 条（含平台控制台 13 条：五区渲染、单块失败降级、写操作确认框、非 owner 只读、移动端无横向溢出）：
+前端 Playwright 71 条（含平台控制台 13 条、产物预览与对比、活动时间线、视频总结、图生图面板）：
 
 ```powershell
 cd frontend
 npx playwright test                       # 全量
 npx playwright test tests/console.spec.ts # 只看平台控制台
 ```
+
+### 常用命令
+
+```powershell
+# 后端全量（受保护运行器：SQLite / socket 守卫 + 临时数据目录）
+.\scripts\test.ps1 backend
+
+# 测试隔离审计（静态扫描，别跳过）
+.\.venv\Scripts\python.exe scripts\run_tests.py audit
+
+# 端到端：黄金路径 10 步 + 远程 TLS 8 项
+.\.venv\Scripts\python.exe scripts\verify_e2e.py
+
+# 混合回归（随机顺序 10 轮，含 GPU 保护断言）
+.\.venv\Scripts\python.exe scripts\run_mixed_regression.py --rounds 10
+
+# 视频：摘要（默认 faster-whisper CPU 后端）
+.\.venv\Scripts\python.exe scripts\summarize_video.py <视频> --backend faster --model-dir <模型目录>
+
+# 图生图：一次一张，安全启动 → 出图 → 必定停止
+.\scripts\comfy_once.ps1 -Prompt "a cat on a chair" -Image input.png -Steps 8
+```
+
+> **GPU 保护**：本机 6 GB 显存，2026-11-08 曾因 ComfyUI + 视频转写同跑触发
+> `0x116 VIDEO_TDR_FAILURE` 蓝屏。之后定为硬约束：ComfyUI 只能用
+> `comfy-agent\scripts\start-comfyui-safe.ps1` 启动（显存 ≥3 GB、`--lowvram --reserve-vram 1`），
+> `steps ≤ 30`、`vram_free < 2500 MB` 直接拒绝、`batch = 1`、用完即停。
+> 细节与自检清单见 [`docs/gpu-protection.md`](docs/gpu-protection.md)。
 
 前端有一个 Playwright 自测（验证语音的播放队列不被 stop 卡死）：
 
