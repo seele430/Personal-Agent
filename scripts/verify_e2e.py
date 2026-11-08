@@ -23,6 +23,7 @@ SCRIPTS = ROOT / "scripts"
 STEPS = (
     ("golden-path", SCRIPTS / "verify_golden_path.py", 300),
     ("tls", SCRIPTS / "verify_remote_tls.py", 300),
+    ("collab", SCRIPTS / "verify_collab_e2e.py", 120),
 )
 
 OUT_DIR = (

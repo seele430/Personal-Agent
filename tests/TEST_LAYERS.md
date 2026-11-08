@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 62ff4960b1ec3f77 -->
+<!-- membership-digest: 2cbf2aa5a05ab12f -->
 
-## unit — L1 单元测试 (56 files)
+## unit — L1 单元测试 (57 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -58,6 +58,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_memory_resolve.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_memory_store.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_memory_versions.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
+| `unit/test_mock_provider.py` | tests/unit/ | collab | none | real | low | registered-inferred |
 | `unit/test_ops_cli.py` | tests/unit/ | ops | temporary_sqlite | none | high | registered-inferred |
 | `unit/test_platform_sdk.py` | tests/unit/ | platform_sdk | none | none | low | registered-inferred |
 | `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |

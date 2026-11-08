@@ -1642,6 +1642,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="high",
     ),
+
+    # L1：模拟 Provider（本地 HTTP，回环）
+    "unit/test_mock_provider.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="low",
+    ),
 }
 
 
