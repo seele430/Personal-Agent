@@ -1470,3 +1470,57 @@ textarea {
 .diff-line.remove {
   color: #b42318;
 }
+
+/* v1.1.12 视频总结面板 */
+.video-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 120px;
+  width: min(440px, calc(100vw - 32px));
+  max-height: 70vh;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 21;
+}
+
+.video-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.video-field {
+  display: block;
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.video-field input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+}
+
+.video-panel ol {
+  padding-left: 20px;
+  font-size: 13px;
+}
+
+.video-time {
+  color: #666;
+  font-variant-numeric: tabular-nums;
+}
+
+.video-toggle {
+  position: fixed;
+  right: 16px;
+  bottom: 24px;
+  z-index: 19;
+}

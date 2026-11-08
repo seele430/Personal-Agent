@@ -10,6 +10,7 @@ import {
 import BotsView from "./BotsView";
 import PlatformView from "./PlatformView";
 import ActivityTimeline from "./components/ActivityTimeline";
+import VideoSummaryPanel from "./components/VideoSummaryPanel";
 import ArtifactSidebar from "./components/ArtifactSidebar";
 import { ChatMessages, Composer } from "./chat/ChatView";
 import {
@@ -346,6 +347,7 @@ export default function App(
   // W4：产物卡片 + 预览侧栏 + 活动摘要
   const [artifacts, setArtifacts] = useState<ArtifactMeta[]>([]);
   const [showTimeline, setShowTimeline] = useState(false);
+  const [showVideo, setShowVideo] = useState(false);
   const [activeArtifactId, setActiveArtifactId] =
     useState<string | null>(null);
   const [activitySummary, setActivitySummary] =
@@ -2370,6 +2372,21 @@ export default function App(
           <ActivityTimeline
             authToken={authToken}
             onClose={() => setShowTimeline(false)}
+          />
+        )}
+
+        <button
+          type="button"
+          className="video-toggle"
+          onClick={() => setShowVideo(true)}
+        >
+          视频
+        </button>
+
+        {showVideo && (
+          <VideoSummaryPanel
+            authToken={authToken}
+            onClose={() => setShowVideo(false)}
           />
         )}
           </>
