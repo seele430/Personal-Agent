@@ -1622,6 +1622,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="high",
     ),
+
+    # L1：单次出图 CLI（steps 护栏/参数透传/退出码）
+    "unit/test_comfy_once.py": TestSchema(
+        layer="unit",
+        domain="tools",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
 }
 
 
