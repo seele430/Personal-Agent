@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: f3470bd6d621fbb8 -->
+<!-- membership-digest: 3ec65dea7c05b6e7 -->
 
-## unit — L1 单元测试 (51 files)
+## unit — L1 单元测试 (52 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -43,6 +43,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_agent_tool_limits.py` | tests/unit/ | reminder | none | mocked | medium | registered |
 | `unit/test_artifact_registry.py` | tests/unit/ | artifacts | temporary_sqlite | none | high | registered-inferred |
 | `unit/test_collab_capability.py` | tests/unit/ | collab | none | none | medium | registered-inferred |
+| `unit/test_collab_cli.py` | tests/unit/ | collab | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_collab_registry.py` | tests/unit/ | collab | temporary_sqlite | none | high | registered-inferred |
 | `unit/test_cost_ledger.py` | tests/unit/ | cost | none | none | low | registered-inferred |
 | `unit/test_diff_compare.py` | tests/unit/ | diff | none | none | low | registered-inferred |

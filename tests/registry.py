@@ -1572,6 +1572,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="high",
     ),
+
+    # L1：外部任务 CLI（登记/列表/查看）
+    "unit/test_collab_cli.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
 }
 
 
