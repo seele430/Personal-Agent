@@ -69,20 +69,83 @@ class AccessRecord:
 
 
 class AccessLog:
-    """JSONL 追加写入；目录不存在会自动创建。"""
+    """JSONL 追加写入；目录不存在会自动创建；超过上限自动轮转。
 
-    def __init__(self, path: str | Path):
+    轮转是**尽力而为**：rename 失败时继续写主文件——宁可不轮转，也不丢日志。
+    """
+
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        max_bytes: int = 1_048_576,
+        backups: int = 3,
+    ):
+        if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1:
+            raise AccessLogError("max_bytes 必须是正整数")
+
+        if isinstance(backups, bool) or not isinstance(backups, int) or backups < 1:
+            raise AccessLogError("backups 必须是 ≥1 的整数")
+
         self.path = Path(path)
+        self.max_bytes = max_bytes
+        self.backups = backups
 
     def append(self, record: AccessRecord) -> None:
+        line = json.dumps(record.to_dict(), ensure_ascii=False) + "\n"
+
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
 
+            if self._needs_rotation(len(line.encode("utf-8"))):
+                self._rotate()
+
             with self.path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(record.to_dict(), ensure_ascii=False) + "\n")
+                handle.write(line)
 
         except OSError as error:
             raise AccessLogError(f"写访问日志失败：{error}") from error
+
+    def _needs_rotation(self, incoming: int) -> bool:
+        if not self.path.is_file():
+            return False
+
+        try:
+            return self.path.stat().st_size + incoming > self.max_bytes
+
+        except OSError:
+            return False
+
+    def _rotate(self) -> None:
+        """path.N-1 → path.N；path → path.1；尽力而为，失败就继续写。"""
+
+        try:
+            oldest = self.path.with_suffix(self.path.suffix + f".{self.backups}")
+
+            if oldest.is_file():
+                oldest.unlink()
+
+            for index in range(self.backups - 1, 0, -1):
+                source = self.path.with_suffix(self.path.suffix + f".{index}")
+
+                if source.is_file():
+                    target = self.path.with_suffix(self.path.suffix + f".{index + 1}")
+
+                    if target.is_file():
+                        target.unlink()
+
+                    source.rename(target)
+
+            first = self.path.with_suffix(self.path.suffix + ".1")
+
+            if first.is_file():
+                first.unlink()
+
+            self.path.rename(first)
+
+        except OSError:
+            # 轮转失败不致命：继续写主文件
+            pass
 
     def read(self) -> list[dict]:
         if not self.path.is_file():

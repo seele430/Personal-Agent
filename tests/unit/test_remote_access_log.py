@@ -168,5 +168,92 @@ class TestCert(unittest.TestCase):
         self.assertIn("Personal Agent Remote", describe(cert)["subject"])
 
 
+class TestRotation(unittest.TestCase):
+    """日志轮转：超限生成 .1、保留份数、未超限不动、尽力而为。"""
+
+    def setUp(self):
+        self._temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temporary.cleanup)
+        self.path = Path(self._temporary.name) / "logs" / "access.jsonl"
+
+    def record(self, index=0):
+        return build_record(
+            method="GET",
+            path=f"/health?i={index}",
+            status=200,
+            duration_ms=1.0,
+            client="c",
+        )
+
+    def test_no_rotation_when_small(self):
+        log = AccessLog(self.path, max_bytes=10_000)
+        log.append(self.record())
+
+        self.assertTrue(self.path.is_file())
+        self.assertFalse((self.path.parent / "access.jsonl.1").exists())
+
+    def test_rotation_creates_backup(self):
+        log = AccessLog(self.path, max_bytes=120, backups=2)
+
+        for index in range(6):
+            log.append(self.record(index))
+
+        backups = sorted(p.name for p in self.path.parent.glob("access.jsonl.*"))
+
+        self.assertIn("access.jsonl.1", backups)
+        self.assertTrue(self.path.is_file())
+
+    def test_keeps_only_n_backups(self):
+        log = AccessLog(self.path, max_bytes=120, backups=2)
+
+        for index in range(20):
+            log.append(self.record(index))
+
+        backups = sorted(p.name for p in self.path.parent.glob("access.jsonl.*"))
+
+        self.assertLessEqual(len(backups), 2)
+        self.assertNotIn("access.jsonl.3", backups)
+
+    def test_writes_continue_after_rotation(self):
+        log = AccessLog(self.path, max_bytes=120, backups=1)
+
+        for index in range(5):
+            log.append(self.record(index))
+
+        self.assertGreaterEqual(len(log.read()), 1)
+
+    def test_invalid_parameters(self):
+        with self.assertRaises(Exception):
+            AccessLog(self.path, max_bytes=0)
+
+        with self.assertRaises(Exception):
+            AccessLog(self.path, backups=0)
+
+    def test_defaults_are_large(self):
+        log = AccessLog(self.path)
+
+        self.assertEqual(log.max_bytes, 1_048_576)
+        self.assertEqual(log.backups, 3)
+
+    def test_rotation_preserves_previous_content(self):
+        log = AccessLog(self.path, max_bytes=150, backups=1)
+
+        for index in range(8):
+            log.append(self.record(index))
+
+        backup = self.path.parent / "access.jsonl.1"
+
+        if backup.is_file():
+            self.assertGreater(len(backup.read_text(encoding="utf-8")), 0)
+
+        self.assertGreater(len(log.read()), 0)
+
+    def test_unicode_safe(self):
+        log = AccessLog(self.path, max_bytes=10_000)
+        log.append(self.record(1))
+
+        text = self.path.read_text(encoding="utf-8")
+
+        self.assertIn("/health", text)
 if __name__ == "__main__":
     unittest.main()
