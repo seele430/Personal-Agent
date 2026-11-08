@@ -1441,3 +1441,32 @@ textarea {
   bottom: 56px;
   z-index: 19;
 }
+
+/* v1.3.6 产物对比 */
+.artifact-diff {
+  margin-top: 16px;
+  border-top: 1px solid #eee;
+  padding-top: 12px;
+}
+
+.diff-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.artifact-diff-body {
+  max-height: 240px;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  margin-top: 8px;
+}
+
+.diff-line.add {
+  color: #18794e;
+}
+
+.diff-line.remove {
+  color: #b42318;
+}

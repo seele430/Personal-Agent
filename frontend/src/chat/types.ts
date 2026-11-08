@@ -76,3 +76,22 @@ export type TimelineEvent = {
   status?: string;
   detail?: string;
 };
+
+
+export type DiffLine = {
+  kind: "add" | "remove" | "context";
+  text: string;
+};
+
+export type DiffResult = {
+  kind: "text" | "binary" | "identical";
+  a_name: string;
+  b_name: string;
+  added: number;
+  removed: number;
+  truncated: boolean;
+  changed: boolean;
+  a_size: number;
+  b_size: number;
+  lines: DiffLine[];
+};

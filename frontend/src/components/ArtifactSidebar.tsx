@@ -10,6 +10,7 @@ import type {
   ActivitySummaryPayload,
   ArtifactMeta,
   ArtifactPreview,
+  DiffResult,
 } from "../chat/types";
 
 type Props = {
@@ -27,6 +28,12 @@ export default function ArtifactSidebar({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [activity, setActivity] = useState<ActivitySummaryPayload | null>(null);
+  const [compareId, setCompareId] = useState("");
+  const [others, setOthers] = useState<ArtifactMeta[]>([]);
+  const [diff, setDiff] = useState<DiffResult | null>(null);
+  const [diffError, setDiffError] = useState("");
+  const [diffLoading, setDiffLoading] = useState(false);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -104,6 +111,67 @@ export default function ArtifactSidebar({
     };
   }, [artifact.run_id, authToken]);
 
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadOthers() {
+      try {
+        const response = await fetch("/api/artifacts", {
+          headers: authToken
+            ? { Authorization: `Bearer ${authToken}` }
+            : undefined,
+        });
+
+        if (!response.ok) return;
+
+        const payload = (await response.json()) as { items?: ArtifactMeta[] };
+        const items = payload.items ?? [];
+
+        if (!cancelled) {
+          setOthers(items.filter((item) => item.id !== artifact.id));
+        }
+      } catch {
+        // 列表失败不阻塞预览
+      }
+    }
+
+    void loadOthers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [artifact.id, authToken]);
+
+  async function compare(target: string) {
+    if (!target) return;
+
+    setDiffLoading(true);
+    setDiffError("");
+
+    try {
+      const response = await fetch(
+        `/api/artifacts/${encodeURIComponent(artifact.id)}/diff/${encodeURIComponent(target)}`,
+        {
+          headers: authToken
+            ? { Authorization: `Bearer ${authToken}` }
+            : undefined,
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      setDiff((await response.json()) as DiffResult);
+    } catch (cause) {
+      setDiffError(cause instanceof Error ? cause.message : "对比失败");
+      setDiff(null);
+    } finally {
+      setDiffLoading(false);
+    }
+  }
+
   const contentUrl = `/api/artifacts/${encodeURIComponent(artifact.id)}/content`;
 
   return (
@@ -165,6 +233,67 @@ export default function ArtifactSidebar({
         {!loading && preview?.mode === "download" && (
           <p className="artifact-hint">{preview.note ?? "该类型不支持预览"}</p>
         )}
+
+
+        <section className="artifact-diff" aria-label="产物对比">
+          <h3>对比</h3>
+
+          {others.length === 0 ? (
+            <p className="artifact-hint">没有其他产物可对比</p>
+          ) : (
+            <div className="diff-controls">
+              <select
+                aria-label="选择对比对象"
+                value={compareId}
+                onChange={(event) => setCompareId(event.target.value)}
+              >
+                <option value="">选择产物…</option>
+                {others.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={() => void compare(compareId)}
+                disabled={!compareId || diffLoading}
+              >
+                {diffLoading ? "对比中…" : "对比"}
+              </button>
+            </div>
+          )}
+
+          {diffError && (
+            <p className="artifact-hint warning">对比失败：{diffError}</p>
+          )}
+
+          {diff && diff.kind === "binary" && (
+            <p className="artifact-hint" data-testid="diff-binary">
+              二进制文件，{diff.changed ? "内容已改变" : "内容相同"}
+              （{diff.a_size} / {diff.b_size} 字节）
+            </p>
+          )}
+
+          {diff && diff.kind === "identical" && (
+            <p className="artifact-hint" data-testid="diff-identical">
+              两个产物内容相同
+            </p>
+          )}
+
+          {diff && diff.kind === "text" && (
+            <pre className="artifact-diff-body" data-testid="diff-body">
+              {diff.lines.map((line, index) => (
+                <span key={index} className={`diff-line ${line.kind}`}>
+                  {line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}
+                  {line.text}
+                  {"\n"}
+                </span>
+              ))}
+            </pre>
+          )}
+        </section>
 
         {activity && (
           <section className="artifact-activity" aria-label="生成过程">
