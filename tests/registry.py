@@ -1602,6 +1602,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="high",
     ),
+
+    # L1：ComfyUI 图生图工具（注册/参数/错误/超时）
+    "unit/test_comfy_tools.py": TestSchema(
+        layer="unit",
+        domain="tools",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
 }
 
 

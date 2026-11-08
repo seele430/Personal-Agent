@@ -43,7 +43,7 @@ from src.knowledge.inject import (
     build_retrieval_context,
 )
 from src.tools.reminder import init_db
-from src.tools import sandbox_tools
+from src.tools import comfy_tools, sandbox_tools
 from src.platform.exec_service import (
     EXEC_CANCELLED,
     EXEC_SUCCEEDED,
@@ -1035,6 +1035,12 @@ del _schema, _policy
 
 # D12 沙箱工具：read / ls 允许，write / shell / python / http 默认 ask。
 for _schema, _policy, _handler in sandbox_tools.TOOL_DEFINITIONS:
+    TOOL_REGISTRY.register(_schema, policy=_policy, handler=_handler)
+
+del _schema, _policy, _handler
+
+# ComfyUI 图生图：会占 GPU，默认 ask。
+for _schema, _policy, _handler in comfy_tools.TOOL_DEFINITIONS:
     TOOL_REGISTRY.register(_schema, policy=_policy, handler=_handler)
 
 del _schema, _policy, _handler
