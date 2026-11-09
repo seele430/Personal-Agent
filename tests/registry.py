@@ -1712,6 +1712,16 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # L1：ntfy 通知出站（HTTP 全 mock）
+    "unit/test_notification.py": TestSchema(
+        layer="unit",
+        domain="notification",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="low",
+    ),
 }
 
 
