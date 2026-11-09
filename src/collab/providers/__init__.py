@@ -42,6 +42,32 @@ def build_provider():
     return OpenAICompatProvider()
 
 
+def build_providers(chain: list[str]) -> dict:
+    """按名字构造 Provider 映射（顺序即接力顺序）。"""
+
+    providers = {}
+
+    for name in chain:
+        key = (name or "").strip().lower()
+
+        if key == "qwen":
+            providers[key] = QwenAgentProvider()
+        elif key == "ark":
+            provider = OpenAICompatProvider(
+                api_key=(os.getenv("ARK_API_KEY") or "").strip(),
+                base_url=(os.getenv("ARK_BASE_URL") or ARK_BASE_URL).strip(),
+                model=(os.getenv("ARK_MODEL") or os.getenv("MODEL") or ARK_DEFAULT_MODEL).strip(),
+            )
+            provider.name = "ark"
+            providers[key] = provider
+        elif key in ("deepseek", "openai", "openai-compat"):
+            provider = OpenAICompatProvider()
+            provider.name = key
+            providers[key] = provider
+
+    return providers
+
+
 def provider_name() -> str:
     if (os.getenv("PA_PROVIDER") or "").strip().lower() == "qwen":
         return "qwen-agent"
@@ -56,5 +82,6 @@ __all__ = [
     "ProviderError",
     "QwenAgentProvider",
     "build_provider",
+    "build_providers",
     "provider_name",
 ]

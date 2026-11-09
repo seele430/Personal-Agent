@@ -1780,6 +1780,34 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # L1：Provider 接力（test_relay.py）
+    "unit/test_relay.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+    # L1：Provider 接力（test_relay_store.py）
+    "unit/test_relay_store.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+    # L1：Provider 接力（test_relay_artifacts.py）
+    "unit/test_relay_artifacts.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="low",
+    ),
 }
 
 
