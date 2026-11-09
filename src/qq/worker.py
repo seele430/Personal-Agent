@@ -16,7 +16,10 @@ import time
 
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from src.qq import router
+from src.qq.intents import get_spec
 from src.qq.inbound import QQInbound, MAX_REPLY_CHARS
 from src.qq.onebot import OneBotError
 from src.qq.outbox import QQOutbox
@@ -34,6 +37,8 @@ CLARIFY_TEXT = "请再说清楚一点：可以问问题，或用 /status、/ask�
 
 
 class BaseWorker:
+    terminal_state = "sent"
+
     def __init__(self, *, outbox: QQOutbox, client, handler: QQInbound, poll_interval: float = 0.5):
         self.outbox = outbox
         self.client = client
@@ -65,7 +70,7 @@ class BaseWorker:
                 self._stop.wait(self.poll_interval)
 
     def _run_confirmed_read(self, job: dict) -> bool:
-        from src.qq.policy import PolicyError, validate_read_path
+        from src.qq.policy import PolicyError, read_text_checked, validate_read_path
 
         message_id = job["message_id"]
         params = json.loads(job.get("params_json") or "{}")
@@ -73,7 +78,7 @@ class BaseWorker:
 
         try:
             target = validate_read_path(params.get("path", ""), workspace)
-            content = target.read_text(encoding="utf-8", errors="replace")
+            content = read_text_checked(target)
         except (PolicyError, OSError) as error:
             self.reply(job, f"读取失败：{error}")
 
@@ -115,8 +120,14 @@ class BaseWorker:
         message_id = job["message_id"]
 
         if not self.outbox.claim_send(message_id):
-            self.handler.record_audit(job, "cancelled_before_send")
-            self.outbox.mark_failed(message_id, error="cancelled before send")
+            current = self.outbox.get(message_id) or {}
+
+            if int(current.get("cancelled") or 0) == 1:
+                self.handler.record_audit(job, "send_skipped_cancelled")
+                self.outbox.mark_cancelled(message_id, error="cancelled before send")
+            else:
+                self.handler.record_audit(job, "send_claim_failed")
+                self.outbox.mark_failed(message_id, error="send claim failed")
 
             return False
 
@@ -128,7 +139,7 @@ class BaseWorker:
 
             return False
 
-        self.outbox.mark_sent(message_id, reply=text)
+        self.outbox.mark_sent(message_id, reply=text, state=self.terminal_state)
         self.handler.record_audit(job, "sent")
 
         return True
@@ -136,7 +147,7 @@ class BaseWorker:
 
 class TaskWorker(BaseWorker):
     def _run_confirmed_read(self, job: dict) -> bool:
-        from src.qq.policy import PolicyError, validate_read_path
+        from src.qq.policy import PolicyError, read_text_checked, validate_read_path
 
         message_id = job["message_id"]
         params = json.loads(job.get("params_json") or "{}")
@@ -144,7 +155,7 @@ class TaskWorker(BaseWorker):
 
         try:
             target = validate_read_path(params.get("path", ""), workspace)
-            content = target.read_text(encoding="utf-8", errors="replace")
+            content = read_text_checked(target)
         except (PolicyError, OSError) as error:
             self.reply(job, f"读取失败：{error}")
 
@@ -178,6 +189,41 @@ class TaskWorker(BaseWorker):
         raw = job.get("raw_text") or ""
         decision = router.classify(raw)
 
+        if decision["action"] in ("execute", "confirm"):
+            spec = get_spec(decision["intent"])
+
+            if spec is None:
+                self.outbox.set_routing(
+                    message_id, intent=decision["intent"], params={}, params_hash=params_hash({}),
+                    decision_source=decision["source"], state="denied", policy_decision="deny",
+                )
+                self.notice(job, "该意图未注册。")
+
+                return True
+
+            if not spec.enabled:
+                self.outbox.set_routing(
+                    message_id, intent=decision["intent"], params={}, params_hash=params_hash({}),
+                    decision_source=decision["source"], state="denied", policy_decision="deny",
+                )
+                self.notice(job, "该意图未启用。")
+
+                return True
+
+            try:
+                validated = spec.params_schema(**decision["params"])
+            except ValidationError:
+                self.outbox.set_routing(
+                    message_id, intent=decision["intent"], params=decision["params"],
+                    params_hash=params_hash(decision["params"]),
+                    decision_source=decision["source"], state="denied", policy_decision="deny",
+                )
+                self.notice(job, "参数不合法，已拒绝。")
+
+                return True
+
+            decision["params"] = validated.model_dump()
+
         self.outbox.set_routing(
             message_id,
             intent=decision["intent"],
@@ -205,11 +251,19 @@ class TaskWorker(BaseWorker):
             return True
 
         if action == "unavailable":
+            self.outbox.set_routing(
+                message_id, intent=decision["intent"], params={}, params_hash=params_hash({}),
+                decision_source=decision["source"], state="unavailable", policy_decision="deny",
+            )
             self.notice(job, UNAVAILABLE_TEXT)
 
             return True
 
         if action == "clarify":
+            self.outbox.set_routing(
+                message_id, intent=decision["intent"], params={}, params_hash=params_hash({}),
+                decision_source=decision["source"], state="clarified", policy_decision="clarify",
+            )
             self.notice(job, CLARIFY_TEXT)
 
             return True
@@ -269,8 +323,9 @@ class TaskWorker(BaseWorker):
 
 
 class ControlWorker(BaseWorker):
+    terminal_state = "done"
     def _run_confirmed_read(self, job: dict) -> bool:
-        from src.qq.policy import PolicyError, validate_read_path
+        from src.qq.policy import PolicyError, read_text_checked, validate_read_path
 
         message_id = job["message_id"]
         params = json.loads(job.get("params_json") or "{}")
@@ -278,7 +333,7 @@ class ControlWorker(BaseWorker):
 
         try:
             target = validate_read_path(params.get("path", ""), workspace)
-            content = target.read_text(encoding="utf-8", errors="replace")
+            content = read_text_checked(target)
         except (PolicyError, OSError) as error:
             self.reply(job, f"读取失败：{error}")
 

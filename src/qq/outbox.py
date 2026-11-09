@@ -315,12 +315,20 @@ class QQOutbox:
 
     # ---------- 状态 ----------
 
-    def mark_sent(self, message_id: str, *, reply: str) -> None:
+    def mark_sent(self, message_id: str, *, reply: str, state: str = "sent") -> None:
         with self._session() as connection:
             connection.execute(
-                "UPDATE qq_outbox SET state = 'sent', reply = ?, error = NULL, updated_at = ? "
+                "UPDATE qq_outbox SET state = ?, reply = ?, error = NULL, updated_at = ? "
                 "WHERE message_id = ?",
-                (reply[:2000], self._clock(), str(message_id)),
+                (state, reply[:2000], self._clock(), str(message_id)),
+            )
+
+    def mark_cancelled(self, message_id: str, *, error: str = "cancelled") -> None:
+        with self._session() as connection:
+            connection.execute(
+                "UPDATE qq_outbox SET state = 'cancelled', cancelled = 1, error = ?, updated_at = ? "
+                "WHERE message_id = ?",
+                (str(error)[:500], self._clock(), str(message_id)),
             )
 
     def mark_failed(self, message_id: str, *, error: str) -> None:

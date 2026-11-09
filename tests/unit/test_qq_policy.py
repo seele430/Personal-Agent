@@ -47,6 +47,18 @@ class PathCase(unittest.TestCase):
 
         self.assertEqual(target, self.file)
 
+
+    def test_device_names_rejected(self):
+        for name in ("NUL", "CON", "con.md", "COM1", "LPT9"):
+            with self.subTest(name=name):
+                with self.assertRaises(PolicyError):
+                    validate_read_path(name, self.workspace)
+
+    def test_read_text_checked_ok(self):
+        from src.qq.policy import read_text_checked
+
+        self.assertEqual(read_text_checked(self.file), "hello")
+
     def test_missing_file(self):
         with self.assertRaises(PolicyError):
             validate_read_path("nope.md", self.workspace)

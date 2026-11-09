@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 import stat
 
@@ -22,6 +23,9 @@ from pathlib import Path
 MAX_READ_BYTES = 200 * 1024
 CONFIRM_ALPHABET = "23456789ABCDEFGHJKMNPQRSTVWXYZ"
 CONFIRM_TTL_SECONDS = 60
+
+
+DEVICE_NAME = re.compile(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$", re.IGNORECASE)
 
 
 class PolicyError(ValueError):
@@ -58,6 +62,9 @@ def validate_read_path(raw: str, workspace: Path) -> Path:
 
     if re_match_drive(text):
         raise PolicyError("只能读取工作区内的相对路径")
+
+    if DEVICE_NAME.match(Path(text).name):
+        raise PolicyError("不允许访问 Windows 保留设备名")
 
     if text.startswith("\\\\") or text.startswith("//"):
         raise PolicyError("不支持网络路径")
@@ -111,6 +118,23 @@ def validate_read_path(raw: str, workspace: Path) -> Path:
 
 def re_match_drive(text: str) -> bool:
     return len(text) >= 2 and text[1] == ":" and text[0].isalpha()
+
+
+def read_text_checked(path: Path) -> str:
+    """读取后再核对大小，缩小检查与读取之间的窗口。"""
+
+    before = path.stat().st_size
+
+    if before > MAX_READ_BYTES:
+        raise PolicyError(f"文件过大（上限 {MAX_READ_BYTES // 1024} KB）")
+
+    data = path.read_bytes()
+    after = path.stat().st_size
+
+    if after != before or len(data) != before:
+        raise PolicyError("文件在读取过程中发生变化")
+
+    return data.decode("utf-8", errors="replace")
 
 
 def truncate_for_qq(text: str, limit: int = 3000) -> str:

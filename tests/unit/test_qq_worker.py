@@ -125,7 +125,7 @@ class TaskWorkerCase(WorkerCase):
             self.task_worker().run_once()
 
         self.assertEqual(self.client.sent, [])
-        self.assertEqual(self.outbox.get("1")["state"], "failed")
+        self.assertEqual(self.outbox.get("1")["state"], "cancelled")
 
 
 class ControlWorkerCase(WorkerCase):
@@ -248,6 +248,67 @@ class ConcurrencyCase(WorkerCase):
         self.assertIn("hello world", self.client.sent[-1][1])
         self.assertNotIn("/confirm", self.client.sent[-1][1])
         self.assertEqual(self.outbox.get("task-1")["state"], "sent")
+
+
+
+
+class ContractCase(WorkerCase):
+    def test_disabled_intent_is_rejected(self):
+        import dataclasses
+        from src.qq import worker as worker_module
+
+        self.enqueue("读一下 a.md", message_id="task-1")
+        self.pending("task-1", intent="read_file", params={"path": "a.md"})
+
+        disabled = dataclasses.replace(worker_module.get_spec("read_file"), enabled=False)
+
+        with patch("src.qq.worker.get_spec", return_value=disabled):
+            self.task_worker().run_once()
+
+        self.assertIn("未启用", self.client.sent[-1][1])
+        self.assertEqual(self.outbox.get("task-1")["state"], "denied")
+
+    def test_invalid_params_rejected(self):
+        self.enqueue("读一下 a.md", message_id="task-1")
+        self.pending("task-1", intent="read_file", params={"path": "a.md"})
+
+        bad = {
+            "intent": "read_file",
+            "params": {"path": "a.md", "extra": 1},
+            "action": "confirm",
+            "reason": "read_file",
+            "source": "rule",
+        }
+
+        with patch("src.qq.worker.router.classify", return_value=bad):
+            self.task_worker().run_once()
+
+        self.assertIn("参数不合法", self.client.sent[-1][1])
+        self.assertEqual(self.outbox.get("task-1")["state"], "denied")
+
+    def test_unavailable_has_terminal_state(self):
+        self.enqueue("画一只猫")
+        self.pending()
+
+        self.task_worker().run_once()
+
+        self.assertEqual(self.outbox.get("1")["state"], "unavailable")
+
+    def test_clarify_has_terminal_state(self):
+        self.enqueue("读一下这个")
+        self.pending()
+
+        self.task_worker().run_once()
+
+        self.assertEqual(self.outbox.get("1")["state"], "clarified")
+
+    def test_control_terminal_state_is_done(self):
+        self.enqueue("/cancel 999", queue="control", message_id="cmd-1")
+        self.pending("cmd-1", intent="cancel", params={"target": "999"}, state="pending_control")
+
+        self.control_worker().run_once()
+
+        self.assertEqual(self.outbox.get("cmd-1")["state"], "done")
 
 
 if __name__ == "__main__":
