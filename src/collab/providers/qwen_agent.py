@@ -113,27 +113,33 @@ class QwenAgentProvider:
         instruction = text
 
         started = time.perf_counter()
-        code, output = self._run(instruction, workspace)
-        elapsed = round(time.perf_counter() - started, 2)
 
-        target = workspace / artifact_name
+        try:
+            code, output = self._run(instruction, workspace)
+            elapsed = round(time.perf_counter() - started, 2)
 
-        if not target.is_file():
-            raise ProviderError(
-                f"Qwen Agent 没有产出 {artifact_name}（exit={code}）。"
-                f"prompt 里要明确要求创建这个文件。Agent 输出：{output[-160:]}"
-            )
+            target = workspace / artifact_name
 
-        artifacts = self._collect(workspace)
-        artifact_info = [
-            {"name": item.name, "bytes": item.stat().st_size} for item in artifacts
-        ]
-        size = target.stat().st_size
-        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            if not target.is_file():
+                raise ProviderError(
+                    f"Qwen Agent 没有产出 {artifact_name}（exit={code}）。"
+                    f"prompt 里要明确要求创建这个文件。Agent 输出：{output[-160:]}"
+                )
 
-        # 把产物挪到 out_dir 根下，工作区保持干净
-        final = root / artifact_name
-        shutil.move(str(target), str(final))
+            artifacts = self._collect(workspace)
+            artifact_info = [
+                {"name": item.name, "bytes": item.stat().st_size} for item in artifacts
+            ]
+            size = target.stat().st_size
+            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+
+            # 把产物挪到 out_dir 根下，工作区保持干净
+            final = root / artifact_name
+            shutil.move(str(target), str(final))
+
+        finally:
+            # 成功或失败都不留工作区；Windows 上可能还有句柄，忽略错误
+            shutil.rmtree(workspace, ignore_errors=True)
 
         return {
             "task_id": f"qwen-{uuid.uuid4().hex[:12]}",

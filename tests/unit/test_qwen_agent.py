@@ -166,5 +166,29 @@ class TestFailures(ProviderCase):
             provider.submit("   ", artifact_name="a.md", out_dir=self.out)
 
 
+
+class TestCleanup(ProviderCase):
+    def test_success_leaves_no_workspace(self):
+        def factory(*args, **kwargs):
+            return FakeProcess(workspace=kwargs["cwd"], artifact="a.md")
+
+        provider = QwenAgentProvider(qwen_path="C:/fake/qwen.cmd", popen=factory)
+        provider.submit("x", artifact_name="a.md", out_dir=self.out)
+
+        self.assertEqual(list(self.out.glob("qwen-workspace-*")), [])
+        self.assertTrue((self.out / "a.md").is_file())
+
+    def test_failure_leaves_no_workspace(self):
+        def factory(*args, **kwargs):
+            return FakeProcess(workspace=kwargs["cwd"], artifact=None)
+
+        provider = QwenAgentProvider(qwen_path="C:/fake/qwen.cmd", popen=factory)
+
+        with self.assertRaises(ProviderError):
+            provider.submit("x", artifact_name="a.md", out_dir=self.out)
+
+        self.assertEqual(list(self.out.glob("qwen-workspace-*")), [])
+
+
 if __name__ == "__main__":
     unittest.main()
