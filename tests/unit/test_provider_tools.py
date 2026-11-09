@@ -14,6 +14,7 @@ def provider(*, configured=True, submit=None):
 from unittest.mock import patch
 
 import src.tools.provider_tools as tools
+from src.collab.providers import ProviderError
 
 
 def call(**arguments):
@@ -147,6 +148,44 @@ class HandlerCase(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             tools.external_task(bad)
+
+
+
+class TestAgentMode(HandlerCase):
+    def test_agent_provider_returns_artifact_path(self):
+        def fake_submit(prompt, *, artifact_name, out_dir):
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (Path(out_dir) / artifact_name).write_text("agent 写的", encoding="utf-8")
+
+            return {
+                "task_id": "qwen-abc",
+                "model": "qwen-agent",
+                "duration_s": 12.5,
+                "usage": {"prompt": 0, "completion": 0, "total": 0},
+            }
+
+        with patch(
+            "src.tools.provider_tools.build_provider",
+            return_value=provider(submit=fake_submit),
+        ):
+            result = self.run_handler(prompt="创建 external-report.md，写一行字")
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["model"], "qwen-agent")
+        self.assertEqual(result["path"], "external-artifacts/external-report.md")
+
+    def test_missing_artifact_error_mentions_filename(self):
+        def boom(*args, **kwargs):
+            raise ProviderError("Qwen Agent 没有产出 a.md（exit=0）")
+
+        with patch(
+            "src.tools.provider_tools.build_provider",
+            return_value=provider(submit=boom),
+        ):
+            with self.assertRaises(RuntimeError) as caught:
+                self.run_handler(prompt="x")
+
+        self.assertIn("文件名", str(caught.exception))
 
 
 if __name__ == "__main__":

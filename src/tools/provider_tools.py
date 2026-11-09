@@ -32,8 +32,9 @@ EXTERNAL_TASK_TOOL = {
     "function": {
         "name": "external_task",
         "description": (
-            "调用外部模型 API 生成一段文本产物（不是外部 Agent，只做一次补全）。"
-            "会产生 token 费用，需要用户确认。"
+            "调用外部服务生成文本产物：默认是模型 API（一次补全）；"
+            "配置成 agent 模式时会真的创建文件、耗时可达数十秒，"
+            "此时 prompt 必须写清要创建的文件名。会产生费用，需要用户确认。"
         ),
         "parameters": {
             "type": "object",
@@ -44,7 +45,10 @@ EXTERNAL_TASK_TOOL = {
                 },
                 "artifact_name": {
                     "type": "string",
-                    "description": "产物文件名，默认 external-report.md；只允许字母数字与 - _ .",
+                    "description": (
+                        "产物文件名，默认 external-report.md；只允许字母数字与 - _ .。"
+                        "agent 模式下也要在 prompt 里写明这个文件名。"
+                    ),
                 },
             },
             "required": ["prompt"],
@@ -105,7 +109,12 @@ def external_task(tool_call, cancel_token=None) -> dict[str, Any]:
         )
 
     except ProviderError as error:
-        raise RuntimeError(str(error)) from None
+        message = str(error)
+
+        if "没有产出" in message:
+            message += "（agent 模式下请在 prompt 里写清要创建的文件名）"
+
+        raise RuntimeError(message) from None
 
     return {
         "success": True,
