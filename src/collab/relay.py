@@ -144,6 +144,9 @@ class RelayRunner:
         try:
             begin = self.store.step_begin(run_id, revision, STEP_ID, run["task"], token)
 
+            if begin == "stale":
+                return {"run_id": run_id, "state": "stale_worker", "revision": revision}
+
             if begin == "needs_review":
                 self.store.mark_needs_review(run_id, token, "step pending review")
 
@@ -160,6 +163,11 @@ class RelayRunner:
             target_rel = f"{run_id}/r{revision}/result.md"
 
             for position in range(index, len(chain)):
+                if heartbeat.stale:
+                    self.store.audit(run_id, revision, "heartbeat_stale_before_provider")
+
+                    return {"run_id": run_id, "state": "stale_worker", "revision": revision}
+
                 name = chain[position]
                 provider = self.providers.get(name)
                 attempt_no = attempt_base + (position - index) + 1

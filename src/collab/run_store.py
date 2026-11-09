@@ -200,7 +200,8 @@ class RunStore:
     def reset_chain(self, run_id: str) -> bool:
         with self._session() as connection:
             cursor = connection.execute(
-                "UPDATE collab_runs SET next_provider_index=0, updated_at=? WHERE run_id=?",
+                "UPDATE collab_runs SET next_provider_index=0, updated_at=? "
+                "WHERE run_id=? AND state='failed'",
                 (self._clock(), run_id),
             )
 
@@ -267,7 +268,22 @@ class RunStore:
                 raise StoreError("already_succeeded")
 
             if state == "running":
-                raise StoreError("running：租约未过期，不能 resume")
+                expires = row["lease_expires_at"]
+
+                if expires is None or float(expires) >= self._clock():
+                    raise StoreError("running：租约未过期，不能 resume")
+
+                connection.execute(
+                    "UPDATE collab_runs SET state='pending', error=NULL, error_class=NULL, updated_at=? "
+                    "WHERE run_id=? AND state='running'",
+                    (self._clock(), run_id),
+                )
+
+                row = connection.execute(
+                    "SELECT * FROM collab_runs WHERE run_id = ?", (run_id,)
+                ).fetchone()
+
+                return self._decode_run(row)
 
             connection.execute(
                 "UPDATE collab_runs SET state='pending', error=NULL, "
@@ -339,9 +355,9 @@ class RunStore:
 
             if row and row["state"] in ("running", "needs_review"):
                 connection.execute(
-                    "UPDATE collab_steps SET state='needs_review', updated_at=? "
-                    "WHERE run_id=? AND revision=? AND step_id=? AND fencing_token=?",
-                    (self._clock(), run_id, revision, step_id, int(token)),
+                    "UPDATE collab_steps SET state='needs_review', fencing_token=?, updated_at=? "
+                    "WHERE run_id=? AND revision=? AND step_id=?",
+                    (int(token), self._clock(), run_id, revision, step_id),
                 )
 
                 return "needs_review"
@@ -365,6 +381,9 @@ class RunStore:
 
     def step_done(self, run_id: str, revision: int, step_id: str, token: int, manifest: dict | None) -> bool:
         with self._session() as connection:
+            if not self._run_owned(connection, run_id, revision, token, ("running",)):
+                return False
+
             cursor = connection.execute(
                 "UPDATE collab_steps SET state='done', artifact_manifest=?, updated_at=? "
                 "WHERE run_id=? AND revision=? AND step_id=? AND fencing_token=?",
@@ -538,50 +557,70 @@ class RunStore:
         staging_max_age: float = 3600.0,
         orphan_min_age: float = 3600.0,
     ) -> dict:
-        """启动清理：删除无 manifest 引用的产物与过期 staging。"""
+        """启动清理：无 manifest 引用的产物 + 过期 staging。
 
-        import os as _os
+        每个候选文件在 BEGIN IMMEDIATE 事务内**重新查询引用**后删除，
+        与 commit_step_artifact 的写事务串行，避免删掉刚提交的产物。
+        """
+
         import shutil
         import time as _time
 
         root = Path(artifact_root).resolve()
         root.mkdir(parents=True, exist_ok=True)
-        referenced = set()
+        removed: list[str] = []
 
-        with self._session() as connection:
-            rows = connection.execute("SELECT artifact_manifest FROM collab_steps").fetchall()
+        candidates = [
+            path
+            for path in root.rglob("*")
+            if path.is_file()
+            and ".staging" not in path.parts
+            and ".bak-" not in path.name
+        ]
 
-        for row in rows:
-            if not row["artifact_manifest"]:
+        for path in candidates:
+            try:
+                if _time.time() - path.stat().st_mtime < orphan_min_age:
+                    continue
+            except OSError:
                 continue
+
+            relay = str(path.relative_to(root)).replace("\\", "/")
+            connection = sqlite3.connect(self.path, timeout=10, isolation_level=None)
+            connection.row_factory = sqlite3.Row
 
             try:
-                manifest = json.loads(row["artifact_manifest"])
-                referenced.add((root / manifest.get("path", "")).resolve())
-            except (ValueError, OSError):
-                continue
+                connection.execute("BEGIN IMMEDIATE")
+                rows = connection.execute(
+                    "SELECT artifact_manifest FROM collab_steps WHERE artifact_manifest IS NOT NULL"
+                ).fetchall()
+                still_referenced = False
 
-        removed = []
-
-        for path in root.rglob("*"):
-            if not path.is_file():
-                continue
-
-            if ".staging" in path.parts:
-                continue
-
-            if path.resolve() not in referenced:
-                try:
-                    if _time.time() - path.stat().st_mtime < orphan_min_age:
+                for row in rows:
+                    try:
+                        manifest = json.loads(row["artifact_manifest"])
+                    except ValueError:
                         continue
-                except OSError:
-                    continue
 
+                    if manifest.get("path") == relay:
+                        still_referenced = True
+                        break
+
+                if not still_referenced:
+                    try:
+                        path.unlink()
+                        removed.append(relay)
+                    except OSError:
+                        pass
+
+                connection.execute("COMMIT")
+            except sqlite3.Error:
                 try:
-                    path.unlink()
-                    removed.append(str(path.relative_to(root)))
-                except OSError:
+                    connection.execute("ROLLBACK")
+                except sqlite3.Error:
                     pass
+            finally:
+                connection.close()
 
         staging = root / ".staging"
 
@@ -596,10 +635,28 @@ class RunStore:
                 except OSError:
                     pass
 
-        return {"removed": removed, "referenced": len(referenced)}
+        return {"removed": removed}
+
+
+    @staticmethod
+    def _run_owned(connection, run_id: str, revision: int, token: int, states: tuple[str, ...]) -> bool:
+        row = connection.execute(
+            "SELECT fencing_token, revision, state FROM collab_runs WHERE run_id=?",
+            (run_id,),
+        ).fetchone()
+
+        return bool(
+            row
+            and int(row["fencing_token"]) == int(token)
+            and int(row["revision"]) == int(revision)
+            and row["state"] in states
+        )
 
     def step_failed(self, run_id: str, revision: int, step_id: str, token: int) -> bool:
         with self._session() as connection:
+            if not self._run_owned(connection, run_id, revision, token, ("running",)):
+                return False
+
             cursor = connection.execute(
                 "UPDATE collab_steps SET state='failed', updated_at=? "
                 "WHERE run_id=? AND revision=? AND step_id=? AND fencing_token=?",
@@ -610,6 +667,9 @@ class RunStore:
 
     def step_accept(self, run_id: str, revision: int, step_id: str, token: int, manifest: dict | None) -> bool:
         with self._session() as connection:
+            if not self._run_owned(connection, run_id, revision, token, ("running", "needs_review")):
+                return False
+
             cursor = connection.execute(
                 "UPDATE collab_steps SET state='done', artifact_manifest=?, updated_at=? "
                 "WHERE run_id=? AND revision=? AND step_id=? AND state='needs_review' AND fencing_token=?",
@@ -627,6 +687,9 @@ class RunStore:
 
     def step_retry(self, run_id: str, revision: int, step_id: str, token: int) -> bool:
         with self._session() as connection:
+            if not self._run_owned(connection, run_id, revision, token, ("running", "needs_review")):
+                return False
+
             cursor = connection.execute(
                 "UPDATE collab_steps SET state='pending', updated_at=? "
                 "WHERE run_id=? AND revision=? AND step_id=? AND state='needs_review' AND fencing_token=?",

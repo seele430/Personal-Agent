@@ -235,5 +235,19 @@ class RelayCase(unittest.TestCase):
         self.assertTrue(heartbeat.stale)
 
 
+
+    def test_stale_step_begin_does_not_call_provider(self):
+        from unittest.mock import patch
+
+        run_id = self.make_run(("a",))
+        provider = FakeProvider("a")
+
+        with patch.object(self.store, "step_begin", return_value="stale"):
+            result = self.runner({"a": provider}).start(run_id)
+
+        self.assertEqual(provider.calls, 0)
+        self.assertEqual(result["state"], "stale_worker")
+
+
 if __name__ == "__main__":
     unittest.main()

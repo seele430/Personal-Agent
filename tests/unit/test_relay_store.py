@@ -285,11 +285,74 @@ class StoreCase(unittest.TestCase):
         self.store.finish(self.run_id, run["fencing_token"], "failed", error_class="retryable")
 
         self.store.resume(self.run_id)
-
         self.assertEqual(self.store.get(self.run_id)["next_provider_index"], 1)
 
-        self.store.reset_chain(self.run_id)
-        self.assertEqual(self.store.get(self.run_id)["next_provider_index"], 0)
+        self.assertIsNotNone(self.store.claim(self.run_id, "w2"))
+        self.assertEqual(self.store.reset_chain(self.run_id), False)
+        self.assertEqual(self.store.get(self.run_id)["next_provider_index"], 1)
+
+
+
+    def test_old_token_rejected_with_valid_prestate(self):
+        run = self.claim()
+        old = run["fencing_token"]
+        self.store.step_begin(self.run_id, 1, "compose", "task", old)
+
+        self.now += 1000
+        new_run = self.claim("w2")
+        new = new_run["fencing_token"]
+
+        self.assertFalse(self.store.step_done(self.run_id, 1, "compose", old, {}))
+        self.assertFalse(self.store.step_failed(self.run_id, 1, "compose", old))
+        self.assertEqual(self.store.step_state(self.run_id, 1, "compose"), "running")
+
+        self.assertEqual(self.store.step_begin(self.run_id, 1, "compose", "task", new), "needs_review")
+        self.assertTrue(self.store.step_failed(self.run_id, 1, "compose", new))
+
+        self.store.step_begin(self.run_id, 1, "compose", "task", new)
+        self.store.step_begin(self.run_id, 1, "compose", "task", new)
+        self.assertEqual(self.store.step_state(self.run_id, 1, "compose"), "needs_review")
+        self.assertFalse(self.store.step_accept(self.run_id, 1, "compose", old, {"path": "a"}))
+        self.assertFalse(self.store.step_retry(self.run_id, 1, "compose", old))
+        self.assertEqual(self.store.step_state(self.run_id, 1, "compose"), "needs_review")
+        self.assertTrue(self.store.step_retry(self.run_id, 1, "compose", new))
+
+    def test_resume_expired_running_allowed(self):
+        self.claim()
+        self.now += 1000
+
+        resumed = self.store.resume(self.run_id)
+
+        self.assertEqual(resumed["state"], "pending")
+
+    def test_resume_active_running_rejected(self):
+        self.claim()
+
+        with self.assertRaises(StoreError):
+            self.store.resume(self.run_id)
+
+    def test_cleanup_keeps_committed_artifact(self):
+        run = self.claim()
+        self.store.step_begin(self.run_id, 1, "compose", "task", run["fencing_token"])
+        root = Path(self._temporary.name) / "artifacts"
+        staging = root / ".staging" / "s.md"
+        staging.parent.mkdir(parents=True, exist_ok=True)
+        staging.write_bytes(b"data")
+        target = root / "committed.md"
+
+        self.assertTrue(
+            self.store.commit_step_artifact(
+                self.run_id, 1, "compose", run["fencing_token"],
+                staging_path=str(staging), target_path=str(target),
+                manifest={"path": "committed.md", "sha256": __import__("hashlib").sha256(b"data").hexdigest(), "bytes": 4},
+            )
+        )
+
+        self.store.cleanup_orphans(root, orphan_min_age=0)
+
+        self.assertTrue(target.exists())
+        from src.collab.artifacts import verify
+        self.assertTrue(verify(root, {"path": "committed.md", "sha256": __import__("hashlib").sha256(b"data").hexdigest(), "bytes": 4}))
 
 
 if __name__ == "__main__":
