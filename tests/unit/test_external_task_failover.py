@@ -170,5 +170,82 @@ class FailoverCase(unittest.TestCase):
         self.assertEqual(result["attempts"], 1)
 
 
+
+    def test_fatal_matrix_does_not_switch(self):
+        for status in (400, 401, 403):
+            with self.subTest(status=status):
+                error = ProviderError(f"{status} error")
+                error.status = status
+                first = FakeProvider("ark", error=error)
+                second = FakeProvider("deepseek")
+
+                with self.assertRaises(RuntimeError):
+                    self.run_tool({"ark": first, "deepseek": second})
+
+                self.assertEqual(second.calls, 0)
+
+    def test_unknown_does_not_switch(self):
+        first = FakeProvider("ark", error=ProviderError("奇怪错误"))
+        second = FakeProvider("deepseek")
+
+        with self.assertRaises(RuntimeError):
+            self.run_tool({"ark": first, "deepseek": second})
+
+        self.assertEqual(second.calls, 0)
+
+    def test_cancel_after_first_retryable_stops_second(self):
+        class CancelError(RuntimeError):
+            pass
+
+        class Token:
+            def __init__(self):
+                self.checks = 0
+
+            def check(self):
+                self.checks += 1
+
+                if self.checks >= 2:
+                    raise CancelError("cancelled")
+
+        token = Token()
+        first = FakeProvider("ark", error=ProviderError("timeout"))
+        second = FakeProvider("deepseek")
+        os.environ["PA_RELAY_CHAIN"] = "ark,deepseek"
+
+        with patch.object(provider_tools, "build_providers", return_value={"ark": first, "deepseek": second}), patch(
+            "os.getcwd", return_value=str(self.cwd)
+        ):
+            with self.assertRaises(CancelError):
+                provider_tools.external_task(ToolCall(), cancel_token=token)
+
+        self.assertEqual(second.calls, 0)
+
+    def test_unconfigured_provider_does_not_switch(self):
+        first = FakeProvider("ark")
+        first.configured = False
+        second = FakeProvider("deepseek")
+
+        with self.assertRaises(RuntimeError):
+            self.run_tool({"ark": first, "deepseek": second})
+
+        self.assertEqual(second.calls, 0)
+
+    def test_total_duration_and_attempt_audit(self):
+        first = FakeProvider("ark", error=ProviderError("timeout"))
+        second = FakeProvider("deepseek")
+        audit_path = self.cwd / "audit.jsonl"
+        clock = iter([0.0, 0.0, 0.0, 10.0, 10.0, 10.0, 16.0])
+
+        with patch.object(provider_tools, "AUDIT_PATH", audit_path), patch.object(
+            provider_tools.time, "monotonic", side_effect=lambda: next(clock, 16.0)
+        ):
+            result = self.run_tool({"ark": first, "deepseek": second})
+
+        self.assertEqual(result["duration_s"], 16.0)
+        lines = [line for line in audit_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(result["usage"], {"total_tokens": 1})
+
+
 if __name__ == "__main__":
     unittest.main()

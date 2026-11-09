@@ -486,7 +486,96 @@ class ContractCase(WorkerCase):
         turn = threads.latest_turn(7)
 
         self.assertEqual(turn["answer"], sent_text)
+        self.assertEqual(self.outbox.get("1")["reply"], sent_text)
         self.assertLessEqual(len(sent_text), MAX_REPLY_CHARS + 30)
+
+
+
+    def test_plain_ask_does_not_use_context(self):
+        from src.qq.threads import ThreadStore
+
+        threads = ThreadStore(self.root / "threads.db")
+        threads.append_turn(sender=7, question="3+3", answer="6", message_id="old")
+        captured = {}
+
+        def capture(command, question):
+            captured["prompt"] = question
+
+            return "4"
+
+        self.enqueue("/ask 2+2")
+        self.pending("1", intent="ask", params={"question": "2+2"})
+
+        with patch.object(self.handler, "reply_for", side_effect=capture):
+            TaskWorker(
+                outbox=self.outbox, client=self.client, handler=self.handler, threads=threads
+            ).run_once()
+
+        self.assertEqual(captured["prompt"], "2+2")
+
+    def test_half_turn_is_ignored(self):
+        from src.qq.threads import ThreadStore
+
+        threads = ThreadStore(self.root / "threads.db")
+
+        with threads._session() as connection:
+            connection.execute(
+                "INSERT INTO qq_threads (sender, seq, role, content, source_message_id, created_at) "
+                "VALUES (7, 1, 'user', 'q', 'm', 1.0)"
+            )
+
+        self.enqueue("继续")
+        self.pending("1", intent="ask", params={"question": "继续"})
+        calls = []
+
+        with patch.object(self.handler, "reply_for", side_effect=lambda *a: calls.append(a) or "x"):
+            TaskWorker(
+                outbox=self.outbox, client=self.client, handler=self.handler, threads=threads
+            ).run_once()
+
+        self.assertEqual(calls, [])
+        self.assertIn("没有可继续", self.client.sent[0][1])
+
+    def test_context_budget_and_current_question(self):
+        from src.qq.threads import ThreadStore
+        from src.qq.worker import build_context_prompt
+
+        threads = ThreadStore(self.root / "threads.db")
+        threads.append_turn(sender=7, question="问" * 600, answer="答" * 1500, message_id="old")
+        previous = threads.latest_turn(7)
+        prompt, chars = build_context_prompt("当前问题完整保留", previous)
+
+        self.assertLessEqual(len(prompt), 2000)
+        self.assertIn("当前问题完整保留", prompt)
+        self.assertLess(chars, 2000)
+
+    def test_reset_contract_combination(self):
+        from src.qq.inbound import QQInbound
+        from src.qq.intents import get_spec
+        from src.qq.router import classify
+
+        spec = get_spec("reset")
+        self.assertIsNotNone(spec)
+        self.assertTrue(spec.enabled)
+        self.assertEqual(QQInbound._parse("/reset"), ("reset", ""))
+        self.assertEqual(classify("/reset")["intent"], "reset")
+
+    def test_audit_does_not_store_full_context(self):
+        from src.qq.threads import ThreadStore
+
+        threads = ThreadStore(self.root / "threads.db")
+        threads.append_turn(sender=7, question="秘密问题", answer="秘密答案", message_id="old")
+        self.enqueue("继续")
+        self.pending("1", intent="ask", params={"question": "继续"})
+
+        with patch.object(self.handler, "reply_for", return_value="ok"):
+            TaskWorker(
+                outbox=self.outbox, client=self.client, handler=self.handler, threads=threads
+            ).run_once()
+
+        audit_text = str(self.handler.audit)
+        self.assertNotIn("秘密答案", audit_text)
+        self.assertNotIn("秘密问题", audit_text)
 
 
 if __name__ == "__main__":
