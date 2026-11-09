@@ -27,6 +27,8 @@
 | `list_reminders` | 列出自己的提醒（含编号） | 无 |
 | `cancel_reminder` | 取消一条待发提醒 | `reminder_id` |
 | `update_reminder` | 改内容或改时间 | `reminder_id`、`message`/`minutes` 至少一个 |
+| `comfy_img2img` | 本机 ComfyUI 图生图（占 GPU） | `image_path`、`prompt`、`steps`（≤30） |
+| `external_task` | 调用外部模型 API 生成文本产物 | `prompt`、`artifact_name`（可选） |
 
 每个工具是标准的 OpenAI 兼容结构：
 

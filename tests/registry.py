@@ -1682,6 +1682,16 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # L1：external_task 工具（参数/路径安全/错误，全 mock）
+    "unit/test_provider_tools.py": TestSchema(
+        layer="unit",
+        domain="agent_tools",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 
