@@ -109,7 +109,15 @@ class BaseWorker:
 
     def _loop(self) -> None:
         while not self._stop.is_set():
-            if not self.run_once():
+            try:
+                progressed = self.run_once()
+            except Exception as error:  # 单条任务异常不得杀死 Worker
+                self.handler.record_audit({}, "worker_error", str(error)[:200])
+                self._stop.wait(self.poll_interval)
+
+                continue
+
+            if not progressed:
                 self._stop.wait(self.poll_interval)
 
     def run_once(self) -> bool:  # pragma: no cover - 抽象
@@ -310,16 +318,20 @@ class TaskWorker(BaseWorker):
             decision_source=decision["source"], state="running",
             policy_decision="allow",
         )
-        sent = self.reply(job, truncate_for_qq(text, MAX_REPLY_CHARS))
+        sent_text = truncate_for_qq(text, MAX_REPLY_CHARS)
+        sent = self.reply(job, sent_text)
 
         if sent and decision["intent"] == "ask" and self.threads is not None:
-            self.threads.append_turn(
-                sender=int(job["sender"]),
-                question=decision["params"].get("question", ""),
-                answer=text,
-                message_id=message_id,
-            )
-            self.handler.record_audit(job, "context_saved", context_info)
+            try:
+                self.threads.append_turn(
+                    sender=int(job["sender"]),
+                    question=decision["params"].get("question", ""),
+                    answer=sent_text,
+                    message_id=message_id,
+                )
+                self.handler.record_audit(job, "context_saved", context_info)
+            except Exception as error:  # 已发送事实不变；仅记录失败
+                self.handler.record_audit(job, "context_store_failed", str(error)[:120])
 
         return True
 

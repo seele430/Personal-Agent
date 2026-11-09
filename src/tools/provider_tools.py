@@ -183,7 +183,8 @@ def external_task(tool_call, cancel_token=None) -> dict[str, Any]:
 
     chain = _parse_chain(chain_raw)
     providers = build_providers(chain)
-    deadline = time.monotonic() + FAILOVER_BUDGET_SECONDS
+    total_started = time.monotonic()
+    deadline = total_started + FAILOVER_BUDGET_SECONDS
     attempts = 0
     last_error = ""
 
@@ -218,6 +219,9 @@ def external_task(tool_call, cancel_token=None) -> dict[str, Any]:
             if error_class != RETRYABLE:
                 raise RuntimeError(f"故障转移中止（{error_class}）：{error}") from None
 
+            if cancel_token is not None:
+                cancel_token.check()
+
             continue
 
         _audit_attempt(name, "ok", time.monotonic() - started, "succeeded")
@@ -229,7 +233,7 @@ def external_task(tool_call, cancel_token=None) -> dict[str, Any]:
             "model": result["model"],
             "provider": name,
             "attempts": attempts,
-            "duration_s": time.monotonic() - started,
+            "duration_s": time.monotonic() - total_started,
             "usage": result["usage"],
         }
 

@@ -438,5 +438,56 @@ class ContractCase(WorkerCase):
         self.assertEqual(threads.count(7), 0)
 
 
+
+    def test_context_store_failure_is_audited_and_worker_survives(self):
+        from src.qq.threads import ThreadStore
+        from unittest.mock import patch as _patch
+
+        threads = ThreadStore(self.root / "threads.db")
+        self.enqueue("1+1", message_id="1")
+        self.pending("1", intent="ask", params={"question": "1+1"})
+
+        broken = _patch.object(threads, "append_turn", side_effect=RuntimeError("db locked"))
+
+        with broken, _patch.object(self.handler, "reply_for", return_value="2"):
+            TaskWorker(
+                outbox=self.outbox, client=self.client, handler=self.handler, threads=threads
+            ).run_once()
+
+        self.assertEqual(self.outbox.get("1")["state"], "sent")
+        actions = [event for event in self.handler.audit]
+        self.assertTrue(any(event.get("action") == "context_store_failed" for event in actions))
+
+        self.enqueue("2+2", message_id="2")
+        self.pending("2", intent="ask", params={"question": "2+2"})
+
+        with _patch.object(self.handler, "reply_for", return_value="4"):
+            TaskWorker(
+                outbox=self.outbox, client=self.client, handler=self.handler, threads=threads
+            ).run_once()
+
+        self.assertEqual(self.outbox.get("2")["state"], "sent")
+
+    def test_long_answer_saved_equals_sent(self):
+        from src.qq.threads import ThreadStore
+        from src.qq.worker import MAX_REPLY_CHARS
+
+        threads = ThreadStore(self.root / "threads.db")
+        long_answer = "长" * 900
+        self.enqueue("请写长文", message_id="1")
+        self.pending("1", intent="ask", params={"question": "请写长文"})
+
+        with patch.object(self.handler, "reply_for", return_value=long_answer):
+            TaskWorker(
+                outbox=self.outbox, client=self.client, handler=self.handler, threads=threads
+            ).run_once()
+
+        sent_text = self.client.sent[0][1]
+        turn = threads.latest_turn(7)
+
+        self.assertEqual(turn["answer"], sent_text)
+        self.assertLessEqual(len(sent_text), MAX_REPLY_CHARS + 30)
+
+
 if __name__ == "__main__":
     unittest.main()

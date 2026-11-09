@@ -108,5 +108,58 @@ class FailoverCase(unittest.TestCase):
             self.run_tool({"ark": first, "deepseek": second})
 
 
+
+    def test_duration_is_total_across_attempts(self):
+        first = FakeProvider("ark", error=ProviderError("timeout"))
+        second = FakeProvider("deepseek")
+        clock = iter([0.0, 0.0, 10.0, 10.0, 16.0, 16.0, 16.0])
+
+        with patch.object(provider_tools.time, "monotonic", side_effect=lambda: next(clock, 16.0)):
+            result = self.run_tool({"ark": first, "deepseek": second})
+
+        self.assertGreaterEqual(result["duration_s"], 10.0)
+
+    def test_cancel_checked_after_last_retryable(self):
+        class Token:
+            def __init__(self):
+                self.checks = 0
+
+            def check(self):
+                self.checks += 1
+
+        token = Token()
+        provider = FakeProvider("ark", error=ProviderError("timeout"))
+        os.environ["PA_RELAY_CHAIN"] = "ark"
+
+        with patch.object(provider_tools, "build_providers", return_value={"ark": provider}), patch(
+            "os.getcwd", return_value=str(self.cwd)
+        ):
+            with self.assertRaises(RuntimeError):
+                provider_tools.external_task(ToolCall(), cancel_token=token)
+
+        self.assertGreaterEqual(token.checks, 2)
+
+    def test_first_success_stops_chain(self):
+        first = FakeProvider("ark")
+        second = FakeProvider("deepseek")
+
+        result = self.run_tool({"ark": first, "deepseek": second})
+
+        self.assertEqual(result["provider"], "ark")
+        self.assertEqual(second.calls, 0)
+
+    def test_duplicate_chain_deduped(self):
+        provider = FakeProvider("ark")
+        os.environ["PA_RELAY_CHAIN"] = "ark,ark"
+
+        with patch.object(provider_tools, "build_providers", return_value={"ark": provider}), patch(
+            "os.getcwd", return_value=str(self.cwd)
+        ):
+            result = provider_tools.external_task(ToolCall())
+
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(result["attempts"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
