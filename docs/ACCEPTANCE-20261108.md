@@ -32,7 +32,7 @@ v1.4a 本地与模拟闭环、B1 功能链、v1.5–v1.8，均有实测证据。
 | v1.3 | 时间线/生命周期/Diff/CLI 完成 | 模型 fallback、QQ 通知、Sleep A/B、Office 转换未做 | 🟡 **部分通过** |
 | v1.4a | 本地 Registry/Guard/Verify + 模拟 Provider E2E ✅ | 无真实 Provider、无通知出站 | 🟡 **部分通过（本地骨架）** |
 | v1.4b/c | — | OneBot 入站、跨 Provider 接力未做 | ⬜ **未开始** |
-| B1 | A1–A6 功能证据 ✅ | 实现与命令偏离原计划（见 §3.3） | 🟡 **功能通过 / 合规待确认** |
+| B1 | A1–A6 功能证据 ✅ + pytest 原命令 ✅ | 版本路线偏离原计划，**owner 已接受**（2026-11-09） | ✅ **通过** |
 | v1.5–v1.8 | ✅（本轮聚合复跑） | 未逐条重新推导每条新增判据 | ✅ **通过（有限复跑）** |
 
 ---
@@ -101,10 +101,10 @@ LibreOffice/Office 转换、模型 fallback、Sleep A/B、GPU 压测。
 | 运行时 | portable 7z（约 2 GB） | 源码路线：ComfyUI **0.3.40** + torch 2.5.1+cu121 | 记为实现变更（portable 下载停在 74.7% 且固实块不可部分解压） |
 | A2 命令 | `python -m pytest tests -q` | **原命令已补跑：32 passed, 2 subtests**（0.49 s）；unittest 备选 32 OK | ✅ **已用原命令验证**（2026-11-09，`pa-b1-evidence-20261108/pytest.log`） |
 | 模型体积 | 约 2 GB | SD1.5 实际 **3.97 GB** | 磁盘预算已核实（E 盘余 137 GB） |
-| 版本 | 路线图锁定版本 | 0.3.40（master 的 comfy_kitchen 与 torch 2.5 不兼容） | 记录原因 |
+| 版本 | 路线图锁定版本 | 0.3.40（master 的 comfy_kitchen 与 torch 2.5 不兼容） | **owner 2026-11-09 明确接受** |
 
-**B1 结论**：A1–A6 功能证据通过；A2 已用**原命令 pytest** 验证（32 passed / 2 subtests）。
-**仍待 owner 确认的只有版本与实现路线**：ComfyUI 0.3.40 源码路线（原计划 portable 包）。
+**B1 结论：✅ 通过**。A1–A6 功能证据齐备；A2 已用**原命令 pytest** 验证（32 passed / 2 subtests）；
+版本与实现路线（ComfyUI 0.3.40 源码）**已由 owner 于 2026-11-09 明确接受**，作为范围变更登记。
 
 ---
 
