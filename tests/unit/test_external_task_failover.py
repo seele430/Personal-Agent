@@ -148,6 +148,15 @@ class FailoverCase(unittest.TestCase):
         self.assertEqual(result["provider"], "ark")
         self.assertEqual(second.calls, 0)
 
+        artifact = self.cwd / result["path"]
+        self.assertTrue(artifact.exists())
+        import hashlib
+
+        self.assertEqual(
+            hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            hashlib.sha256(b"result").hexdigest(),
+        )
+
     def test_duplicate_chain_deduped(self):
         provider = FakeProvider("ark")
         os.environ["PA_RELAY_CHAIN"] = "ark,ark"
