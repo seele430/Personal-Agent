@@ -21,6 +21,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import os  # noqa: E402
+
+from src.collab import artifacts  # noqa: E402
 from src.collab.providers import build_providers  # noqa: E402
 from src.collab.providers.openai_compat import ProviderError  # noqa: E402
 from src.collab.relay import RelayRunner  # noqa: E402
@@ -44,8 +47,16 @@ class InjectedProvider:
         raise error
 
 
+def db_path() -> Path:
+    return Path(os.getenv("PA_COLLAB_DB") or ROOT / "data" / "collab-runs.db")
+
+
+def artifact_root() -> Path:
+    return Path(os.getenv("PA_COLLAB_ARTIFACTS") or ROOT / "data" / "collab-artifacts")
+
+
 def build_runner(args, chain=None) -> RelayRunner:
-    store = RunStore(ROOT / "data" / "collab-runs.db")
+    store = RunStore(db_path())
     providers = build_providers(chain or args.chain.split(","))
 
     if getattr(args, "inject_timeout", None):
@@ -59,7 +70,7 @@ def build_runner(args, chain=None) -> RelayRunner:
     return RelayRunner(
         store=store,
         providers=providers,
-        artifact_root=ROOT / "data" / "collab-artifacts",
+        artifact_root=artifact_root(),
     )
 
 
@@ -89,7 +100,7 @@ def main(argv=None) -> int:
     cont.add_argument("--inject-auth-error")
 
     args = parser.parse_args(argv)
-    store = RunStore(ROOT / "data" / "collab-runs.db")
+    store = RunStore(db_path())
 
     try:
         if args.command in ("resume", "continue") and args.chain:
@@ -108,19 +119,25 @@ def main(argv=None) -> int:
             token = int(current["fencing_token"])
 
             if args.accept_step:
-                store.step_accept(args.run_id, revision, args.accept_step, token, None)
+                manifest = store.step_manifest(args.run_id, revision, args.accept_step)
+
+                if manifest is None:
+                    raise StoreError("no_manifest：该步骤没有可复核的产物，不能接受")
+
+                if not artifacts.verify(artifact_root(), manifest):
+                    raise StoreError("artifact_mismatch：产物校验失败，不能接受")
+
+                if not store.step_accept(args.run_id, revision, args.accept_step, token, manifest):
+                    raise StoreError("step_accept_failed")
+
+                store.audit(args.run_id, revision, "step_accept", {"step_id": args.accept_step, "manifest": manifest})
+                store.set_pending_after_review(args.run_id)
             elif args.retry_step:
-                store.step_retry(args.run_id, revision, args.retry_step)
+                if not store.step_retry(args.run_id, revision, args.retry_step):
+                    raise StoreError("step_retry_failed")
 
-            if args.accept_step or args.retry_step:
-                import time as _time
-
-                with store._session() as connection:
-                    connection.execute(
-                        "UPDATE collab_runs SET state='failed', updated_at=? "
-                        "WHERE run_id=? AND state='needs_review'",
-                        (_time.time(), args.run_id),
-                    )
+                store.audit(args.run_id, revision, "step_retry", {"step_id": args.retry_step})
+                store.set_pending_after_review(args.run_id)
 
             stored = store.get(args.run_id) or {}
             names = set(args.chain.split(",") if args.chain else stored.get("chain") or [])

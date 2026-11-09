@@ -133,5 +133,103 @@ class StoreCase(unittest.TestCase):
         self.assertEqual(attempts[0]["error_class"], "retryable")
 
 
+
+    def test_commit_rejects_stale_fencing(self):
+        run = self.claim()
+        self.store.step_begin(self.run_id, 1, "compose", "task", run["fencing_token"])
+        staging = Path(self._temporary.name) / "staging.md"
+        staging.write_bytes(b"hello")
+        target = Path(self._temporary.name) / "out.md"
+
+        self.now += 1000
+        self.claim("w2")
+
+        ok = self.store.commit_step_artifact(
+            self.run_id, 1, "compose", 1,
+            staging_path=str(staging), target_path=str(target),
+            manifest={"path": "out.md", "sha256": "x", "bytes": 5},
+        )
+
+        self.assertFalse(ok)
+        self.assertFalse(target.exists())
+
+    def test_commit_moves_file_and_writes_manifest(self):
+        run = self.claim()
+        self.store.step_begin(self.run_id, 1, "compose", "task", run["fencing_token"])
+        staging = Path(self._temporary.name) / "staging.md"
+        staging.write_bytes(b"hello")
+        target = Path(self._temporary.name) / "out.md"
+
+        ok = self.store.commit_step_artifact(
+            self.run_id, 1, "compose", run["fencing_token"],
+            staging_path=str(staging), target_path=str(target),
+            manifest={"path": "out.md", "sha256": "x", "bytes": 5},
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(target.read_bytes(), b"hello")
+        self.assertEqual(self.store.step_state(self.run_id, 1, "compose"), "done")
+
+    def test_cleanup_removes_orphans_and_keeps_referenced(self):
+        root = Path(self._temporary.name) / "artifacts"
+        run = self.claim()
+        self.store.step_begin(self.run_id, 1, "compose", "task", run["fencing_token"])
+        referenced = root / "keep.md"
+        referenced.parent.mkdir(parents=True, exist_ok=True)
+        referenced.write_bytes(b"keep")
+        orphan = root / "orphan.md"
+        orphan.write_bytes(b"orphan")
+
+        self.store.commit_step_artifact(
+            self.run_id, 1, "compose", run["fencing_token"],
+            staging_path=str(referenced), target_path=str(referenced),
+            manifest={"path": "keep.md", "sha256": "x", "bytes": 4},
+        )
+
+        result = self.store.cleanup_orphans(root)
+
+        self.assertTrue(referenced.exists())
+        self.assertFalse(orphan.exists())
+        self.assertIn("orphan.md", result["removed"])
+
+
+
+    def test_commit_aborts_when_replace_hook_fails(self):
+        run = self.claim()
+        self.store.step_begin(self.run_id, 1, "compose", "task", run["fencing_token"])
+        staging = Path(self._temporary.name) / "s.md"
+        staging.write_bytes(b"hello")
+        target = Path(self._temporary.name) / "t.md"
+
+        def boom():
+            raise RuntimeError("injected")
+
+        ok = self.store.commit_step_artifact(
+            self.run_id, 1, "compose", run["fencing_token"],
+            staging_path=str(staging), target_path=str(target),
+            manifest={"path": "t.md", "sha256": "x", "bytes": 5},
+            before_replace=boom,
+        )
+
+        self.assertFalse(ok)
+        self.assertFalse(target.exists())
+        self.assertTrue(staging.exists())
+
+    def test_cleanup_removes_old_staging(self):
+        import os as _os
+        import time as _time
+
+        root = Path(self._temporary.name) / "artifacts"
+        staging = root / ".staging" / "old"
+        staging.mkdir(parents=True)
+        old = _time.time() - 7200
+        _os.utime(staging, (old, old))
+
+        result = self.store.cleanup_orphans(root)
+
+        self.assertFalse(staging.exists())
+        self.assertIn(".staging/old", result["removed"])
+
+
 if __name__ == "__main__":
     unittest.main()

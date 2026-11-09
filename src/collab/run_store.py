@@ -54,6 +54,14 @@ CREATE TABLE IF NOT EXISTS collab_steps (
     PRIMARY KEY (run_id, revision, step_id),
     UNIQUE (run_id, revision, idempotency_key)
 );
+CREATE TABLE IF NOT EXISTS collab_events (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    event TEXT NOT NULL,
+    detail TEXT,
+    at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS collab_attempts (
     attempt_id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL,
@@ -344,6 +352,183 @@ class RunStore:
             )
 
             return cursor.rowcount == 1
+
+    def step_manifest(self, run_id: str, revision: int, step_id: str) -> dict | None:
+        with self._session() as connection:
+            row = connection.execute(
+                "SELECT artifact_manifest FROM collab_steps WHERE run_id=? AND revision=? AND step_id=?",
+                (run_id, revision, step_id),
+            ).fetchone()
+
+            if row is None or not row["artifact_manifest"]:
+                return None
+
+            return json.loads(row["artifact_manifest"])
+
+    def audit(self, run_id: str, revision: int, event: str, detail: dict | None = None) -> None:
+        with self._session() as connection:
+            connection.execute(
+                "INSERT INTO collab_events (run_id, revision, event, detail, at) VALUES (?, ?, ?, ?, ?)",
+                (
+                    run_id,
+                    revision,
+                    event,
+                    json.dumps(detail or {}, ensure_ascii=False),
+                    self._clock(),
+                ),
+            )
+
+    def set_pending_after_review(self, run_id: str) -> bool:
+        with self._session() as connection:
+            cursor = connection.execute(
+                "UPDATE collab_runs SET state='pending', updated_at=? "
+                "WHERE run_id=? AND state='needs_review'",
+                (self._clock(), run_id),
+            )
+
+            return cursor.rowcount == 1
+
+    def commit_step_artifact(
+        self,
+        run_id: str,
+        revision: int,
+        step_id: str,
+        token: int,
+        *,
+        staging_path: str,
+        target_path: str,
+        manifest: dict,
+        before_replace=None,
+    ) -> bool:
+        """条件原子提交：事务内复核 fencing，再 rename 并更新 manifest。
+
+        失败时回滚并删除已移动的目标文件。
+        """
+
+        import os as _os
+
+        connection = sqlite3.connect(self.path, timeout=10, isolation_level=None)
+        connection.row_factory = sqlite3.Row
+        moved = False
+
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT fencing_token, revision, state FROM collab_runs WHERE run_id=?",
+                (run_id,),
+            ).fetchone()
+
+            if (
+                row is None
+                or int(row["fencing_token"]) != int(token)
+                or int(row["revision"]) != int(revision)
+                or row["state"] != "running"
+            ):
+                connection.execute("ROLLBACK")
+                return False
+
+            if before_replace is not None:
+                before_replace()
+
+            Path(target_path).parent.mkdir(parents=True, exist_ok=True)
+            _os.replace(staging_path, target_path)
+            moved = True
+
+            cursor = connection.execute(
+                "UPDATE collab_steps SET state='done', artifact_manifest=?, updated_at=? "
+                "WHERE run_id=? AND revision=? AND step_id=? AND fencing_token=?",
+                (
+                    json.dumps(manifest, ensure_ascii=False),
+                    self._clock(),
+                    run_id,
+                    revision,
+                    step_id,
+                    int(token),
+                ),
+            )
+
+            if cursor.rowcount != 1:
+                raise StoreError("stale_worker")
+
+            connection.execute(
+                "UPDATE collab_runs SET updated_at=? WHERE run_id=? AND fencing_token=?",
+                (self._clock(), run_id, int(token)),
+            )
+            connection.execute("COMMIT")
+
+            return True
+
+        except Exception:
+            try:
+                connection.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
+
+            if moved:
+                try:
+                    _os.remove(target_path)
+                except OSError:
+                    pass
+
+            return False
+
+        finally:
+            connection.close()
+
+    def cleanup_orphans(self, artifact_root: str | Path, *, staging_max_age: float = 3600.0) -> dict:
+        """启动清理：删除无 manifest 引用的产物与过期 staging。"""
+
+        import os as _os
+        import shutil
+        import time as _time
+
+        root = Path(artifact_root).resolve()
+        root.mkdir(parents=True, exist_ok=True)
+        referenced = set()
+
+        with self._session() as connection:
+            rows = connection.execute("SELECT artifact_manifest FROM collab_steps").fetchall()
+
+        for row in rows:
+            if not row["artifact_manifest"]:
+                continue
+
+            try:
+                manifest = json.loads(row["artifact_manifest"])
+                referenced.add((root / manifest.get("path", "")).resolve())
+            except (ValueError, OSError):
+                continue
+
+        removed = []
+
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+
+            if ".staging" in path.parts:
+                continue
+
+            if path.resolve() not in referenced:
+                try:
+                    path.unlink()
+                    removed.append(str(path.relative_to(root)))
+                except OSError:
+                    pass
+
+        staging = root / ".staging"
+
+        if staging.exists():
+            now = _time.time()
+
+            for entry in staging.iterdir():
+                try:
+                    if entry.is_dir() and now - entry.stat().st_mtime > staging_max_age:
+                        shutil.rmtree(entry, ignore_errors=True)
+                        removed.append(f".staging/{entry.name}")
+                except OSError:
+                    pass
+
+        return {"removed": removed, "referenced": len(referenced)}
 
     def step_failed(self, run_id: str, revision: int, step_id: str, token: int) -> bool:
         with self._session() as connection:

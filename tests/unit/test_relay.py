@@ -131,5 +131,55 @@ class RelayCase(unittest.TestCase):
         self.assertEqual(classify_error(error), "retryable")
 
 
+
+    def test_heartbeat_keeps_lease_alive(self):
+        import threading
+        import time as _time
+
+        started = threading.Event()
+        release = threading.Event()
+
+        class SlowProvider(FakeProvider):
+            def submit(self, prompt, *, artifact_name, out_dir):
+                started.set()
+                release.wait(timeout=5)
+
+                return super().submit(prompt, artifact_name=artifact_name, out_dir=out_dir)
+
+        run_id = self.make_run(("a",))
+        runner = RelayRunner(
+            store=self.store,
+            providers={"a": SlowProvider("a", "slow")},
+            artifact_root=self.root / "artifacts",
+            lease_seconds=0.4,
+        )
+        result = {}
+
+        thread = threading.Thread(target=lambda: result.update(runner.start(run_id)))
+        thread.start()
+        self.assertTrue(started.wait(timeout=5))
+        _time.sleep(0.7)
+
+        other = RunStore(self.root / "runs.db")
+        self.assertIsNone(other.claim(run_id, "w2"))
+
+        release.set()
+        thread.join(timeout=10)
+
+        self.assertEqual(result["state"], "succeeded")
+        self.assertIsNone(self.store.claim(run_id, "w3"))
+
+    def test_expired_lease_allows_takeover(self):
+        run_id = self.make_run(("a",))
+        first = self.store.claim(run_id, "w1", lease_seconds=0.2)
+        import time as _time
+
+        _time.sleep(0.4)
+        second = self.store.claim(run_id, "w2")
+
+        self.assertIsNotNone(second)
+        self.assertFalse(self.store.finish(run_id, first["fencing_token"], "succeeded"))
+
+
 if __name__ == "__main__":
     unittest.main()
