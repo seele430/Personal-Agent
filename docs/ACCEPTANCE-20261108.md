@@ -28,7 +28,7 @@ v1.4a 本地与模拟闭环、B1 功能链、v1.5–v1.8，均有实测证据。
 |---|---|---|---|
 | v1.0 | ✅ 达标 | ⚠️ W6 重跑超预算（≥7 次 vs 2 次） | 🟡 **部分通过（成果通过 / 过程偏差）** |
 | v1.1 | 短素材 ✅ / 长素材 93.3% | 无真人素材 | 🟡 **部分通过** |
-| v1.2 | 本地 TLS 8/8 | 手机真机未做 | 🟡 **部分通过** |
+| v1.2 | 本地 TLS 8/8 + **手机真机 ✅**（Android 15/热点） | 反向代理部署未验 | 🟡 **部分通过（仅缺反代）** |
 | v1.3 | 时间线/生命周期/Diff/CLI 完成 | 模型 fallback、QQ 通知、Sleep A/B、Office 转换未做 | 🟡 **部分通过** |
 | v1.4a | 本地 Registry/Guard/Verify + 模拟 Provider E2E ✅ | 无真实 Provider、无通知出站 | 🟡 **部分通过（本地骨架）** |
 | v1.4b/c | — | OneBot 入站、跨 Provider 接力未做 | ⬜ **未开始** |
@@ -146,8 +146,20 @@ LibreOffice/Office 转换、模型 fallback、Sleep A/B、GPU 压测。
 
 **不接受的做法**：LLM 后处理纠错（属于"猜"，不能计入转写准确率）。
 
-### 5.2 v1.2 手机真机：未开始
-本地 TLS/owner 桥接 8/8；真机 WLAN 与证书信任未验收。
+### 5.2 v1.2 手机真机：✅ 已验证（2026-11-09）
+
+| 项 | 结果 |
+|---|---|
+| 网络 | 手机开热点，PC 作为客户端（PC `192.168.213.67`，手机 `192.168.213.87`） |
+| 传输 | uvicorn 直接 TLS（自签，SAN 含 192.168.213.67），**非反向代理** |
+| 登录 | `?token=` 一次性链接 → 303 + `Set-Cookie: pa_remote; Secure` |
+| 只读 | `/api/activity/timeline` **200 ×3**；`/api/chat` **403**（"该路径不在远程白名单"） |
+| 证书 | 警告出现并手动通过；之后不再弹 |
+| 收尾 | 服务已停、**令牌已轮换** |
+
+证据：`pa-lan-cert/phone-verification.json`、`phone-shot-1.jpg`、`phone-shot-2.jpg`、`access.jsonl`。
+
+**仍未覆盖**：反向代理（nginx/caddy）部署、iOS/Safari 证书流程、弱网重连。
 
 ### 5.3 v1.4 真实 Provider / 通知：未开始
 模拟 Provider 只证明"本地链路通 + 不认自述"，**不等于** Kimi/DeepSeek 已接入，也不等于 QQ/ntfy 出站可用。
