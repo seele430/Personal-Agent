@@ -1732,6 +1732,16 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # L1：QQ 入站端点固定 204（防 OneBot 快速回复双通道）
+    "unit/test_qq_api.py": TestSchema(
+        layer="unit",
+        domain="qq",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 

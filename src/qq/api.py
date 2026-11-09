@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 
 from fastapi import APIRouter, Request
+from fastapi import Response
 from fastapi.responses import JSONResponse
 
 from src.qq.inbound import QQInbound
@@ -34,6 +36,32 @@ def configured_inbound() -> QQInbound:
     return _inbound
 
 
+def _audit_inbound(event: dict) -> None:
+    from pathlib import Path as _Path
+
+    sender = (event.get("sender") or {}).get("user_id") or event.get("user_id")
+
+    try:
+        root = _Path(os.getenv("PERSONAL_AGENT_DATA_DIR") or _Path(__file__).resolve().parents[2] / "data")
+        root.mkdir(parents=True, exist_ok=True)
+
+        with (root / "qq-audit.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "action": "inbound",
+                        "message_id": str(event.get("message_id") or ""),
+                        "sender": sender,
+                        "message_type": event.get("message_type"),
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+    except OSError:
+        pass
+
+
 def reset_inbound() -> None:
     """测试用：丢掉缓存的实例。"""
 
@@ -59,9 +87,12 @@ async def onebot_event(request: Request):
     except (UnicodeDecodeError, json.JSONDecodeError):
         return JSONResponse(status_code=400, content={"error": "bad json"})
 
-    status, payload = handler.handle(event)
+    if (os.getenv("PA_QQ_AUDIT") or "").strip() == "1" and event.get("post_type") == "message":
+        _audit_inbound(event)
 
-    if status == 204:
-        return JSONResponse(status_code=204, content=None)
+    await asyncio.to_thread(handler.handle, event)
 
-    return JSONResponse(status_code=status, content=payload)
+    # OneBot 11：HTTP 上报响应里的 reply 会触发“快速回复”。
+    # 我们固定走显式 send_msg 单通道，所以这里必须返回 204 空正文，
+    # 否则同一条回复会被发两次（一次显式、一次快速回复）。
+    return Response(status_code=204)
