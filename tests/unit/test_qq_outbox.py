@@ -1,181 +1,220 @@
-"""QQ 出站队列与 worker 测试：SQLite + 全 mock 发送。"""
+"""出站队列测试：状态机、原子认领、确认消费、取消、迁移。"""
 
+import sqlite3
 import tempfile
 import unittest
 
 from pathlib import Path
 
-from src.qq.inbound import QQInbound
-from src.qq.onebot import OneBotError
 from src.qq.outbox import QQOutbox
-from src.qq.worker import QQWorker
-
-
-class FakeClient:
-    def __init__(self, fail=False):
-        self.sent = []
-        self.fail = fail
-
-    def send_private_msg(self, user_id, text):
-        if self.fail:
-            raise OneBotError("connect failed")
-
-        self.sent.append((user_id, text))
-
-        return {"message_id": 42}
 
 
 class OutboxCase(unittest.TestCase):
     def setUp(self):
         self._temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self._temporary.cleanup)
-        self.outbox = QQOutbox(Path(self._temporary.name) / "outbox.db")
+        self.path = Path(self._temporary.name) / "outbox.db"
+        self.outbox = QQOutbox(self.path)
 
-    def test_enqueue_then_duplicate(self):
-        self.assertTrue(self.outbox.enqueue(message_id="1", sender=1, command="status"))
-        self.assertFalse(self.outbox.enqueue(message_id="1", sender=1, command="status"))
-        self.assertEqual(self.outbox.counts()["pending"], 1)
+    def enqueue(self, message_id="1", sender=7, text="/status", queue="task"):
+        return self.outbox.enqueue(
+            message_id=message_id, sender=sender, raw_text=text, queue=queue
+        )
 
-    def test_claim_moves_to_sending(self):
-        self.outbox.enqueue(message_id="1", sender=1, command="status")
-        job = self.outbox.claim_next()
+    def to_pending(self, message_id="1", intent="status", state="pending_task"):
+        self.outbox.set_routing(
+            message_id,
+            intent=intent,
+            params={},
+            params_hash="h",
+            decision_source="rule",
+            state=state,
+        )
 
-        self.assertEqual(job["state"], "sending")
-        self.assertIsNone(self.outbox.claim_next())
+    # ---------- 入队/幂等 ----------
 
-    def test_mark_sent(self):
-        self.outbox.enqueue(message_id="1", sender=1, command="status")
-        self.outbox.claim_next()
-        self.outbox.mark_sent("1", reply="ok", result_message_id="99")
+    def test_enqueue_and_duplicate(self):
+        self.assertTrue(self.enqueue())
+        self.assertFalse(self.enqueue())
+        self.assertEqual(self.outbox.counts()["pending_task"], 1)
+
+    def test_new_rows_have_explicit_zero_flags(self):
+        self.enqueue()
 
         row = self.outbox.get("1")
-        self.assertEqual(row["state"], "sent")
-        self.assertEqual(row["reply"], "ok")
+        self.assertEqual(row["confirm_used"], 0)
+        self.assertEqual(row["cancelled"], 0)
 
-    def test_mark_failed_and_unknown(self):
-        self.outbox.enqueue(message_id="1", sender=1, command="status")
-        self.outbox.claim_next()
-        self.outbox.mark_failed("1", error="boom")
-        self.assertEqual(self.outbox.get("1")["state"], "failed")
+    def test_queue_selection(self):
+        self.enqueue(queue="control")
 
-        self.outbox.enqueue(message_id="2", sender=1, command="status")
-        self.outbox.claim_next()
-        self.outbox.mark_unknown("2", error="timeout")
-        self.assertEqual(self.outbox.get("2")["state"], "unknown")
+        self.assertEqual(self.outbox.get("1")["queue"], "control")
 
-    def test_recover_inflight_marks_unknown(self):
-        self.outbox.enqueue(message_id="1", sender=1, command="status")
-        self.outbox.claim_next()
+    # ---------- 认领 ----------
+
+    def test_claim_task(self):
+        self.enqueue()
+        self.to_pending()
+
+        job = self.outbox.claim("task")
+
+        self.assertEqual(job["state"], "running")
+        self.assertIsNone(self.outbox.claim("task"))
+
+    def test_claim_control(self):
+        self.enqueue(queue="control")
+        self.to_pending(state="pending_control")
+
+        job = self.outbox.claim("control")
+
+        self.assertEqual(job["state"], "running_control")
+
+    # ---------- 发送认领 ----------
+
+    def test_claim_send_requires_running_and_not_cancelled(self):
+        self.enqueue()
+        self.to_pending()
+        self.outbox.claim("task")
+
+        self.assertTrue(self.outbox.claim_send("1"))
+
+    def test_claim_send_fails_when_cancelled(self):
+        self.enqueue()
+        self.to_pending(intent="ask")
+        self.outbox.claim("task")
+        self.outbox.cancel(sender=7, target="1")
+
+        self.assertFalse(self.outbox.claim_send("1"))
+
+    # ---------- 确认 ----------
+
+    def test_confirm_consumes_once(self):
+        self.enqueue()
+        self.to_pending(intent="read_file")
+        self.outbox.set_awaiting_confirm("1", confirm_id="K7M2P9QX", expires_at=9e9)
+
+        first = self.outbox.consume_confirm(sender=7, confirm_id="K7M2P9QX")
+        second = self.outbox.consume_confirm(sender=7, confirm_id="K7M2P9QX")
+
+        self.assertEqual(first["state"], "pending_task")
+        self.assertIsNone(second)
+        self.assertEqual(self.outbox.get("1")["confirm_used"], 1)
+
+    def test_confirm_expired(self):
+        self.enqueue()
+        self.to_pending(intent="read_file")
+        self.outbox.set_awaiting_confirm("1", confirm_id="ABCD2345", expires_at=1.0)
+
+        self.assertIsNone(self.outbox.consume_confirm(sender=7, confirm_id="ABCD2345"))
+
+    def test_confirm_wrong_sender(self):
+        self.enqueue()
+        self.to_pending(intent="read_file")
+        self.outbox.set_awaiting_confirm("1", confirm_id="ABCD2345", expires_at=9e9)
+
+        self.assertIsNone(self.outbox.consume_confirm(sender=8, confirm_id="ABCD2345"))
+
+    # ---------- 取消 ----------
+
+    def test_cancel_pending(self):
+        self.enqueue()
+        self.to_pending(intent="ask")
+
+        outcome, _ = self.outbox.cancel(sender=7, target="1")
+
+        self.assertEqual(outcome, "cancelled")
+        self.assertEqual(self.outbox.get("1")["state"], "cancelled")
+
+    def test_cancel_running_marks_flag_only(self):
+        self.enqueue()
+        self.to_pending(intent="ask")
+        self.outbox.claim("task")
+
+        outcome, _ = self.outbox.cancel(sender=7, target="1")
+
+        self.assertEqual(outcome, "running")
+        row = self.outbox.get("1")
+        self.assertEqual(row["state"], "running")
+        self.assertEqual(row["cancelled"], 1)
+
+    def test_cancel_sending_reports_sending(self):
+        self.enqueue()
+        self.to_pending()
+        self.outbox.claim("task")
+        self.outbox.claim_send("1")
+
+        outcome, _ = self.outbox.cancel(sender=7, target="1")
+
+        self.assertEqual(outcome, "sending")
+
+    def test_cancel_missing(self):
+        self.assertEqual(self.outbox.cancel(sender=7, target="999")[0], "not_found")
+
+    # ---------- 恢复/迁移 ----------
+
+    def test_recover_inflight(self):
+        self.enqueue()
+        self.to_pending(intent="ask")
+        self.outbox.claim("task")
 
         self.assertEqual(self.outbox.recover_inflight(), 1)
         self.assertEqual(self.outbox.get("1")["state"], "unknown")
 
-
-class WorkerCase(unittest.TestCase):
-    def setUp(self):
-        self._temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self._temporary.cleanup)
-        self.outbox = QQOutbox(Path(self._temporary.name) / "outbox.db")
-        self.handler = QQInbound(
-            owner_id=1, secret="s", client=FakeClient(), enabled=True
+    def test_migration_backfills_queue_and_keeps_legacy_null(self):
+        legacy = Path(self._temporary.name) / "legacy.db"
+        connection = sqlite3.connect(legacy)
+        connection.executescript(
+            """
+            CREATE TABLE qq_outbox (
+                message_id TEXT PRIMARY KEY, sender INTEGER NOT NULL, command TEXT NOT NULL,
+                question TEXT, state TEXT NOT NULL, reply TEXT,
+                attempts INTEGER NOT NULL DEFAULT 0, error TEXT,
+                created_at REAL NOT NULL, updated_at REAL NOT NULL
+            );
+            INSERT INTO qq_outbox VALUES ('old-cancel', 7, 'cancel', '', 'pending', NULL, 0, NULL, 1, 1);
+            INSERT INTO qq_outbox VALUES ('old-ask', 7, 'ask', '', 'pending', NULL, 0, NULL, 2, 2);
+            """
         )
+        connection.commit()
+        connection.close()
 
-    def worker(self, client):
-        return QQWorker(outbox=self.outbox, client=client, handler=self.handler)
+        migrated = QQOutbox(legacy)
 
-    def test_run_once_sends_and_marks_sent(self):
-        client = FakeClient()
-        self.outbox.enqueue(message_id="1", sender=2790017495, command="status")
-
-        self.assertTrue(self.worker(client).run_once())
-
-        self.assertEqual(client.sent, [(2790017495, "Personal Agent 在线；QQ 入站已接通。")])
-        self.assertEqual(self.outbox.get("1")["state"], "sent")
-
-    def test_send_failure_marks_failed(self):
-        self.outbox.enqueue(message_id="1", sender=2790017495, command="status")
-
-        self.worker(FakeClient(fail=True)).run_once()
-
-        self.assertEqual(self.outbox.get("1")["state"], "failed")
-
-    def test_unknown_command_replies_hint(self):
-        client = FakeClient()
-        self.outbox.enqueue(message_id="1", sender=2790017495, command="unknown")
-
-        self.worker(client).run_once()
-
-        self.assertIn("仅支持", client.sent[0][1])
-
-    def test_empty_queue_returns_false(self):
-        self.assertFalse(self.worker(FakeClient()).run_once())
+        self.assertEqual(migrated.get("old-cancel")["queue"], "control")
+        self.assertEqual(migrated.get("old-ask")["queue"], "task")
+        self.assertIsNone(migrated.get("old-cancel")["router_version"])
 
 
 
+    def test_two_workers_cannot_claim_same_task(self):
+        self.enqueue()
+        self.to_pending()
 
-class CancelCase(unittest.TestCase):
-    def setUp(self):
-        self._temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self._temporary.cleanup)
-        self.outbox = QQOutbox(Path(self._temporary.name) / "outbox.db")
+        self.assertIsNotNone(self.outbox.claim("task"))
+        self.assertIsNone(self.outbox.claim("task"))
 
-    def test_cancel_latest_pending(self):
-        self.outbox.enqueue(message_id="1", sender=7, command="ask")
-        outcome, cancelled = self.outbox.cancel(sender=7)
+    def test_claim_send_twice_only_first_wins(self):
+        self.enqueue()
+        self.to_pending()
+        self.outbox.claim("task")
 
-        self.assertEqual(outcome, "cancelled")
-        self.assertEqual(cancelled, "1")
-        self.assertEqual(self.outbox.get("1")["state"], "cancelled")
+        self.assertTrue(self.outbox.claim_send("1"))
+        self.assertFalse(self.outbox.claim_send("1"))
 
-    def test_cancel_by_id(self):
-        self.outbox.enqueue(message_id="1", sender=7, command="ask")
-        self.outbox.enqueue(message_id="2", sender=7, command="ask")
+    def test_cancel_awaiting_confirm_then_confirm_fails(self):
+        self.enqueue()
+        self.to_pending(intent="read_file")
+        self.outbox.set_awaiting_confirm("1", confirm_id="K7M2P9QX", expires_at=9e9)
 
-        outcome, cancelled = self.outbox.cancel(sender=7, message_id="1")
+        self.outbox.cancel(sender=7, target="1")
 
-        self.assertEqual((outcome, cancelled), ("cancelled", "1"))
-        self.assertEqual(self.outbox.get("2")["state"], "pending")
+        self.assertIsNone(self.outbox.consume_confirm(sender=7, confirm_id="K7M2P9QX"))
 
-    def test_cancel_missing_or_other_sender(self):
-        self.outbox.enqueue(message_id="1", sender=7, command="ask")
+    def test_legacy_rows_do_not_look_like_new_routes(self):
+        self.enqueue()
+        self.to_pending()
 
-        self.assertEqual(self.outbox.cancel(sender=8, message_id="1")[0], "not_found")
-        self.assertEqual(self.outbox.cancel(sender=7, message_id="999")[0], "not_found")
-
-    def test_cancel_after_sending_rejected(self):
-        self.outbox.enqueue(message_id="1", sender=7, command="ask")
-        self.outbox.claim_next()
-
-        outcome, _ = self.outbox.cancel(sender=7, message_id="1")
-
-        self.assertEqual(outcome, "state:sending")
-
-
-class CancelWorkerCase(unittest.TestCase):
-    def setUp(self):
-        self._temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self._temporary.cleanup)
-        self.outbox = QQOutbox(Path(self._temporary.name) / "outbox.db")
-        self.handler = QQInbound(owner_id=1, secret="s", client=FakeClient(), enabled=True)
-
-    def test_worker_cancel_replies(self):
-        client = FakeClient()
-        self.outbox.enqueue(message_id="1", sender=1, command="ask")
-
-        self.outbox.enqueue(message_id="2", sender=1, command="cancel", question="1")
-        worker = QQWorker(outbox=self.outbox, client=client, handler=self.handler)
-        worker.run_once()
-
-        self.assertIn("已取消", client.sent[0][1])
-        self.assertEqual(self.outbox.get("1")["state"], "cancelled")
-
-    def test_worker_cancel_not_found(self):
-        client = FakeClient()
-        self.outbox.enqueue(message_id="3", sender=1, command="cancel", question="999")
-
-        QQWorker(outbox=self.outbox, client=client, handler=self.handler).run_once()
-
-        self.assertIn("找不到", client.sent[0][1])
+        self.assertEqual(self.outbox.get("1")["router_version"], "2.0.0-mvp")
 
 
 if __name__ == "__main__":

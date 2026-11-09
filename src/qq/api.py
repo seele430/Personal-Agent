@@ -1,12 +1,13 @@
 """QQ 入站 HTTP 端点：NapCat（OneBot 11）→ 入队 → 立即 204。
 
-双通道教训：OneBot 11 的上报响应里若带 `reply`，会触发“快速回复”；
-我们固定走显式 `send_msg` 单通道，所以这里**所有完成分支都返回 204 空正文**。
+入站只做四件事：验签、白名单、幂等、选队列。
+完整路由在 task Worker；确认/取消在 control Worker。
+
+双通道教训：上报响应不能带 `reply`，所有完成分支统一 204 空正文。
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 
@@ -18,13 +19,15 @@ from fastapi.responses import JSONResponse
 from src.qq.inbound import QQInbound
 from src.qq.onebot import OneBotClient
 from src.qq.outbox import QQOutbox
-from src.qq.worker import QQWorker
+from src.qq.worker import build_workers
 
 
 router = APIRouter(tags=["qq"])
 
 _inbound: QQInbound | None = None
-_worker: QQWorker | None = None
+_outbox: QQOutbox | None = None
+_task_worker = None
+_control_worker = None
 
 
 def data_root() -> Path:
@@ -45,43 +48,57 @@ def configured_inbound() -> QQInbound:
     global _inbound
 
     if _inbound is None:
+        text_enabled = (os.getenv("PA_QQ_ENABLED") or "").strip() == "1"
         _inbound = QQInbound(
             owner_id=int(os.getenv("PA_QQ_OWNER") or 0),
             secret=os.getenv("PA_QQ_SECRET") or "",
             client=build_client(),
-            enabled=(os.getenv("PA_QQ_ENABLED") or "").strip() == "1",
+            enabled=text_enabled,
         )
 
     return _inbound
 
 
-def configured_worker() -> QQWorker:
-    global _worker
+def configured_workers():
+    global _outbox, _task_worker, _control_worker
 
-    if _worker is None:
+    if _task_worker is None:
         handler = configured_inbound()
         root = data_root()
         root.mkdir(parents=True, exist_ok=True)
-        _worker = QQWorker(
-            outbox=QQOutbox(root / "qq-outbox.db"),
+        _outbox, _task_worker, _control_worker = build_workers(
+            db_path=str(root / "qq-outbox.db"),
             client=handler.client,
             handler=handler,
         )
-        _worker.start()
+        _task_worker.start()
+        _control_worker.start()
 
-    return _worker
+    return _outbox, _task_worker, _control_worker
 
 
 def reset_inbound() -> None:
-    """测试用：丢掉缓存的实例。"""
+    """测试用：停掉 worker、丢掉缓存。"""
 
-    global _inbound, _worker
+    global _inbound, _outbox, _task_worker, _control_worker
 
-    if _worker is not None:
-        _worker.stop()
+    for worker in (_task_worker, _control_worker):
+        if worker is not None:
+            worker.stop()
 
-    _worker = None
+    _task_worker = None
+    _control_worker = None
+    _outbox = None
     _inbound = None
+
+
+def queue_for(text: str) -> str:
+    stripped = (text or "").strip()
+
+    if stripped.startswith("/confirm") or stripped.startswith("/cancel"):
+        return "control"
+
+    return "task"
 
 
 @router.post("/api/qq/onebot")
@@ -101,21 +118,33 @@ async def onebot_event(request: Request):
     except (UnicodeDecodeError, json.JSONDecodeError):
         return JSONResponse(status_code=400, content={"error": "bad json"})
 
-    job = await asyncio.to_thread(handler.accept, event)
+    if event.get("post_type") != "message" or event.get("message_type") != "private":
+        return Response(status_code=204)
 
-    if job is not None:
-        worker = configured_worker()
-        enqueued = worker.outbox.enqueue(
-            message_id=job["message_id"],
-            sender=job["sender"],
-            command=job["command"],
-            question=job["question"],
-        )
+    sender = int((event.get("sender") or {}).get("user_id") or event.get("user_id") or 0)
 
-        if enqueued:
-            handler.record_audit(job, "enqueued")
-        else:
-            handler.record_audit(job, "duplicate_ignored")
+    if sender != handler.owner_id:
+        handler.record(event, "dropped:not-owner")
 
-    # 始终 204 空正文：回复只走显式 send_msg
+        return Response(status_code=204)
+
+    message_id = str(event.get("message_id") or "")
+    text = handler._text_of(event).strip()
+
+    if not message_id or not text:
+        return Response(status_code=204)
+
+    outbox, _, _ = configured_workers()
+    enqueued = outbox.enqueue(
+        message_id=message_id,
+        sender=sender,
+        raw_text=text,
+        queue=queue_for(text),
+    )
+
+    handler.record(
+        event,
+        "enqueued" if enqueued else "duplicate_ignored",
+    )
+
     return Response(status_code=204)

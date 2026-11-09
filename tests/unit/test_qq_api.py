@@ -1,4 +1,4 @@
-"""`/api/qq/onebot` 端点测试：入队 + 固定 204 空正文。"""
+"""`/api/qq/onebot` 端点测试：入队 + 队列选择 + 204 空正文。"""
 
 import hashlib
 import hmac
@@ -41,7 +41,7 @@ class EndpointCase(unittest.TestCase):
 
         self.outbox = Mock()
         self.outbox.enqueue.return_value = True
-        self.fake_worker = SimpleNamespace(outbox=self.outbox)
+        self.workers = (self.outbox, Mock(), Mock())
 
     def post(self, event, *, sign=True):
         body = json.dumps(event, ensure_ascii=False).encode("utf-8")
@@ -65,26 +65,46 @@ class EndpointCase(unittest.TestCase):
         }
 
     def test_bad_signature_is_401(self):
-        response = self.post(self.event(), sign=False)
+        self.assertEqual(self.post(self.event(), sign=False).status_code, 401)
 
-        self.assertEqual(response.status_code, 401)
-
-    def test_handled_event_enqueues_and_returns_204(self):
-        with patch("src.qq.api.configured_worker", return_value=self.fake_worker):
-            response = self.post(self.event(message="/ask 1+1"))
+    def test_task_message_enqueued(self):
+        with patch("src.qq.api.configured_workers", return_value=self.workers):
+            response = self.post(self.event(message="1+1 等于几"))
 
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response.content, b"")
-        self.outbox.enqueue.assert_called_once()
         kwargs = self.outbox.enqueue.call_args.kwargs
-        self.assertEqual(kwargs["command"], "ask")
-        self.assertEqual(kwargs["question"], "1+1")
+        self.assertEqual(kwargs["queue"], "task")
+        self.assertEqual(kwargs["raw_text"], "1+1 等于几")
 
-    def test_duplicate_enqueue_is_recorded(self):
-        self.outbox.enqueue.return_value = False
+    def test_confirm_goes_to_control_queue(self):
+        with patch("src.qq.api.configured_workers", return_value=self.workers):
+            self.post(self.event(message="/confirm K7M2P9QX"))
 
-        with patch("src.qq.api.configured_worker", return_value=self.fake_worker):
-            response = self.post(self.event())
+        self.assertEqual(self.outbox.enqueue.call_args.kwargs["queue"], "control")
+
+    def test_cancel_goes_to_control_queue(self):
+        with patch("src.qq.api.configured_workers", return_value=self.workers):
+            self.post(self.event(message="/cancel 1"))
+
+        self.assertEqual(self.outbox.enqueue.call_args.kwargs["queue"], "control")
+
+    def test_non_owner_ignored(self):
+        event = self.event()
+        event["sender"] = {"user_id": 123456}
+        event["user_id"] = 123456
+
+        with patch("src.qq.api.configured_workers", return_value=self.workers):
+            response = self.post(event)
+
+        self.assertEqual(response.status_code, 204)
+        self.outbox.enqueue.assert_not_called()
+
+    def test_group_ignored(self):
+        event = self.event()
+        event["message_type"] = "group"
+
+        response = self.post(event)
 
         self.assertEqual(response.status_code, 204)
 
@@ -97,16 +117,13 @@ class EndpointCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 204)
 
-    def test_non_owner_returns_204_without_enqueue(self):
-        event = self.event()
-        event["sender"] = {"user_id": 123456}
-        event["user_id"] = 123456
+    def test_duplicate_enqueue_ignored(self):
+        self.outbox.enqueue.return_value = False
 
-        with patch("src.qq.api.configured_worker", return_value=self.fake_worker):
-            response = self.post(event)
+        with patch("src.qq.api.configured_workers", return_value=self.workers):
+            response = self.post(self.event())
 
         self.assertEqual(response.status_code, 204)
-        self.outbox.enqueue.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -1752,6 +1752,34 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # L1：QQ 意图路由（test_qq_router.py）
+    "unit/test_qq_router.py": TestSchema(
+        layer="unit",
+        domain="qq",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="low",
+    ),
+    # L1：QQ 意图路由（test_qq_policy.py）
+    "unit/test_qq_policy.py": TestSchema(
+        layer="unit",
+        domain="qq",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+    # L1：QQ 意图路由（test_qq_worker.py）
+    "unit/test_qq_worker.py": TestSchema(
+        layer="unit",
+        domain="qq",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 
