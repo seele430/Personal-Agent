@@ -236,6 +236,7 @@ npx playwright test tests/console.spec.ts # 只看平台控制台
 - **不要开 `--prompt` 术语偏置**：三次实测都变差（medium 52→51、large-v3 56→48、80%）；
 - 关 VAD、把 beam 调到 10 都无收益（56→56，耗时 +45%）；
 - large-v3 内存占用比 medium 更高（未精确量化），16 GB 机器上留意。
+- **已知上限**：长音频（4 分钟以上）逐句转写在本机达到 **86–93%**，达不到 95%；错误以同音字为主。详见 [`docs/video-asr-limits.md`](docs/video-asr-limits.md)。
 
 精度优先时：
 
