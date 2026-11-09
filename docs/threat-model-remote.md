@@ -44,6 +44,26 @@
 | 日志脱敏 | ✅ 单测 | 日志里不含令牌 |
 | 证书 SAN / 私钥权限 | ✅ 实测 | `pa-v12-evidence-20261107/tls/`（SAN: 10.224.76.60 + localhost） |
 | **手机真机 HTTPS 访问** | ❌ **未验证** | 需要用户的手机在同一 WLAN 并手动信任证书 |
+### 手机登录方式（2026-11-09 新增）
+
+手机浏览器无法设置 `Authorization` 头，因此守卫支持**一次性链接换 cookie**：
+
+```text
+GET <允许路径>?token=<owner 令牌>   → 303 + Set-Cookie: pa_remote=…
+```
+
+约束（已单测钉住）：
+
+- 只在**没有 header / cookie**时看 query；header 优先；
+- **只对 GET/HEAD** 生效，写方法带 query 仍 401；
+- 校验失败 401，且不下发 cookie；
+- 响应带 `Referrer-Policy: no-referrer`，cookie 为 `HttpOnly; SameSite=Strict`，
+  HTTPS 下自动加 `Secure`；
+- 访问日志继续剥离 query（单测断言日志里没有令牌明文）。
+
+**已知代价**：令牌会出现在手机浏览器历史中，仅限局域网一次性验证；
+用完建议在 `PERSONAL_AGENT_REMOTE_TOKEN` 轮换。
+
 
 ## 5. 上线前必须补的
 

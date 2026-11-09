@@ -14,13 +14,24 @@ from src.remote.guard import RemoteGuard, extract_token
 TOKEN = "t" * 40
 
 
-async def call(app, method, path, *, headers=None, client=("10.0.0.9", 1234)):
+async def call(
+    app,
+    method,
+    path,
+    *,
+    headers=None,
+    client=("10.0.0.9", 1234),
+    query=b"",
+    scheme="http",
+):
     sent = []
 
     scope = {
         "type": "http",
         "method": method,
         "path": path,
+        "query_string": query,
+        "scheme": scheme,
         "headers": headers or [],
         "client": client,
     }
@@ -116,6 +127,80 @@ class TestAuth(GuardCase):
         )
 
         self.assertEqual(token, "abc")
+
+
+class TestQueryLogin(GuardCase):
+    """手机浏览器：一次性链接换 cookie。"""
+
+    def login(self, query, *, method="GET", headers=None):
+        return asyncio.run(
+            call(
+                self.build(),
+                method,
+                "/api/artifacts",
+                headers=headers,
+                query=query,
+            )
+        )
+
+    def test_valid_query_redirects_with_cookie(self):
+        sent = self.login(f"token={TOKEN}".encode())
+
+        self.assertEqual(status_of(sent), 303)
+        start = next(item for item in sent if item["type"] == "http.response.start")
+        headers = dict(start["headers"])
+
+        self.assertIn(b"pa_remote=", headers[b"set-cookie"])
+        self.assertEqual(headers[b"location"], b"/api/artifacts")
+        self.assertEqual(headers[b"referrer-policy"], b"no-referrer")
+
+    def test_cookie_omits_secure_on_http(self):
+        sent = self.login(f"token={TOKEN}".encode())
+        start = next(item for item in sent if item["type"] == "http.response.start")
+
+        self.assertNotIn(b"Secure", dict(start["headers"])[b"set-cookie"])
+
+    def test_cookie_marks_secure_on_https(self):
+        sent = asyncio.run(
+            call(
+                self.build(),
+                "GET",
+                "/api/artifacts",
+                query=f"token={TOKEN}".encode(),
+                scheme="https",
+            )
+        )
+        start = next(item for item in sent if item["type"] == "http.response.start")
+
+        self.assertIn(b"Secure", dict(start["headers"])[b"set-cookie"])
+
+    def test_wrong_query_token_is_401_without_cookie(self):
+        sent = self.login(b"token=wrong")
+
+        self.assertEqual(status_of(sent), 401)
+        start = next(item for item in sent if item["type"] == "http.response.start")
+
+        self.assertNotIn(b"set-cookie", dict(start["headers"]))
+
+    def test_post_with_query_token_is_rejected(self):
+        sent = self.login(f"token={TOKEN}".encode(), method="POST")
+
+        self.assertEqual(status_of(sent), 401)
+
+    def test_bearer_header_wins_over_query(self):
+        sent = self.login(
+            b"token=wrong",
+            headers=[(b"authorization", f"Bearer {TOKEN}".encode())],
+        )
+
+        self.assertEqual(status_of(sent), 200)
+
+    def test_log_has_no_token_from_query(self):
+        self.login(f"token={TOKEN}".encode())
+
+        text = Path(self.log_path).read_text(encoding="utf-8")
+
+        self.assertNotIn(TOKEN, text)
 
 
 class TestReadOnly(GuardCase):

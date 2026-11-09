@@ -39,6 +39,51 @@ def _header(scope, name: bytes) -> str:
     return ""
 
 
+COOKIE_NAME = "pa_remote"
+
+
+def query_token(scope) -> str:
+    """从 query 里取一次性登录令牌（只用于手机浏览器首次访问）。"""
+
+    from urllib.parse import parse_qs
+
+    raw = scope.get("query_string") or b""
+
+    try:
+        params = parse_qs(raw.decode("latin-1"))
+
+    except (UnicodeDecodeError, AttributeError):
+        return ""
+
+    values = params.get("token") or []
+
+    return values[0].strip() if values else ""
+
+
+async def _send_login_cookie(send, *, path: str, token: str, secure: bool):
+    """校验通过后下发 cookie 并重定向到去掉 query 的地址。"""
+
+    cookie = f"{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Strict"
+
+    if secure:
+        cookie += "; Secure"
+
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 303,
+            "headers": [
+                (b"location", path.encode("latin-1")),
+                (b"set-cookie", cookie.encode("latin-1")),
+                (b"referrer-policy", b"no-referrer"),
+                (b"cache-control", b"no-store"),
+                (b"content-length", b"0"),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": b""})
+
+
 def extract_token(scope) -> str:
     """从 Authorization 或 cookie 里取令牌。"""
 
@@ -113,6 +158,7 @@ class RemoteGuard:
         # 防御性剥离 query：正常 ASGI 里 path 不含 query，但不该依赖调用方守规矩
         path = strip_query(scope.get("path") or "/")
         token = extract_token(scope)
+        from_query = False
         client = client_address(scope)
         status = 200
         note = ""
@@ -135,11 +181,31 @@ class RemoteGuard:
 
             return
 
+        if not token:
+            candidate = query_token(scope)
+
+            if candidate and method in SAFE_METHODS:
+                from_query = True
+                token = candidate
+
         if not token or token != self.config.token:
             status = 401
-            note = "bad token"
+            note = "bad token" if token else "no token"
             self.limiter.record_failure(client)
             await _send_json(send, status, UNAUTHORIZED)
+
+        elif from_query:
+            # 手机浏览器：一次性链接换 cookie，然后重定向掉 query
+            status = 303
+            note = "token -> cookie"
+            self.limiter.record_success(client)
+            mark_owner(scope, self.config.owner_id)
+            await _send_login_cookie(
+                send,
+                path=path,
+                token=token,
+                secure=(scope.get("scheme") or "http") == "https",
+            )
 
         elif method not in SAFE_METHODS:
             status = 403
