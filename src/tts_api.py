@@ -1,6 +1,6 @@
 """Bot 试听与既有语音播放共用的 Edge TTS 接口。
 
-该模块独立于旧聊天室路由；桌面版仍通过 edge_tts 子进程合成。
+该模块独立于其他路由；桌面版仍通过 edge_tts 子进程合成。
 """
 
 import logging

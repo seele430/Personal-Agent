@@ -73,7 +73,7 @@ function nextBotName(existing: string[]): string {
   return `Bot-${n}`;
 }
 
-// 「天然立场」已从表单移除（立场改由房间里的阵营决定）。
+// 「天然立场」已从表单移除。
 // 后端该字段是 NOT NULL，这里给个中性值兜底。
 const NEUTRAL_PERSONA = "未设定";
 
@@ -237,7 +237,7 @@ export default function BotsView({ authToken }: Props) {
     if (
       !window.confirm(
         `删除 Bot「${bot.name}」？\n\n` +
-          "它会从所有房间里移除（历史消息保留）。"
+          "它会从所有会话里移除（历史消息保留）。"
       )
     ) {
       return;
@@ -484,7 +484,7 @@ export default function BotsView({ authToken }: Props) {
                   )}
                 </strong>
 
-                {/* 立场已改由房间里的阵营决定；老 Bot 的历史值仍显示 */}
+                {/* 老 Bot 的历史立场值仍显示 */}
                 {bot.persona && bot.persona !== NEUTRAL_PERSONA && (
                   <span className="bot-persona">
                     {bot.persona}

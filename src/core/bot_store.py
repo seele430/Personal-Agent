@@ -1,6 +1,6 @@
 """Bot 存储层：身份卡（persona / system_prompt）+ 双来源（platform / byok）。
 
-对应 `docs/CHATROOM_PLAN.md` 的 S1（Bot 实体）。
+Bot 实体的存储层。
 
 关键约束：
 1. **归属隔离**：用户 Bot 带 `owner_id`，站长 Bot `owner_id` 为 NULL；
@@ -489,7 +489,7 @@ class BotStore:
         """删除自己的 Bot。
 
         平台预置 Bot（owner_id IS NULL）删不掉。
-        外键已开：房间成员 / 举手记录随 CASCADE 清掉，
+        外键已开：旧成员 / 记录随 CASCADE 清掉，
         历史消息保留但 bot_id 置 NULL（不丢上下文）。
         """
 
@@ -552,7 +552,7 @@ class BotStore:
 
         兜底顺序：用户指定的默认 → 第一个站长 Bot → 用户自己的第一个 Bot。
         最后一层是必需的：库里可能一个站长 Bot 都没有（用户全用自建 Bot），
-        那时前两层都空，新建房间就找不到主持人。
+        那时前两层都空，新建会话就找不到默认 Bot。
         """
 
         if not isinstance(user_id, str) or not user_id.strip():

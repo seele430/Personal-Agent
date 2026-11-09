@@ -1,6 +1,6 @@
 """Bot 实体（S1）的集成测试：身份卡 + 双来源 + 单用户上限 + 归属隔离。
 
-对应 `docs/CHATROOM_PLAN.md` 的 S1。
+Bot 存储层测试。
 """
 
 import unittest
@@ -266,7 +266,7 @@ class TestDefaultBot(BotStoreTestCase):
         """没有站长 Bot 也没有默认时，退到用户自己的第一个 Bot。
 
         这条兜底是必需的：用户可能全用自建 Bot，若不兜底，
-        新建房间就会找不到主持人。
+        新建会话就会找不到默认 Bot。
         """
 
         own = self.create()  # 只有自己的 bot，无站长 bot，也没设 default

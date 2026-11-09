@@ -8,7 +8,6 @@
 
 ## 0. 一句话定位
 
-把 Personal Agent 从「多 Bot 辩论产品」改造成「一个 Agent 助手」，并让它**每一次工具调用都跑在自建的沙箱平台上**；
 平台具备节点管理、生命周期、可观测闭环与压测数据。
 
 面试开场白应该能一口气说完：
@@ -52,11 +51,8 @@ E 系统层(C++)                                                               �
 
 | 天 | 主线 | 任务 | 验收 |
 | --- | --- | --- | --- |
-| D1 | F | 跑 `scripts/test.ps1` 取真实用例数；列辩论耦合面（文件/行数/调用点） | 产出 `docs/refactor-inventory.md`，含基线数字 |
 | D2 | F | `git tag v1-baseline`；开分支 `feat/platform`；记 3 个基线值 | tag 存在；基线：用例数 / 启动耗时 / 最大并发沙箱 |
-| D3 | A | 从 `main.py` 摘掉 `room_router`，房间路由返回 404 | 服务能起，`/api/rooms` 404，其他接口不回归 |
 | D4 | A | `agent.py` 里 `debater_*` 整段切到 `legacy/`，记录红掉的测试 | 红名单清单落盘 |
-| D5 | A | 删 `room_service` / `room_store` / 前端房间路由；清红名单 | 全量测试绿（或红名单为 0） |
 | D6 | A | 消息模型 `stage` → `turn_id/step`；写迁移脚本 | 老库可读，新消息带 turn/step |
 | D7 | A | SSE 流式输出 + 中断（Esc） | 手工：中途断流无残留进程 |
 | D8 | A | 工具注册表 + 审批策略矩阵（allow / ask / deny） | 策略矩阵单测全绿 |

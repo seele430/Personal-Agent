@@ -62,7 +62,7 @@ def _prepare_env() -> None:
     os.chdir(data)
 
     # 打包版没有控制台，把运行日志写进数据目录，
-    # 出问题（比如「无法创建房间」）时能直接看到 traceback。
+    # 出问题（比如「无法创建会话」）时能直接看到 traceback。
     import logging
 
     logging.basicConfig(

@@ -24,7 +24,6 @@ git log -1 --format='%h %s'
 
 ## 2. 已完成进度
 
-- D1—D8：旧多 Bot 链路拆除、run／turn／step／exec 数据模型、SSE、助手取消和工具策略已完成。
 - D9／G1：真实 `deepseek-flash` “发问 → `create_reminder` → 回答”通过，真实浏览器录屏及关键帧在 `docs/evidence/`。
 - D10：Python SDK 与 v1 fixture 已完成：
   - SDK：`sdk/python/personal_agent_platform/`

@@ -1,4 +1,4 @@
-"""旧房间库到 run / turn / step 模型的备份、迁移与恢复。
+"""旧版数据库到 run / turn / step 模型的备份、迁移与恢复。
 
 只新增表和行，不 ALTER / UPDATE / DELETE bots、rooms 或 messages。
 调用方必须传入旧库的临时副本，不能直接指向真实数据目录。

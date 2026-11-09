@@ -1,6 +1,6 @@
 """单用户助手的 run / turn / step / exec SQLite 数据模型。
 
-旧房间 messages 仅由 run_migration 在数据库副本上迁移；本模块不读取或
+旧版 messages 仅由 run_migration 在数据库副本上迁移；本模块不读取或
 修改旧 stage，也不把历史模型发言伪装成工具 exec。
 """
 

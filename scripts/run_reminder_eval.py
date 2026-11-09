@@ -155,7 +155,7 @@ def evaluate(cases, strategy):
         result = grade(case, calls)
         usage = usage_of(response)
 
-        # 为后续对比辩论 / 批评者策略预留：
+        # 为后续对比不同策略预留：
         # single 策略下 first_round 与 final 相同。
         summary = [
             {"name": call.name, "arguments": call.arguments}

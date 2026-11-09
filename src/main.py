@@ -443,7 +443,7 @@ app.include_router(auth_router)
 # Bot 管理（创建/列表/身份卡/禁用）
 app.include_router(bot_router)
 
-# Bot 试听与既有语音播放（独立于旧聊天室）
+# Bot 试听与既有语音播放
 app.include_router(tts_router)
 
 # 已认证聊天、额度及费用保护
@@ -470,7 +470,7 @@ app.include_router(console_router)
 # 统一收件箱（聚合监控通知与到点提醒）
 app.include_router(inbox_router)
 
-# 团队任务分配（与聊天室并行）
+# 团队任务分配
 app.include_router(teams_router)
 
 # 产物登记、四类预览与安全下载（W4）

@@ -1,4 +1,4 @@
-"""独立 TTS 路由与房间路由下线的 HTTP 回归测试。"""
+"""独立 TTS 路由的 HTTP 回归测试。"""
 
 import subprocess
 import unittest
