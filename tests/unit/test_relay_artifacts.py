@@ -55,5 +55,34 @@ class ArtifactCase(unittest.TestCase):
             commit(self.root, "", b"x")
 
 
+
+    def test_verify_rejects_absolute_path(self):
+        outside = Path(self._temporary.name) / "secret.md"
+        outside.write_bytes(b"secret")
+        manifest = {"path": str(outside), "sha256": __import__("hashlib").sha256(b"secret").hexdigest(), "bytes": 6}
+
+        self.assertFalse(verify(self.root, manifest))
+
+    def test_verify_rejects_parent_traversal(self):
+        outside = Path(self._temporary.name) / "secret.md"
+        outside.write_bytes(b"secret")
+        manifest = {"path": "../secret.md", "sha256": __import__("hashlib").sha256(b"secret").hexdigest(), "bytes": 6}
+
+        self.assertFalse(verify(self.root, manifest))
+
+    def test_verify_rejects_symlink_escape(self):
+        outside = Path(self._temporary.name) / "secret.md"
+        outside.write_bytes(b"secret")
+        link = self.root / "link.md"
+
+        try:
+            os.symlink(outside, link)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlink 不可用")
+
+        manifest = {"path": "link.md", "sha256": __import__("hashlib").sha256(b"secret").hexdigest(), "bytes": 6}
+        self.assertFalse(verify(self.root, manifest))
+
+
 if __name__ == "__main__":
     unittest.main()

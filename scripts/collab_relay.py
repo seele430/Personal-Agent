@@ -88,6 +88,7 @@ def main(argv=None) -> int:
     resume.add_argument("--run-id", required=True)
     resume.add_argument("--accept-step")
     resume.add_argument("--retry-step")
+    resume.add_argument("--reset-chain", action="store_true")
     resume.add_argument("--chain")
     resume.add_argument("--inject-timeout")
     resume.add_argument("--inject-auth-error")
@@ -103,6 +104,8 @@ def main(argv=None) -> int:
     store = RunStore(db_path())
 
     try:
+        store.cleanup_orphans(artifact_root())
+
         if args.command in ("resume", "continue") and args.chain:
             store.set_chain(args.run_id, [name.strip() for name in args.chain.split(",")])
 
@@ -118,11 +121,15 @@ def main(argv=None) -> int:
             revision = int(current["revision"])
             token = int(current["fencing_token"])
 
+            if getattr(args, "reset_chain", False):
+                store.reset_chain(args.run_id)
+                store.audit(args.run_id, revision, "chain_reset", {})
+
             if args.accept_step:
                 manifest = store.step_manifest(args.run_id, revision, args.accept_step)
 
-                if manifest is None:
-                    raise StoreError("no_manifest：该步骤没有可复核的产物，不能接受")
+                if manifest is None or not manifest.get("path"):
+                    raise StoreError("no_text_checkpoint_supported：本轮只支持文件产物")
 
                 if not artifacts.verify(artifact_root(), manifest):
                     raise StoreError("artifact_mismatch：产物校验失败，不能接受")
@@ -131,13 +138,13 @@ def main(argv=None) -> int:
                     raise StoreError("step_accept_failed")
 
                 store.audit(args.run_id, revision, "step_accept", {"step_id": args.accept_step, "manifest": manifest})
-                store.set_pending_after_review(args.run_id)
+                store.set_pending_after_review(args.run_id, token)
             elif args.retry_step:
-                if not store.step_retry(args.run_id, revision, args.retry_step):
+                if not store.step_retry(args.run_id, revision, args.retry_step, token):
                     raise StoreError("step_retry_failed")
 
                 store.audit(args.run_id, revision, "step_retry", {"step_id": args.retry_step})
-                store.set_pending_after_review(args.run_id)
+                store.set_pending_after_review(args.run_id, token)
 
             stored = store.get(args.run_id) or {}
             names = set(args.chain.split(",") if args.chain else stored.get("chain") or [])

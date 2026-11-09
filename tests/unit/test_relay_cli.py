@@ -119,5 +119,28 @@ class CliCase(unittest.TestCase):
         self.assertEqual(cli.main(["resume", "--run-id", self.run_id, "--retry-step", "nope"]), 2)
 
 
+
+    def test_accept_without_path_rejected(self):
+        self.to_review({"sha256": "x", "bytes": 1})
+
+        self.assertEqual(cli.main(["resume", "--run-id", self.run_id, "--accept-step", "compose"]), 2)
+
+    def test_cli_startup_cleanup_removes_orphan(self):
+        import os as _os
+        import time as _time
+
+        orphan = self.artifacts_root / "orphan.md"
+        orphan.parent.mkdir(parents=True, exist_ok=True)
+        orphan.write_bytes(b"orphan")
+        old = _time.time() - 7200
+        _os.utime(orphan, (old, old))
+
+        with patch.object(cli, "build_providers", return_value={"a": FakeProvider()}):
+            code = cli.main(["run", "--task", "x", "--chain", "a"])
+
+        self.assertEqual(code, 0)
+        self.assertFalse(orphan.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

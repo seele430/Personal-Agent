@@ -80,6 +80,10 @@ CREATE TABLE IF NOT EXISTS collab_attempts (
 """
 
 
+class StaleWorker(RuntimeError):
+    """旧 worker 的写入被 fencing 拒绝。"""
+
+
 class StoreError(ValueError):
     """状态机拒绝。"""
 
@@ -193,6 +197,15 @@ class RunStore:
 
             return cursor.rowcount == 1
 
+    def reset_chain(self, run_id: str) -> bool:
+        with self._session() as connection:
+            cursor = connection.execute(
+                "UPDATE collab_runs SET next_provider_index=0, updated_at=? WHERE run_id=?",
+                (self._clock(), run_id),
+            )
+
+            return cursor.rowcount == 1
+
     def set_chain(self, run_id: str, chain: list[str]) -> bool:
         with self._session() as connection:
             cursor = connection.execute(
@@ -257,7 +270,7 @@ class RunStore:
                 raise StoreError("running：租约未过期，不能 resume")
 
             connection.execute(
-                "UPDATE collab_runs SET state='pending', next_provider_index=0, error=NULL, "
+                "UPDATE collab_runs SET state='pending', error=NULL, "
                 "error_class=NULL, updated_at=? WHERE run_id=? AND state='failed'",
                 (self._clock(), run_id),
             )
@@ -299,9 +312,22 @@ class RunStore:
     # ---------- 步骤 ----------
 
     def step_begin(self, run_id: str, revision: int, step_id: str, input_digest: str, token: int) -> str:
-        """返回 execute / skip / needs_review。"""
+        """返回 execute / skip / needs_review；旧 token 抛 StaleWorker。"""
 
         with self._session() as connection:
+            run_row = connection.execute(
+                "SELECT fencing_token, revision, state FROM collab_runs WHERE run_id=?",
+                (run_id,),
+            ).fetchone()
+
+            if (
+                run_row is None
+                or int(run_row["revision"]) != int(revision)
+                or int(run_row["fencing_token"]) != int(token)
+                or run_row["state"] != "running"
+            ):
+                raise StaleWorker("step_begin")
+
             row = connection.execute(
                 "SELECT * FROM collab_steps WHERE run_id=? AND revision=? AND step_id=?",
                 (run_id, revision, step_id),
@@ -313,8 +339,8 @@ class RunStore:
             if row and row["state"] in ("running", "needs_review"):
                 connection.execute(
                     "UPDATE collab_steps SET state='needs_review', updated_at=? "
-                    "WHERE run_id=? AND revision=? AND step_id=?",
-                    (self._clock(), run_id, revision, step_id),
+                    "WHERE run_id=? AND revision=? AND step_id=? AND fencing_token=?",
+                    (self._clock(), run_id, revision, step_id, int(token)),
                 )
 
                 return "needs_review"
@@ -378,12 +404,12 @@ class RunStore:
                 ),
             )
 
-    def set_pending_after_review(self, run_id: str) -> bool:
+    def set_pending_after_review(self, run_id: str, token: int) -> bool:
         with self._session() as connection:
             cursor = connection.execute(
                 "UPDATE collab_runs SET state='pending', updated_at=? "
-                "WHERE run_id=? AND state='needs_review'",
-                (self._clock(), run_id),
+                "WHERE run_id=? AND state='needs_review' AND fencing_token=?",
+                (self._clock(), run_id, int(token)),
             )
 
             return cursor.rowcount == 1
@@ -410,6 +436,7 @@ class RunStore:
         connection = sqlite3.connect(self.path, timeout=10, isolation_level=None)
         connection.row_factory = sqlite3.Row
         moved = False
+        backup = None
 
         try:
             connection.execute("BEGIN IMMEDIATE")
@@ -431,8 +458,24 @@ class RunStore:
                 before_replace()
 
             Path(target_path).parent.mkdir(parents=True, exist_ok=True)
+
+            if Path(target_path).exists():
+                backup = str(target_path) + f".bak-{int(token)}"
+                _os.replace(target_path, backup)
+
             _os.replace(staging_path, target_path)
             moved = True
+
+            import hashlib as _hashlib
+
+            with open(target_path, "rb") as handle:
+                committed_data = handle.read()
+
+            if (
+                len(committed_data) != int(manifest.get("bytes", -1))
+                or _hashlib.sha256(committed_data).hexdigest() != manifest.get("sha256")
+            ):
+                raise StoreError("artifact_hash_mismatch")
 
             cursor = connection.execute(
                 "UPDATE collab_steps SET state='done', artifact_manifest=?, updated_at=? "
@@ -456,6 +499,12 @@ class RunStore:
             )
             connection.execute("COMMIT")
 
+            if backup:
+                try:
+                    _os.remove(backup)
+                except OSError:
+                    pass
+
             return True
 
         except Exception:
@@ -470,12 +519,24 @@ class RunStore:
                 except OSError:
                     pass
 
+            if backup:
+                try:
+                    _os.replace(backup, target_path)
+                except OSError:
+                    pass
+
             return False
 
         finally:
             connection.close()
 
-    def cleanup_orphans(self, artifact_root: str | Path, *, staging_max_age: float = 3600.0) -> dict:
+    def cleanup_orphans(
+        self,
+        artifact_root: str | Path,
+        *,
+        staging_max_age: float = 3600.0,
+        orphan_min_age: float = 3600.0,
+    ) -> dict:
         """启动清理：删除无 manifest 引用的产物与过期 staging。"""
 
         import os as _os
@@ -509,6 +570,12 @@ class RunStore:
                 continue
 
             if path.resolve() not in referenced:
+                try:
+                    if _time.time() - path.stat().st_mtime < orphan_min_age:
+                        continue
+                except OSError:
+                    continue
+
                 try:
                     path.unlink()
                     removed.append(str(path.relative_to(root)))
@@ -544,24 +611,25 @@ class RunStore:
         with self._session() as connection:
             cursor = connection.execute(
                 "UPDATE collab_steps SET state='done', artifact_manifest=?, updated_at=? "
-                "WHERE run_id=? AND revision=? AND step_id=? AND state='needs_review'",
+                "WHERE run_id=? AND revision=? AND step_id=? AND state='needs_review' AND fencing_token=?",
                 (
                     json.dumps(manifest, ensure_ascii=False) if manifest else None,
                     self._clock(),
                     run_id,
                     revision,
                     step_id,
+                    int(token),
                 ),
             )
 
             return cursor.rowcount == 1
 
-    def step_retry(self, run_id: str, revision: int, step_id: str) -> bool:
+    def step_retry(self, run_id: str, revision: int, step_id: str, token: int) -> bool:
         with self._session() as connection:
             cursor = connection.execute(
                 "UPDATE collab_steps SET state='pending', updated_at=? "
-                "WHERE run_id=? AND revision=? AND step_id=? AND state='needs_review'",
-                (self._clock(), run_id, revision, step_id),
+                "WHERE run_id=? AND revision=? AND step_id=? AND state='needs_review' AND fencing_token=?",
+                (self._clock(), run_id, revision, step_id, int(token)),
             )
 
             return cursor.rowcount == 1
@@ -581,6 +649,19 @@ class RunStore:
         attempt_id = uuid.uuid4().hex
 
         with self._session() as connection:
+            run_row = connection.execute(
+                "SELECT fencing_token, revision, state FROM collab_runs WHERE run_id=?",
+                (run_id,),
+            ).fetchone()
+
+            if (
+                run_row is None
+                or int(run_row["fencing_token"]) != int(token)
+                or int(run_row["revision"]) != int(revision)
+                or run_row["state"] != "running"
+            ):
+                raise StaleWorker("attempt_start")
+
             connection.execute(
                 "INSERT INTO collab_attempts (attempt_id, run_id, revision, attempt_no, provider, "
                 "state, injected, fencing_token, started_at) VALUES (?, ?, ?, ?, ?, 'started', ?, ?, ?)",
@@ -595,19 +676,22 @@ class RunStore:
                     self._clock(),
                 ),
             )
-            connection.execute(
+            cursor = connection.execute(
                 "UPDATE collab_runs SET attempts=attempts + 1, updated_at=? WHERE run_id=? AND fencing_token=?",
                 (self._clock(), run_id, int(token)),
             )
 
+            if cursor.rowcount != 1:
+                raise StaleWorker("attempt_start")
+
         return attempt_id
 
-    def attempt_finish(self, attempt_id: str, state: str, *, error_class=None, error=None) -> bool:
+    def attempt_finish(self, attempt_id: str, state: str, *, token: int, error_class=None, error=None) -> bool:
         with self._session() as connection:
             cursor = connection.execute(
                 "UPDATE collab_attempts SET state=?, error_class=?, error=?, finished_at=? "
-                "WHERE attempt_id=?",
-                (state, error_class, error, self._clock(), attempt_id),
+                "WHERE attempt_id=? AND fencing_token=?",
+                (state, error_class, error, self._clock(), attempt_id, int(token)),
             )
 
             return cursor.rowcount == 1

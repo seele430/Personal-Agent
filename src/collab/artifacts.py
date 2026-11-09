@@ -87,9 +87,28 @@ def commit(root: str | Path, rel_path: str, data: bytes) -> dict:
 
 def verify(root: str | Path, manifest: dict) -> bool:
     try:
-        path = (Path(root).resolve() / manifest["path"]).resolve()
+        rel = _check_rel(manifest["path"])
+        root_path = Path(root).resolve()
+        current = root_path
+
+        for part in rel.parts[:-1]:
+            current = current / part
+
+            if not current.exists():
+                continue
+
+            attributes = getattr(current.stat(), "st_file_attributes", 0)
+
+            if current.is_symlink() or attributes & 0x400:
+                return False
+
+        path = (root_path / rel).resolve()
+
+        if not path.is_relative_to(root_path) or not path.is_file():
+            return False
+
         data = path.read_bytes()
-    except (OSError, KeyError):
+    except (OSError, KeyError, ArtifactError):
         return False
 
     return (

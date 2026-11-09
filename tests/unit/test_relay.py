@@ -93,15 +93,20 @@ class RelayCase(unittest.TestCase):
         self.assertEqual(result["state"], "failed")
         self.assertEqual(result["error_class"], "retryable")
 
-    def test_resume_after_failure(self):
+    def test_resume_preserves_breakpoint_and_reset_explicit(self):
         result = self.runner(
             {"a": FakeProvider("a", error=ProviderError("timeout")), "b": FakeProvider("b", error=ProviderError("timeout"))}
         ).start(self.make_run())
 
-        retry = self.runner({"a": FakeProvider("a", "ok"), "b": FakeProvider("b")}).resume(result["run_id"])
+        self.assertEqual(self.store.get(result["run_id"])["next_provider_index"], 2)
 
+        retry = self.runner({"a": FakeProvider("a", "ok"), "b": FakeProvider("b", "ok")}).resume(result["run_id"])
+        self.assertEqual(retry["state"], "failed")
+
+        self.store.reset_chain(result["run_id"])
+        self.store.resume(result["run_id"])
+        retry = self.runner({"a": FakeProvider("a", "ok"), "b": FakeProvider("b", "ok")}).start(result["run_id"])
         self.assertEqual(retry["state"], "succeeded")
-        self.assertEqual(retry["run_id"], result["run_id"])
 
     def test_continue_after_success(self):
         result = self.runner({"a": FakeProvider("a", "v1")}).start(self.make_run(("a",)))
@@ -179,6 +184,55 @@ class RelayCase(unittest.TestCase):
 
         self.assertIsNotNone(second)
         self.assertFalse(self.store.finish(run_id, first["fencing_token"], "succeeded"))
+
+
+
+    def test_provider_cannot_submit_outside_staging(self):
+        outside = self.root / "secret.md"
+        outside.write_text("secret", encoding="utf-8")
+
+        class EvilProvider(FakeProvider):
+            def submit(self, prompt, *, artifact_name, out_dir):
+                return {"artifact": str(outside)}
+
+        result = self.runner({"a": EvilProvider("evil")}).start(self.make_run(("a",)))
+
+        self.assertEqual(result["state"], "failed")
+        self.assertFalse((self.root / "artifacts" / f"{result['run_id']}" / "r1" / "result.md").exists())
+
+    def test_continue_includes_previous_artifact(self):
+        first = self.runner({"a": FakeProvider("a", "UNIQUE_PRIOR_CONTEXT")}).start(self.make_run(("a",)))
+
+        captured = {}
+
+        class Capturing(FakeProvider):
+            def submit(self, prompt, *, artifact_name, out_dir):
+                captured["prompt"] = prompt
+
+                return super().submit(prompt, artifact_name=artifact_name, out_dir=out_dir)
+
+        second = self.runner({"a": Capturing("a", "v2")}).continue_run(first["run_id"], "继续")
+
+        self.assertEqual(second["state"], "succeeded")
+        self.assertIn("UNIQUE_PRIOR_CONTEXT", captured["prompt"])
+        self.assertIn("[上一轮结果]", captured["prompt"])
+
+    def test_heartbeat_exception_marks_stale(self):
+        from src.collab.relay import Heartbeat
+
+        class BrokenStore:
+            def heartbeat(self, *args, **kwargs):
+                raise RuntimeError("boom")
+
+        heartbeat = Heartbeat(BrokenStore(), "r", 1, 0.2)
+        heartbeat.interval = 0.05
+        heartbeat.start()
+        import time as _time
+
+        _time.sleep(0.2)
+        heartbeat.stop()
+
+        self.assertTrue(heartbeat.stale)
 
 
 if __name__ == "__main__":

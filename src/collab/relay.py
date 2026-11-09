@@ -13,8 +13,9 @@ import threading
 
 from pathlib import Path
 
+from src.collab import artifacts
 from src.collab.providers.openai_compat import ProviderError
-from src.collab.run_store import DEFAULT_LEASE_SECONDS, RunStore
+from src.collab.run_store import DEFAULT_LEASE_SECONDS, RunStore, StoreError
 
 
 RETRYABLE = "retryable"
@@ -67,7 +68,14 @@ class Heartbeat:
 
     def _loop(self) -> None:
         while not self._stop.wait(self.interval):
-            if not self.store.heartbeat(self.run_id, self.token, lease_seconds=self.lease_seconds):
+            try:
+                alive = self.store.heartbeat(self.run_id, self.token, lease_seconds=self.lease_seconds)
+            except Exception:
+                self.stale = True
+
+                return
+
+            if not alive:
                 self.stale = True
 
                 return
@@ -146,7 +154,7 @@ class RelayRunner:
 
                 return {"run_id": run_id, "state": "succeeded", "revision": revision, "reused": True}
 
-            prompt = self._prompt(run, revision)
+            prompt = self._build_prompt(run, revision)
             staging = self.artifact_root / ".staging" / f"{run_id}-{token}"
             staging.mkdir(parents=True, exist_ok=True)
             target_rel = f"{run_id}/r{revision}/result.md"
@@ -160,6 +168,7 @@ class RelayRunner:
                     self.store.attempt_finish(
                         self.store.attempt_start(run_id, revision, attempt_no, name, token),
                         "failed",
+                        token=token,
                         error_class=FATAL,
                         error="provider 未配置",
                     )
@@ -181,7 +190,7 @@ class RelayRunner:
                     staged_path, data = self._submit(provider, prompt, run_id, revision, staging)
                 except Exception as error:
                     error_class = classify_error(error)
-                    self.store.attempt_finish(attempt_id, "failed", error_class=error_class, error=str(error)[:300])
+                    self.store.attempt_finish(attempt_id, "failed", token=token, error_class=error_class, error=str(error)[:300])
                     self.store.set_next_provider(run_id, token, position + 1, name)
 
                     if error_class != RETRYABLE:
@@ -191,6 +200,11 @@ class RelayRunner:
                         return {"run_id": run_id, "state": "failed", "error_class": error_class, "revision": revision}
 
                     continue
+
+                if heartbeat.stale:
+                    self.store.attempt_finish(attempt_id, "failed", token=token, error_class=UNKNOWN, error="heartbeat_stale")
+
+                    return {"run_id": run_id, "state": "stale_worker", "revision": revision}
 
                 manifest = {
                     "path": target_rel,
@@ -208,11 +222,11 @@ class RelayRunner:
                 )
 
                 if not committed:
-                    self.store.attempt_finish(attempt_id, "failed", error_class=UNKNOWN, error="stale_worker")
+                    self.store.attempt_finish(attempt_id, "failed", token=token, error_class=UNKNOWN, error="stale_worker")
 
                     return {"run_id": run_id, "state": "stale_worker", "revision": revision}
 
-                self.store.attempt_finish(attempt_id, "succeeded")
+                self.store.attempt_finish(attempt_id, "succeeded", token=token)
                 self.store.set_next_provider(run_id, token, position + 1, name)
                 self.store.finish(run_id, token, "succeeded", provider=name)
 
@@ -235,16 +249,22 @@ class RelayRunner:
             if heartbeat.stale:
                 self.store.audit(run_id, revision, "heartbeat_stale")
 
-    @staticmethod
-    def _prompt(run: dict, revision: int) -> str:
+    def _build_prompt(self, run: dict, revision: int) -> str:
         messages = json.loads(run.get("messages_json") or "[]")
-        lines = [run["task"]]
+        lines = [f"[任务]\n{run['task']}"]
+
+        if revision > 1:
+            previous = self.store.step_manifest(run["run_id"], revision - 1, STEP_ID)
+
+            if previous is None or not artifacts.verify(self.artifact_root, previous):
+                raise StoreError("previous_artifact_missing_or_invalid")
+
+            path = (self.artifact_root / previous["path"]).resolve()
+            text = path.read_text(encoding="utf-8", errors="replace")[:4000]
+            lines.append(f"[上一轮结果]\n{text}")
 
         for message in messages:
             lines.append(message.get("content", ""))
-
-        if revision > 1 and len(lines) == 1:
-            lines.append("请基于已有结果继续补充。")
 
         return "\n\n".join(line for line in lines if line.strip())
 
@@ -260,7 +280,18 @@ class RelayRunner:
         if not path.exists():
             raise ProviderError("Provider 未产出文件")
 
-        data = path.read_bytes()
+        staging_real = staging.resolve()
+        resolved = path.resolve()
+
+        if not resolved.is_relative_to(staging_real) or not resolved.is_file():
+            raise ProviderError("产物越界：Provider 只能提交 staging 内的普通文件")
+
+        attributes = getattr(resolved.stat(), "st_file_attributes", 0)
+
+        if resolved.is_symlink() or attributes & 0x400:
+            raise ProviderError("产物越界：不允许符号链接")
+
+        data = resolved.read_bytes()
 
         if not data.strip():
             raise ProviderError("Provider 产物为空")

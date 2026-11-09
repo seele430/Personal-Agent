@@ -119,13 +119,13 @@ class StoreCase(unittest.TestCase):
         self.store.step_begin(self.run_id, 1, "compose", "task", token)
         self.store.step_begin(self.run_id, 1, "compose", "task", token)
 
-        self.assertTrue(self.store.step_accept(self.run_id, 1, "compose", token, {"path": "a"}))
+        self.assertTrue(self.store.step_accept(self.run_id, 1, "compose", token, {"path": "a", "sha256": "x", "bytes": 1}))
         self.assertEqual(self.store.step_state(self.run_id, 1, "compose"), "done")
 
     def test_attempts_recorded(self):
         run = self.claim()
         attempt_id = self.store.attempt_start(self.run_id, 1, 1, "ark", run["fencing_token"])
-        self.store.attempt_finish(attempt_id, "failed", error_class="retryable", error="timeout")
+        self.store.attempt_finish(attempt_id, "failed", token=run["fencing_token"], error_class="retryable", error="timeout")
 
         attempts = self.store.attempts(self.run_id)
 
@@ -147,7 +147,7 @@ class StoreCase(unittest.TestCase):
         ok = self.store.commit_step_artifact(
             self.run_id, 1, "compose", 1,
             staging_path=str(staging), target_path=str(target),
-            manifest={"path": "out.md", "sha256": "x", "bytes": 5},
+            manifest={"path": "out.md", "sha256": __import__("hashlib").sha256(b"hello").hexdigest(), "bytes": 5},
         )
 
         self.assertFalse(ok)
@@ -163,7 +163,7 @@ class StoreCase(unittest.TestCase):
         ok = self.store.commit_step_artifact(
             self.run_id, 1, "compose", run["fencing_token"],
             staging_path=str(staging), target_path=str(target),
-            manifest={"path": "out.md", "sha256": "x", "bytes": 5},
+            manifest={"path": "out.md", "sha256": __import__("hashlib").sha256(b"hello").hexdigest(), "bytes": 5},
         )
 
         self.assertTrue(ok)
@@ -176,17 +176,19 @@ class StoreCase(unittest.TestCase):
         self.store.step_begin(self.run_id, 1, "compose", "task", run["fencing_token"])
         referenced = root / "keep.md"
         referenced.parent.mkdir(parents=True, exist_ok=True)
-        referenced.write_bytes(b"keep")
+        staging = root / ".staging" / "keep-staging.md"
+        staging.parent.mkdir(parents=True, exist_ok=True)
+        staging.write_bytes(b"keep")
         orphan = root / "orphan.md"
         orphan.write_bytes(b"orphan")
 
         self.store.commit_step_artifact(
             self.run_id, 1, "compose", run["fencing_token"],
-            staging_path=str(referenced), target_path=str(referenced),
-            manifest={"path": "keep.md", "sha256": "x", "bytes": 4},
+            staging_path=str(staging), target_path=str(referenced),
+            manifest={"path": "keep.md", "sha256": __import__("hashlib").sha256(b"keep").hexdigest(), "bytes": 4},
         )
 
-        result = self.store.cleanup_orphans(root)
+        result = self.store.cleanup_orphans(root, orphan_min_age=0)
 
         self.assertTrue(referenced.exists())
         self.assertFalse(orphan.exists())
@@ -225,10 +227,67 @@ class StoreCase(unittest.TestCase):
         old = _time.time() - 7200
         _os.utime(staging, (old, old))
 
-        result = self.store.cleanup_orphans(root)
+        result = self.store.cleanup_orphans(root, orphan_min_age=0)
 
         self.assertFalse(staging.exists())
         self.assertIn(".staging/old", result["removed"])
+
+
+
+    def test_old_token_all_writes_rejected(self):
+        from src.collab.run_store import StaleWorker
+
+        run = self.claim()
+        old = run["fencing_token"]
+        self.store.step_begin(self.run_id, 1, "compose", "task", old)
+
+        self.now += 1000
+        new_run = self.claim("w2")
+        new = new_run["fencing_token"]
+
+        with self.assertRaises(StaleWorker):
+            self.store.attempt_start(self.run_id, 1, 9, "x", old)
+
+        self.assertFalse(
+            self.store.finish(self.run_id, old, "succeeded")
+        )
+        self.assertFalse(self.store.heartbeat(self.run_id, old))
+        self.assertFalse(self.store.step_accept(self.run_id, 1, "compose", old, {}))
+        self.assertFalse(self.store.step_retry(self.run_id, 1, "compose", old))
+        self.assertFalse(self.store.set_pending_after_review(self.run_id, old))
+
+        attempt_id = self.store.attempt_start(self.run_id, 1, 10, "x", new)
+        self.assertFalse(self.store.attempt_finish(attempt_id, "succeeded", token=old))
+        self.assertTrue(self.store.attempt_finish(attempt_id, "succeeded", token=new))
+
+    def test_commit_failure_restores_existing_target(self):
+        run = self.claim()
+        self.store.step_begin(self.run_id, 1, "compose", "task", run["fencing_token"])
+        target = Path(self._temporary.name) / "target.md"
+        target.write_bytes(b"known-good")
+        staging = Path(self._temporary.name) / "staging.md"
+        staging.write_bytes(b"new-data")
+
+        ok = self.store.commit_step_artifact(
+            self.run_id, 1, "compose", run["fencing_token"],
+            staging_path=str(staging), target_path=str(target),
+            manifest={"path": "target.md", "sha256": "wrong", "bytes": 8},
+        )
+
+        self.assertFalse(ok)
+        self.assertEqual(target.read_bytes(), b"known-good")
+
+    def test_resume_preserves_provider_index(self):
+        run = self.claim()
+        self.store.set_next_provider(self.run_id, run["fencing_token"], 1, "b")
+        self.store.finish(self.run_id, run["fencing_token"], "failed", error_class="retryable")
+
+        self.store.resume(self.run_id)
+
+        self.assertEqual(self.store.get(self.run_id)["next_provider_index"], 1)
+
+        self.store.reset_chain(self.run_id)
+        self.assertEqual(self.store.get(self.run_id)["next_provider_index"], 0)
 
 
 if __name__ == "__main__":
