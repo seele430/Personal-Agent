@@ -32,6 +32,40 @@ class OneBotClient:
         return bool(self.base_url and self.token)
 
     def _call(self, action: str, payload: dict | None = None) -> dict:
+        result = self._call_raw(action, payload)
+        self._audit(action, result)
+
+        return result
+
+    def _audit(self, action: str, result: dict) -> None:
+        import os
+
+        if (os.getenv("PA_QQ_AUDIT") or "").strip() != "1":
+            return
+
+        try:
+            import json
+            from pathlib import Path as _Path
+
+            root = _Path(os.getenv("PERSONAL_AGENT_DATA_DIR") or _Path(__file__).resolve().parents[2] / "data")
+            root.mkdir(parents=True, exist_ok=True)
+
+            with (root / "qq-audit.jsonl").open("a", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(
+                        {
+                            "action": "outbound",
+                            "api": action,
+                            "message_id": str((result or {}).get("message_id") or ""),
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+        except OSError:
+            pass
+
+    def _call_raw(self, action: str, payload: dict | None = None) -> dict:
         if not self.configured:
             raise OneBotError("未配置 PA_ONEBOT_URL / PA_ONEBOT_TOKEN")
 
@@ -70,9 +104,15 @@ class OneBotClient:
         if not str(text or "").strip():
             raise OneBotError("消息内容不能为空")
 
+        # 实测 NapCat 4.18.41 下 send_private_msg 在“事件处理中回复”场景会重复发送，
+        # send_msg 只发一次；两者语义等价（private + user_id）。
         return self._call(
-            "send_private_msg",
-            {"user_id": int(user_id), "message": str(text)},
+            "send_msg",
+            {
+                "message_type": "private",
+                "user_id": int(user_id),
+                "message": str(text),
+            },
         )
 
     def get_login_info(self) -> dict:

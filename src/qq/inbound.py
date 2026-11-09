@@ -22,6 +22,8 @@ from src.qq.onebot import OneBotClient, OneBotError
 
 MAX_PER_MINUTE = 10
 AUDIT_SUMMARY_LIMIT = 80
+MAX_QUESTION_CHARS = 500
+MAX_REPLY_CHARS = 800
 
 
 class QQInbound:
@@ -117,6 +119,25 @@ class QQInbound:
 
     # ---------- 内部 ----------
 
+    @staticmethod
+    def _persist(record: dict) -> None:
+        import os
+
+        if (os.getenv("PA_QQ_AUDIT") or "").strip() != "1":
+            return
+
+        try:
+            import json
+            import os
+            from pathlib import Path as _Path
+
+            root = _Path(os.getenv("PERSONAL_AGENT_DATA_DIR") or _Path(__file__).resolve().parents[2] / "data")
+            root.mkdir(parents=True, exist_ok=True)
+            with (root / "qq-audit.jsonl").open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+
     def _allow(self, sender_id: int) -> bool:
         now = self._clock()
         window = [t for t in self._recent.get(sender_id, []) if now - t < 60]
@@ -147,22 +168,70 @@ class QQInbound:
 
         return str(event.get("raw_message") or "")
 
-    @staticmethod
-    def _reply_for(text: str) -> str:
+    def _reply_for(self, text: str) -> str:
         command = (text or "").strip()
 
         if command in ("/status", "status"):
             return "Personal Agent 在线；QQ 入站已接通。"
 
-        return "仅支持 /status。"
+        if command.startswith("/ask"):
+            return self._ask(command[4:].strip())
 
-    def _record(self, sender_id: int, event: dict, action: str) -> None:
+        return "仅支持 /status 与 /ask。"
+
+    def _ask(self, question: str) -> str:
+        if not question:
+            return "用法：/ask <问题>"
+
+        if len(question) > MAX_QUESTION_CHARS:
+            return f"问题太长（上限 {MAX_QUESTION_CHARS} 字）。"
+
+        from src.collab.providers import build_provider, provider_name
+
+        if provider_name() == "qwen-agent":
+            return "QQ 端不支持 agent 模式（agent 会改动文件）。"
+
+        provider = build_provider()
+
+        if not getattr(provider, "configured", False):
+            return "未配置外部 Provider。"
+
+        import tempfile
+
+        from pathlib import Path as _Path
+
+        with tempfile.TemporaryDirectory() as temporary:
+            try:
+                provider.submit(question, artifact_name="answer.md", out_dir=temporary)
+
+            except Exception as error:  # noqa: BLE001 - 外部失败要回给用户
+                return f"调用失败：{error}"
+
+            answer = (_Path(temporary) / "answer.md").read_text(encoding="utf-8").strip()
+
+        if len(answer) > MAX_REPLY_CHARS:
+            answer = answer[:MAX_REPLY_CHARS] + "…（已截断）"
+
         self.audit.append(
             {
                 "ts": self._clock(),
-                "sender": sender_id,
-                "message_id": str(event.get("message_id") or ""),
-                "action": action,
-                "summary": self._text_of(event)[:AUDIT_SUMMARY_LIMIT],
+                "action": "ask",
+                "provider": provider_name(),
+                "model": getattr(provider, "model", ""),
+                "question_chars": len(question),
+                "answer_chars": len(answer),
             }
         )
+
+        return answer
+
+    def _record(self, sender_id: int, event: dict, action: str) -> None:
+        record = {
+            "ts": self._clock(),
+            "sender": sender_id,
+            "message_id": str(event.get("message_id") or ""),
+            "action": action,
+            "summary": self._text_of(event)[:AUDIT_SUMMARY_LIMIT],
+        }
+        self._persist(record)
+        self.audit.append(record)

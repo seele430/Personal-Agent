@@ -77,3 +77,6 @@ evals/knowledge/results/
 docs/bench/data/
 docs/bench/sandboxes/
 docs/bench/bench-server.log
+
+# runtime data (QQ audit etc.)
+data/
