@@ -1,13 +1,13 @@
-"""QQ 入站：OneBot 事件 → 白名单校验 → 只读命令 → 审计。
+"""QQ 入站：OneBot 事件 → 白名单校验 → 解析为任务 → 交给队列。
 
 安全约束（写死）：
 
 - **只认 OWNER 一个 QQ 号**：其他人的私聊**丢弃、不入库、不回复**；
 - 只处理 `post_type=message` + `message_type=private`；
-- HMAC-SHA1 签名校验（常量时间比较），没签名直接 401；
-- 同一 `message_id` 只处理一次；
+- HMAC 校验（sha1/sha256，常量时间比较），没签名直接 401；
+- 同一 `message_id` 只入队一次（队列主键兜底）；
 - 每人每分钟最多 `MAX_PER_MINUTE` 条，超出丢弃；
-- 只支持 `/status`，其它指令回「不支持」——QQ 端不能触发任何写操作；
+- 只支持 `/status` 与 `/ask`；agent 模式禁止从 QQ 触发；
 - 审计只存 80 字摘要，不存消息全文。
 """
 
@@ -15,7 +15,12 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
+import os
+import tempfile
 import time
+
+from pathlib import Path
 
 from src.qq.onebot import OneBotClient, OneBotError
 
@@ -50,7 +55,7 @@ class QQInbound:
     # ---------- 签名 ----------
 
     def verify(self, body: bytes, signature: str) -> bool:
-        """接受 `sha1=` / `sha256=` 前缀或裸 hex；NapCat 用 sha256。"""
+        """接受 `sha1=` / `sha256=` 前缀或裸 hex；NapCat 用 sha1。"""
 
         if not self.secret:
             return False
@@ -74,69 +79,180 @@ class QQInbound:
             provided, sha256_hex
         )
 
-    # ---------- 事件 ----------
+    # ---------- 事件 → 任务 ----------
 
-    def handle(self, event: dict) -> tuple[int, dict]:
+    def accept(self, event: dict) -> dict | None:
+        """校验并生成待执行任务；不通过返回 None。"""
+
         if not self.enabled:
-            return 204, {}
+            return None
 
         if event.get("post_type") != "message":
-            return 204, {}
+            return None
 
         if event.get("message_type") != "private":
-            return 204, {}
+            return None
 
         sender = event.get("sender") or {}
         sender_id = int(sender.get("user_id") or event.get("user_id") or 0)
 
-        # 白名单：不是本人，直接丢弃——不入库、不回复
         if sender_id != self.owner_id:
-            self._record(sender_id, event, "dropped:not-owner")
-            return 204, {}
+            self.record(event, "dropped:not-owner")
+
+            return None
 
         message_id = str(event.get("message_id") or "")
 
         if message_id and message_id in self._seen:
-            return 204, {}
+            self.record(event, "duplicate_ignored")
+
+            return None
 
         if message_id:
             self._seen[message_id] = self._clock()
 
         if not self._allow(sender_id):
-            self._record(sender_id, event, "dropped:rate-limit")
+            self.record(event, "dropped:rate-limit")
+
+            return None
+
+        text = self._text_of(event).strip()
+        command, question = self._parse(text)
+
+        return {
+            "message_id": message_id,
+            "sender": sender_id,
+            "command": command,
+            "question": question,
+            "summary": text[:AUDIT_SUMMARY_LIMIT],
+        }
+
+    @staticmethod
+    def _parse(text: str) -> tuple[str, str]:
+        if text in ("/status", "status"):
+            return "status", ""
+
+        if text.startswith("/ask"):
+            return "ask", text[4:].strip()
+
+        return "unknown", ""
+
+    # ---------- 任务 → 回复 ----------
+
+    def reply_for(self, command: str, question: str) -> str:
+        if command == "status":
+            return "Personal Agent 在线；QQ 入站已接通。"
+
+        if command == "ask":
+            return self._ask(question)
+
+        return "仅支持 /status 与 /ask。"
+
+    def _ask(self, question: str) -> str:
+        if not question:
+            return "用法：/ask <问题>"
+
+        if len(question) > MAX_QUESTION_CHARS:
+            return f"问题太长（上限 {MAX_QUESTION_CHARS} 字）。"
+
+        from src.collab.providers import build_provider, provider_name
+
+        if provider_name() == "qwen-agent":
+            return "QQ 端不支持 agent 模式（agent 会改动文件）。"
+
+        provider = build_provider()
+
+        if not getattr(provider, "configured", False):
+            return "未配置外部 Provider。"
+
+        with tempfile.TemporaryDirectory() as temporary:
+            try:
+                provider.submit(question, artifact_name="answer.md", out_dir=temporary)
+
+            except Exception as error:  # noqa: BLE001 - 外部失败要回给用户
+                return f"调用失败：{error}"
+
+            answer = (Path(temporary) / "answer.md").read_text(encoding="utf-8").strip()
+
+        if len(answer) > MAX_REPLY_CHARS:
+            answer = answer[:MAX_REPLY_CHARS] + "…（已截断）"
+
+        self.audit.append(
+            {
+                "ts": self._clock(),
+                "action": "ask",
+                "provider": provider_name(),
+                "model": getattr(provider, "model", ""),
+                "question_chars": len(question),
+                "answer_chars": len(answer),
+            }
+        )
+
+        return answer
+
+    # ---------- 同步兼容路径（测试与直调） ----------
+
+    def handle(self, event: dict) -> tuple[int, dict]:
+        job = self.accept(event)
+
+        if job is None:
             return 204, {}
 
-        text = self._text_of(event)
-        reply = self._reply_for(text)
+        reply = self.reply_for(job["command"], job["question"])
 
         try:
-            self.client.send_private_msg(sender_id, reply)
-            self._record(sender_id, event, "replied")
+            self.client.send_private_msg(job["sender"], reply)
+            self.record(event, "replied")
         except OneBotError as error:
-            self._record(sender_id, event, f"reply-failed:{error}")
+            self.record(event, f"reply-failed:{error}")
 
         return 200, {"reply": reply}
 
-    # ---------- 内部 ----------
+    # ---------- 审计 ----------
+
+    def record(self, event: dict, action: str) -> None:
+        sender = (event.get("sender") or {}).get("user_id") or event.get("user_id")
+
+        record = {
+            "ts": self._clock(),
+            "sender": int(sender or 0),
+            "message_id": str(event.get("message_id") or ""),
+            "action": action,
+            "summary": self._text_of(event)[:AUDIT_SUMMARY_LIMIT],
+        }
+        self.audit.append(record)
+        self._persist(record)
+
+    def record_audit(self, job: dict, action: str, error: str = "") -> None:
+        record = {
+            "ts": self._clock(),
+            "sender": int(job.get("sender") or 0),
+            "message_id": str(job.get("message_id") or ""),
+            "action": action,
+            "command": job.get("command"),
+        }
+
+        if error:
+            record["error"] = str(error)[:200]
+
+        self.audit.append(record)
+        self._persist(record)
 
     @staticmethod
     def _persist(record: dict) -> None:
-        import os
-
         if (os.getenv("PA_QQ_AUDIT") or "").strip() != "1":
             return
 
         try:
-            import json
-            import os
-            from pathlib import Path as _Path
-
-            root = _Path(os.getenv("PERSONAL_AGENT_DATA_DIR") or _Path(__file__).resolve().parents[2] / "data")
+            root = Path(os.getenv("PERSONAL_AGENT_DATA_DIR") or Path(__file__).resolve().parents[2] / "data")
             root.mkdir(parents=True, exist_ok=True)
+
             with (root / "qq-audit.jsonl").open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         except OSError:
             pass
+
+    # ---------- 内部 ----------
 
     def _allow(self, sender_id: int) -> bool:
         now = self._clock()
@@ -167,71 +283,3 @@ class QQInbound:
             return "".join(parts)
 
         return str(event.get("raw_message") or "")
-
-    def _reply_for(self, text: str) -> str:
-        command = (text or "").strip()
-
-        if command in ("/status", "status"):
-            return "Personal Agent 在线；QQ 入站已接通。"
-
-        if command.startswith("/ask"):
-            return self._ask(command[4:].strip())
-
-        return "仅支持 /status 与 /ask。"
-
-    def _ask(self, question: str) -> str:
-        if not question:
-            return "用法：/ask <问题>"
-
-        if len(question) > MAX_QUESTION_CHARS:
-            return f"问题太长（上限 {MAX_QUESTION_CHARS} 字）。"
-
-        from src.collab.providers import build_provider, provider_name
-
-        if provider_name() == "qwen-agent":
-            return "QQ 端不支持 agent 模式（agent 会改动文件）。"
-
-        provider = build_provider()
-
-        if not getattr(provider, "configured", False):
-            return "未配置外部 Provider。"
-
-        import tempfile
-
-        from pathlib import Path as _Path
-
-        with tempfile.TemporaryDirectory() as temporary:
-            try:
-                provider.submit(question, artifact_name="answer.md", out_dir=temporary)
-
-            except Exception as error:  # noqa: BLE001 - 外部失败要回给用户
-                return f"调用失败：{error}"
-
-            answer = (_Path(temporary) / "answer.md").read_text(encoding="utf-8").strip()
-
-        if len(answer) > MAX_REPLY_CHARS:
-            answer = answer[:MAX_REPLY_CHARS] + "…（已截断）"
-
-        self.audit.append(
-            {
-                "ts": self._clock(),
-                "action": "ask",
-                "provider": provider_name(),
-                "model": getattr(provider, "model", ""),
-                "question_chars": len(question),
-                "answer_chars": len(answer),
-            }
-        )
-
-        return answer
-
-    def _record(self, sender_id: int, event: dict, action: str) -> None:
-        record = {
-            "ts": self._clock(),
-            "sender": sender_id,
-            "message_id": str(event.get("message_id") or ""),
-            "action": action,
-            "summary": self._text_of(event)[:AUDIT_SUMMARY_LIMIT],
-        }
-        self._persist(record)
-        self.audit.append(record)

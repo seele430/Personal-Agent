@@ -1742,6 +1742,16 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # L1：QQ 出站队列与 worker（SQLite 临时库，发送全 mock）
+    "unit/test_qq_outbox.py": TestSchema(
+        layer="unit",
+        domain="qq",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 
