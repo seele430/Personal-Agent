@@ -248,6 +248,8 @@ class StoreCase(unittest.TestCase):
         with self.assertRaises(StaleWorker):
             self.store.attempt_start(self.run_id, 1, 9, "x", old)
 
+        self.assertEqual(self.store.step_begin(self.run_id, 1, "compose", "task", old), "stale")
+
         self.assertFalse(
             self.store.finish(self.run_id, old, "succeeded")
         )

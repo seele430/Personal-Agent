@@ -326,7 +326,8 @@ class RunStore:
                 or int(run_row["fencing_token"]) != int(token)
                 or run_row["state"] != "running"
             ):
-                raise StaleWorker("step_begin")
+                # 旧 token：不做任何写入，返回哨兵，由调用方放弃
+                return "stale"
 
             row = connection.execute(
                 "SELECT * FROM collab_steps WHERE run_id=? AND revision=? AND step_id=?",

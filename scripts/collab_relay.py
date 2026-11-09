@@ -104,7 +104,7 @@ def main(argv=None) -> int:
     store = RunStore(db_path())
 
     try:
-        store.cleanup_orphans(artifact_root())
+        store.cleanup_orphans(artifact_root(), orphan_min_age=0)
 
         if args.command in ("resume", "continue") and args.chain:
             store.set_chain(args.run_id, [name.strip() for name in args.chain.split(",")])
