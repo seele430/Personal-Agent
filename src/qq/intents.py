@@ -160,7 +160,8 @@ def check_contract(intent: str, params: dict) -> tuple[IntentSpec | None, dict, 
         return None, {}, "unregistered"
 
     if not spec.enabled:
-        return spec, {}, "disabled"
+        # 保留原参数，便于审计“禁用时原本要读什么”；不参与执行
+        return spec, dict(params), "disabled"
 
     try:
         validated = spec.params_schema(**params)
