@@ -1692,6 +1692,16 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # L1：Provider 工厂（ARK / OpenAI 兼容切换）
+    "unit/test_provider_factory.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
 }
 
 

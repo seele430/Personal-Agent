@@ -3,9 +3,14 @@
 import json
 import tempfile
 import unittest
+import unittest.mock
 
 from pathlib import Path
 from types import SimpleNamespace
+
+
+def provider(*, configured=True, submit=None):
+    return SimpleNamespace(configured=configured, submit=submit)
 from unittest.mock import patch
 
 import src.tools.provider_tools as tools
@@ -71,9 +76,8 @@ class HandlerCase(unittest.TestCase):
             }
 
         with patch(
-            "src.tools.provider_tools.OpenAICompatProvider.submit", side_effect=fake_submit
-        ), patch(
-            "src.tools.provider_tools.OpenAICompatProvider.configured", True
+            "src.tools.provider_tools.build_provider",
+            return_value=provider(submit=fake_submit),
         ):
             result = self.run_handler(prompt="写点什么")
 
@@ -85,11 +89,12 @@ class HandlerCase(unittest.TestCase):
         )
 
     def test_missing_key_refuses_without_request(self):
+        submit = unittest.mock.Mock()
+
         with patch(
-            "src.tools.provider_tools.OpenAICompatProvider.configured", False
-        ), patch(
-            "src.tools.provider_tools.OpenAICompatProvider.submit"
-        ) as submit:
+            "src.tools.provider_tools.build_provider",
+            return_value=provider(configured=False, submit=submit),
+        ):
             with self.assertRaises(RuntimeError) as caught:
                 self.run_handler(prompt="x")
 
@@ -97,9 +102,12 @@ class HandlerCase(unittest.TestCase):
         submit.assert_not_called()
 
     def test_empty_prompt_rejected(self):
+        submit = unittest.mock.Mock()
+
         with patch(
-            "src.tools.provider_tools.OpenAICompatProvider.configured", True
-        ), patch("src.tools.provider_tools.OpenAICompatProvider.submit") as submit:
+            "src.tools.provider_tools.build_provider",
+            return_value=provider(submit=submit),
+        ):
             with self.assertRaises(ValueError):
                 self.run_handler(prompt="   ")
 
@@ -108,11 +116,12 @@ class HandlerCase(unittest.TestCase):
     def test_provider_error_becomes_runtime_error(self):
         from src.collab.providers import ProviderError
 
+        def boom(*args, **kwargs):
+            raise ProviderError("Provider 返回 HTTP 401")
+
         with patch(
-            "src.tools.provider_tools.OpenAICompatProvider.configured", True
-        ), patch(
-            "src.tools.provider_tools.OpenAICompatProvider.submit",
-            side_effect=ProviderError("Provider 返回 HTTP 401"),
+            "src.tools.provider_tools.build_provider",
+            return_value=provider(submit=boom),
         ):
             with self.assertRaises(RuntimeError) as caught:
                 self.run_handler(prompt="x")
@@ -125,7 +134,8 @@ class HandlerCase(unittest.TestCase):
                 raise RuntimeError("已取消")
 
         with patch(
-            "src.tools.provider_tools.OpenAICompatProvider.configured", True
+            "src.tools.provider_tools.build_provider",
+            return_value=provider(),
         ):
             with self.assertRaises(RuntimeError):
                 tools.external_task(call(prompt="x"), cancel_token=Token())

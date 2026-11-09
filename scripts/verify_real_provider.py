@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.collab.providers import OpenAICompatProvider, ProviderError  # noqa: E402
+from src.collab.providers import ProviderError, build_provider  # noqa: E402
 from src.collab.registry import ExternalTaskRegistry  # noqa: E402
 from src.collab.verify import check_artifacts, check_digest  # noqa: E402
 
@@ -58,6 +58,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     load_dotenv(ROOT / ".env")
+    load_dotenv(ROOT / ".env.provider.local")
 
     if not args.real:
         print("这是真实网络调用，会产生少量 token 费用。确认要跑请加 --real")
@@ -65,7 +66,7 @@ def main(argv=None) -> int:
 
         return 2
 
-    provider = OpenAICompatProvider()
+    provider = build_provider()
 
     if not provider.configured:
         print("未配置 OPENAI_API_KEY，无法验证")

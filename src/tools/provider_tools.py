@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from src.collab.providers import OpenAICompatProvider, ProviderError
+from src.collab.providers import build_provider, ProviderError
 
 
 NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -89,7 +89,7 @@ def external_task(tool_call, cancel_token=None) -> dict[str, Any]:
         raise ValueError("prompt 不能为空")
 
     artifact_name = safe_artifact_name(args.get("artifact_name"))
-    provider = OpenAICompatProvider()
+    provider = build_provider()
 
     if not provider.configured:
         raise RuntimeError("未配置 OPENAI_API_KEY：无法调用外部模型 API")

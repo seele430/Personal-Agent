@@ -165,7 +165,7 @@ LibreOffice/Office 转换、模型 fallback、Sleep A/B、GPU 压测。
 
 | 层 | 状态 |
 |---|---|
-| **真实外部 API**（OpenAI 兼容端点，`.env` 已配） | ✅ **已验证**：一次真实调用 206 token / 2.23 s，产物 240 B，本地 sha256 校验通过；"哈希写错必须拒绝"的反例通过 |
+| **真实外部 API** | ✅ **已验证两路**：DeepSeek（206 token / 2.23 s）+ **火山方舟豆包**（`doubao-seed-2-0-mini-260428`：339/410 token、~3 s、产物 324 B，sha256 与反例均通过） |
 | 模拟 Provider（本地 HTTP） | ✅ 已验证（v1.4.7） |
 | **外部 Agent**（带任务状态机 / 工具 / 远端产物） | ⬜ **未接入**：本机无 Kimi/Codex 等 CLI；HF 推理端点在本网络不可达；无可用的第三方 agent 凭据（不以他人会员账号代登录） |
 | QQ / ntfy 出站通知 | ⬜ 未验证 |
