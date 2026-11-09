@@ -1672,6 +1672,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="low",
     ),
+
+    # L1：真实 Provider 适配器（OpenAI 兼容端点，HTTP 打桩）
+    "unit/test_real_provider.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 

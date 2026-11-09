@@ -30,7 +30,7 @@ v1.4a 本地与模拟闭环、B1 功能链、v1.5–v1.8，均有实测证据。
 | v1.1 | 短素材 ✅ / 长素材 93.3% | 无真人素材 | 🟡 **部分通过** |
 | v1.2 | 本地 TLS 8/8 + **手机真机 ✅**（Android 15/热点） | 反向代理部署未验 | 🟡 **部分通过（仅缺反代）** |
 | v1.3 | 时间线/生命周期/Diff/CLI 完成 | 模型 fallback、QQ 通知、Sleep A/B、Office 转换未做 | 🟡 **部分通过** |
-| v1.4a | 本地 Registry/Guard/Verify + 模拟 Provider E2E ✅ | 无真实 Provider、无通知出站 | 🟡 **部分通过（本地骨架）** |
+| v1.4a | 本地 Registry/Guard/Verify + 模拟 Provider + **真实外部 API** ✅ | 无外部 Agent、无通知出站 | 🟡 **部分通过（真实 API 层）** |
 | v1.4b/c | — | OneBot 入站、跨 Provider 接力未做 | ⬜ **未开始** |
 | B1 | A1–A6 功能证据 ✅ + pytest 原命令 ✅ | 版本路线偏离原计划，**owner 已接受**（2026-11-09） | ✅ **通过** |
 | v1.5–v1.8 | ✅（本轮聚合复跑） | 未逐条重新推导每条新增判据 | ✅ **通过（有限复跑）** |
@@ -161,8 +161,20 @@ LibreOffice/Office 转换、模型 fallback、Sleep A/B、GPU 压测。
 
 **仍未覆盖**：反向代理（nginx/caddy）部署、iOS/Safari 证书流程、弱网重连。
 
-### 5.3 v1.4 真实 Provider / 通知：未开始
-模拟 Provider 只证明"本地链路通 + 不认自述"，**不等于** Kimi/DeepSeek 已接入，也不等于 QQ/ntfy 出站可用。
+### 5.3 v1.4 真实 Provider：**真实外部 API 已验证，外部 Agent 仍未接入**（2026-11-09）
+
+| 层 | 状态 |
+|---|---|
+| **真实外部 API**（OpenAI 兼容端点，`.env` 已配） | ✅ **已验证**：一次真实调用 206 token / 2.23 s，产物 240 B，本地 sha256 校验通过；"哈希写错必须拒绝"的反例通过 |
+| 模拟 Provider（本地 HTTP） | ✅ 已验证（v1.4.7） |
+| **外部 Agent**（带任务状态机 / 工具 / 远端产物） | ⬜ **未接入**（本机无 Kimi/Codex 等 CLI 或凭据） |
+| QQ / ntfy 出站通知 | ⬜ 未验证 |
+
+**必须说清的边界**：模型 API **不是**"外部 Agent"——它没有任务状态、没有工具、没有外部产物目录。
+本轮的价值是把"纯 mock"升级为"真实网络 + 真实鉴权 + 真实 token 计量"，
+**不能**据此说 v1.4 的跨 Agent 协作已打通。
+
+证据：`pa-v148-evidence-20261109/real-provider.log`。
 
 ---
 

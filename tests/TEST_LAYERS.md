@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 94f863d62dd9f377 -->
+<!-- membership-digest: cc24ced32e185ee7 -->
 
-## unit — L1 单元测试 (59 files)
+## unit — L1 单元测试 (60 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -63,6 +63,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_mock_provider.py` | tests/unit/ | collab | none | mocked | low | registered-inferred |
 | `unit/test_ops_cli.py` | tests/unit/ | ops | temporary_sqlite | none | high | registered-inferred |
 | `unit/test_platform_sdk.py` | tests/unit/ | platform_sdk | none | none | low | registered-inferred |
+| `unit/test_real_provider.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
 | `unit/test_reminder_eval.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 | `unit/test_remote_access_log.py` | tests/unit/ | remote | none | none | medium | registered-inferred |
 | `unit/test_remote_bridge.py` | tests/unit/ | remote | none | none | high | registered-inferred |
