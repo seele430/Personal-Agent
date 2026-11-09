@@ -477,5 +477,21 @@ class AtomicityCase(unittest.TestCase):
             errors.append(error)
 
 
+
+    def test_step_retry_guard_is_atomic(self):
+        run = self.store.claim(self.run_id, "w1")
+        token = run["fencing_token"]
+        self.store.step_begin(self.run_id, 1, "compose", "task", token)
+        self.store.step_begin(self.run_id, 1, "compose", "task", token)
+
+        returned = self.takeover(
+            "UPDATE collab_steps SET state='pending'",
+            lambda: self.store.step_retry(self.run_id, 1, "compose", token),
+        )
+
+        self.assertFalse(returned)
+        self.assertEqual(self.store.step_state(self.run_id, 1, "compose"), "needs_review")
+
+
 if __name__ == "__main__":
     unittest.main()
