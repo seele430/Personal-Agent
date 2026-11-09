@@ -1702,6 +1702,16 @@ TEST_SCHEMAS = {
         external_network="none",
         risk="low",
     ),
+
+    # L1：Qwen Code 外部 Agent Provider（子进程全 mock）
+    "unit/test_qwen_agent.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 
