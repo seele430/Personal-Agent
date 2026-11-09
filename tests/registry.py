@@ -1722,6 +1722,16 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="low",
     ),
+
+    # L1：QQ 入站（OneBot 签名/白名单/幂等/限流，全 mock）
+    "unit/test_qq_inbound.py": TestSchema(
+        layer="unit",
+        domain="qq",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 

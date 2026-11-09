@@ -1,0 +1,79 @@
+"""OneBot 11 HTTP 客户端：只做「发消息」与「查登录态」。
+
+约束：
+
+- 只连 127.0.0.1 上的 NapCat，不对外；
+- 超时 10 秒，失败抛 `OneBotError`（中文短句），不自动重试；
+- token 只在请求头里出现，不进日志。
+"""
+
+from __future__ import annotations
+
+import json
+import urllib.error
+import urllib.request
+
+
+DEFAULT_TIMEOUT = 10.0
+
+
+class OneBotError(RuntimeError):
+    """OneBot 调用失败。"""
+
+
+class OneBotClient:
+    def __init__(self, *, base_url: str, token: str, timeout: float = DEFAULT_TIMEOUT):
+        self.base_url = (base_url or "").rstrip("/")
+        self.token = (token or "").strip()
+        self.timeout = timeout
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.base_url and self.token)
+
+    def _call(self, action: str, payload: dict | None = None) -> dict:
+        if not self.configured:
+            raise OneBotError("未配置 PA_ONEBOT_URL / PA_ONEBOT_TOKEN")
+
+        request = urllib.request.Request(
+            f"{self.base_url}/{action}",
+            data=json.dumps(payload or {}).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.token}",
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                raw = response.read().decode("utf-8", "replace")
+
+        except urllib.error.HTTPError as error:
+            raise OneBotError(f"OneBot 返回 HTTP {error.code}") from None
+
+        except (urllib.error.URLError, OSError) as error:
+            raise OneBotError(f"连不上 OneBot（{self.base_url}）：{error}") from None
+
+        try:
+            body = json.loads(raw)
+
+        except json.JSONDecodeError:
+            raise OneBotError("OneBot 返回的不是 JSON") from None
+
+        if body.get("status") != "ok":
+            raise OneBotError(f"OneBot 调用失败：{body.get('message') or body.get('wording') or 'unknown'}")
+
+        return body.get("data") or {}
+
+    def send_private_msg(self, user_id: int, text: str) -> dict:
+        if not str(text or "").strip():
+            raise OneBotError("消息内容不能为空")
+
+        return self._call(
+            "send_private_msg",
+            {"user_id": int(user_id), "message": str(text)},
+        )
+
+    def get_login_info(self) -> dict:
+        return self._call("get_login_info")

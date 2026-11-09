@@ -31,7 +31,7 @@ v1.4a 本地与模拟闭环、B1 功能链、v1.5–v1.8，均有实测证据。
 | v1.2 | 本地 TLS 8/8 + **手机真机 ✅**（Android 15/热点） | 反向代理部署未验 | 🟡 **部分通过（仅缺反代）** |
 | v1.3 | 时间线/生命周期/Diff/CLI 完成 | 模型 fallback、QQ 通知、Sleep A/B、Office 转换未做 | 🟡 **部分通过** |
 | v1.4a | 本地 Registry/Guard/Verify + 模拟 Provider + **真实外部 API** ✅ + **真实外部 Agent（Qwen Code）✅** + **ntfy 通知出站 ✅** | QQ 入站/接力未做 | 🟡 **部分通过（仅缺 QQ）** |
-| v1.4b/c | — | OneBot 入站、跨 Provider 接力未做 | ⬜ **未开始** |
+| v1.4b | 真机私聊入站 ✅（NapCat 4.18.41 + OneBot） | 跨 Provider 接力未做 | 🟡 **部分通过** |
 | B1 | A1–A6 功能证据 ✅ + pytest 原命令 ✅ | 版本路线偏离原计划，**owner 已接受**（2026-11-09） | ✅ **通过** |
 | v1.5–v1.8 | ✅（本轮聚合复跑） | 未逐条重新推导每条新增判据 | ✅ **通过（有限复跑）** |
 
@@ -92,7 +92,7 @@ LibreOffice/Office 转换、模型 fallback、Sleep A/B、GPU 压测。
 |---|---|---|---|
 | v1.3 | ✅ 通过 | 🟡 部分通过 | 已：时间线（API/CLI/UI）、DB+文件生命周期、Diff（API/UI）、运维 CLI；未：模型 fallback、QQ 通知、Sleep A/B、Office 转换 |
 | v1.4a | ✅ 本地闭环通过 | 🟡 部分通过（仅缺 QQ） | 已：能力三态、注册表、租约、独立验收、CLI、模拟 HTTP E2E、真实模型 API（DeepSeek/方舟）、真实外部 Agent（Qwen Code，成功+失败路径）、ntfy 真实推送（200 + 消息 id）；未：QQ 入站/接力分档、通知 |
-| v1.4b/c | 未单独判定 | ⬜ 未开始 | OneBot 入站、真实同任务继续、跨 Provider 接力 |
+| v1.4b | ✅ 真机通过 | 🟡 部分通过 | 已：OneBot 入站（签名/白名单/幂等/限流/回复）、真机一条私聊往返；未：真实同任务继续 |
 
 ### 3.3 B1 的实现与命令漂移
 
