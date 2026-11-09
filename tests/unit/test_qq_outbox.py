@@ -111,5 +111,72 @@ class WorkerCase(unittest.TestCase):
         self.assertFalse(self.worker(FakeClient()).run_once())
 
 
+
+
+class CancelCase(unittest.TestCase):
+    def setUp(self):
+        self._temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temporary.cleanup)
+        self.outbox = QQOutbox(Path(self._temporary.name) / "outbox.db")
+
+    def test_cancel_latest_pending(self):
+        self.outbox.enqueue(message_id="1", sender=7, command="ask")
+        outcome, cancelled = self.outbox.cancel(sender=7)
+
+        self.assertEqual(outcome, "cancelled")
+        self.assertEqual(cancelled, "1")
+        self.assertEqual(self.outbox.get("1")["state"], "cancelled")
+
+    def test_cancel_by_id(self):
+        self.outbox.enqueue(message_id="1", sender=7, command="ask")
+        self.outbox.enqueue(message_id="2", sender=7, command="ask")
+
+        outcome, cancelled = self.outbox.cancel(sender=7, message_id="1")
+
+        self.assertEqual((outcome, cancelled), ("cancelled", "1"))
+        self.assertEqual(self.outbox.get("2")["state"], "pending")
+
+    def test_cancel_missing_or_other_sender(self):
+        self.outbox.enqueue(message_id="1", sender=7, command="ask")
+
+        self.assertEqual(self.outbox.cancel(sender=8, message_id="1")[0], "not_found")
+        self.assertEqual(self.outbox.cancel(sender=7, message_id="999")[0], "not_found")
+
+    def test_cancel_after_sending_rejected(self):
+        self.outbox.enqueue(message_id="1", sender=7, command="ask")
+        self.outbox.claim_next()
+
+        outcome, _ = self.outbox.cancel(sender=7, message_id="1")
+
+        self.assertEqual(outcome, "state:sending")
+
+
+class CancelWorkerCase(unittest.TestCase):
+    def setUp(self):
+        self._temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temporary.cleanup)
+        self.outbox = QQOutbox(Path(self._temporary.name) / "outbox.db")
+        self.handler = QQInbound(owner_id=1, secret="s", client=FakeClient(), enabled=True)
+
+    def test_worker_cancel_replies(self):
+        client = FakeClient()
+        self.outbox.enqueue(message_id="1", sender=1, command="ask")
+
+        self.outbox.enqueue(message_id="2", sender=1, command="cancel", question="1")
+        worker = QQWorker(outbox=self.outbox, client=client, handler=self.handler)
+        worker.run_once()
+
+        self.assertIn("已取消", client.sent[0][1])
+        self.assertEqual(self.outbox.get("1")["state"], "cancelled")
+
+    def test_worker_cancel_not_found(self):
+        client = FakeClient()
+        self.outbox.enqueue(message_id="3", sender=1, command="cancel", question="999")
+
+        QQWorker(outbox=self.outbox, client=client, handler=self.handler).run_once()
+
+        self.assertIn("找不到", client.sent[0][1])
+
+
 if __name__ == "__main__":
     unittest.main()

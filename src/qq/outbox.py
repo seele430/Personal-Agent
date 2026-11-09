@@ -86,7 +86,8 @@ class QQOutbox:
     def claim_next(self) -> dict | None:
         with self._session() as connection:
             row = connection.execute(
-                "SELECT * FROM qq_outbox WHERE state = 'pending' ORDER BY created_at LIMIT 1"
+                "SELECT * FROM qq_outbox WHERE state = 'pending' "
+                "ORDER BY CASE WHEN command = 'cancel' THEN 0 ELSE 1 END, created_at LIMIT 1"
             ).fetchone()
 
             if row is None:
@@ -119,6 +120,47 @@ class QQOutbox:
                 "UPDATE qq_outbox SET state = 'unknown', error = ?, updated_at = ? WHERE message_id = ?",
                 (str(error)[:500], self._clock(), str(message_id)),
             )
+
+    def cancel(self, *, sender: int, message_id: str = "") -> tuple[str, str]:
+        """取消 pending 任务；返回 (结果, 实际取消的 id)。
+
+        结果：`cancelled` / `not_found` / `state:<当前状态>`
+        """
+
+        with self._session() as connection:
+            if message_id:
+                row = connection.execute(
+                    "SELECT message_id, sender, state FROM qq_outbox WHERE message_id = ?",
+                    (str(message_id),),
+                ).fetchone()
+
+                if row is None or int(row["sender"]) != int(sender):
+                    return "not_found", ""
+
+                if row["state"] != "pending":
+                    return f"state:{row['state']}", row["message_id"]
+
+                connection.execute(
+                    "UPDATE qq_outbox SET state = 'cancelled', updated_at = ? WHERE message_id = ? AND state = 'pending'",
+                    (self._clock(), row["message_id"]),
+                )
+
+                return "cancelled", row["message_id"]
+
+            row = connection.execute(
+                "SELECT message_id, state FROM qq_outbox WHERE sender = ? AND state = 'pending' ORDER BY created_at DESC LIMIT 1",
+                (int(sender),),
+            ).fetchone()
+
+            if row is None:
+                return "not_found", ""
+
+            connection.execute(
+                "UPDATE qq_outbox SET state = 'cancelled', updated_at = ? WHERE message_id = ? AND state = 'pending'",
+                (self._clock(), row["message_id"]),
+            )
+
+            return "cancelled", row["message_id"]
 
     def recover_inflight(self) -> int:
         with self._session() as connection:

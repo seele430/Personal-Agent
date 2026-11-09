@@ -54,6 +54,19 @@ class QQWorker:
             if not processed:
                 self._stop.wait(self.poll_interval)
 
+    def _cancel(self, job: dict) -> str:
+        outcome, cancelled_id = self.outbox.cancel(
+            sender=int(job["sender"]), message_id=job.get("question") or ""
+        )
+
+        if outcome == "cancelled":
+            return f"已取消：{cancelled_id}"
+
+        if outcome == "not_found":
+            return "找不到该任务（可能已完成或不是你的）。"
+
+        return "该任务已开始执行或已发送，无法取消。"
+
     def run_once(self) -> bool:
         job = self.outbox.claim_next()
 
@@ -63,7 +76,10 @@ class QQWorker:
         message_id = job["message_id"]
 
         try:
-            reply = self.handler.reply_for(job["command"], job.get("question") or "")
+            if job["command"] == "cancel":
+                reply = self._cancel(job)
+            else:
+                reply = self.handler.reply_for(job["command"], job.get("question") or "")
 
         except Exception as error:  # noqa: BLE001 - 任务失败不能拖垮 worker
             self.outbox.mark_failed(message_id, error=f"command failed: {error}")
