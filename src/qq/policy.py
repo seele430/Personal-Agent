@@ -63,8 +63,9 @@ def validate_read_path(raw: str, workspace: Path) -> Path:
     if re_match_drive(text):
         raise PolicyError("只能读取工作区内的相对路径")
 
-    if DEVICE_NAME.match(Path(text).name):
-        raise PolicyError("不允许访问 Windows 保留设备名")
+    for part in Path(text).parts:
+        if DEVICE_NAME.match(part):
+            raise PolicyError("不允许访问 Windows 保留设备名")
 
     if text.startswith("\\\\") or text.startswith("//"):
         raise PolicyError("不支持网络路径")

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class StatusParams(BaseModel):
@@ -146,3 +146,26 @@ INTENT_REGISTRY: dict[str, IntentSpec] = {
 
 def get_spec(name: str) -> IntentSpec | None:
     return INTENT_REGISTRY.get(name)
+
+
+def check_contract(intent: str, params: dict) -> tuple[IntentSpec | None, dict, str]:
+    """共享契约检查：注册表 + enabled + 参数 Schema。
+
+    返回 (spec, 校验后的参数, 错误码)。错误码为空表示通过。
+    """
+
+    spec = get_spec(intent)
+
+    if spec is None:
+        return None, {}, "unregistered"
+
+    if not spec.enabled:
+        return spec, {}, "disabled"
+
+    try:
+        validated = spec.params_schema(**params)
+
+    except ValidationError:
+        return spec, {}, "invalid_params"
+
+    return spec, validated.model_dump(), ""

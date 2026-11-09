@@ -147,6 +147,19 @@ class OutboxCase(unittest.TestCase):
 
         self.assertEqual(outcome, "sending")
 
+
+    def test_cancel_rechecks_when_state_became_sending(self):
+        self.enqueue()
+        self.to_pending()
+        self.outbox.claim("task")
+
+        other = QQOutbox(self.path)
+        self.assertTrue(other.claim_send("1"))
+
+        outcome, _ = self.outbox.cancel(sender=7, target="1")
+
+        self.assertEqual(outcome, "sending")
+
     def test_cancel_missing(self):
         self.assertEqual(self.outbox.cancel(sender=7, target="999")[0], "not_found")
 

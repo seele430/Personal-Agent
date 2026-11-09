@@ -272,46 +272,69 @@ class QQOutbox:
     # ---------- 取消 ----------
 
     def cancel(self, *, sender: int, target: str = "") -> tuple[str, dict | None]:
+        """取消 pending / 标记 running。
+
+        用**条件 UPDATE 优先**，不再 SELECT 后无条件写：
+        状态在并发中变化时影响行数为 0，随后重查返回真实状态。
+        """
+
         with self._session() as connection:
-            if target:
+            if not target:
                 row = connection.execute(
-                    "SELECT * FROM qq_outbox WHERE message_id = ? OR confirm_id = ?",
-                    (target, target),
-                ).fetchone()
-            else:
-                row = connection.execute(
-                    "SELECT * FROM qq_outbox WHERE sender = ? "
+                    "SELECT message_id FROM qq_outbox WHERE sender = ? "
                     "AND state IN ('pending_task','pending_control','awaiting_confirm') "
                     "ORDER BY created_at DESC LIMIT 1",
                     (int(sender),),
                 ).fetchone()
 
-            if row is None or int(row["sender"]) != int(sender):
+                if row is None:
+                    return "not_found", None
+
+                target = row["message_id"]
+
+            cursor = connection.execute(
+                "UPDATE qq_outbox SET state = 'cancelled', cancelled = 1, updated_at = ? "
+                "WHERE (message_id = ? OR confirm_id = ?) AND sender = ? "
+                "AND state IN ('pending_task','pending_control','awaiting_confirm')",
+                (self._clock(), target, target, int(sender)),
+            )
+
+            if cursor.rowcount == 1:
+                return "cancelled", self._row(connection, target)
+
+            cursor = connection.execute(
+                "UPDATE qq_outbox SET cancelled = 1, updated_at = ? "
+                "WHERE (message_id = ? OR confirm_id = ?) AND sender = ? "
+                "AND state IN ('running','routing')",
+                (self._clock(), target, target, int(sender)),
+            )
+
+            if cursor.rowcount == 1:
+                return "running", self._row(connection, target)
+
+            row = self._row(connection, target)
+
+            if row is None:
                 return "not_found", None
 
             state = row["state"]
 
-            if state in ("pending_task", "pending_control", "awaiting_confirm"):
-                connection.execute(
-                    "UPDATE qq_outbox SET state = 'cancelled', cancelled = 1, updated_at = ? "
-                    "WHERE message_id = ?",
-                    (self._clock(), row["message_id"]),
-                )
-
-                return "cancelled", dict(row)
-
-            if state in ("running", "routing"):
-                connection.execute(
-                    "UPDATE qq_outbox SET cancelled = 1, updated_at = ? WHERE message_id = ?",
-                    (self._clock(), row["message_id"]),
-                )
-
-                return "running", dict(row)
+            if state == "cancelled":
+                return "cancelled", row
 
             if state == "sending":
-                return "sending", dict(row)
+                return "sending", row
 
-            return "not_found", dict(row)
+            return "not_found", row
+
+    @staticmethod
+    def _row(connection, target: str) -> dict | None:
+        row = connection.execute(
+            "SELECT * FROM qq_outbox WHERE message_id = ? OR confirm_id = ?",
+            (target, target),
+        ).fetchone()
+
+        return dict(row) if row else None
 
     # ---------- 状态 ----------
 

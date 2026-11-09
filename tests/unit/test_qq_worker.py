@@ -255,14 +255,18 @@ class ConcurrencyCase(WorkerCase):
 class ContractCase(WorkerCase):
     def test_disabled_intent_is_rejected(self):
         import dataclasses
+        from src.qq import intents as intents_module
         from src.qq import worker as worker_module
 
         self.enqueue("读一下 a.md", message_id="task-1")
         self.pending("task-1", intent="read_file", params={"path": "a.md"})
 
-        disabled = dataclasses.replace(worker_module.get_spec("read_file"), enabled=False)
+        disabled = dataclasses.replace(intents_module.get_spec("read_file"), enabled=False)
 
-        with patch("src.qq.worker.get_spec", return_value=disabled):
+        with patch(
+            "src.qq.worker.check_contract",
+            return_value=(disabled, {"path": "a.md"}, "disabled"),
+        ):
             self.task_worker().run_once()
 
         self.assertIn("未启用", self.client.sent[-1][1])
@@ -309,6 +313,52 @@ class ContractCase(WorkerCase):
         self.control_worker().run_once()
 
         self.assertEqual(self.outbox.get("cmd-1")["state"], "done")
+
+
+
+    def test_confirmed_read_rechecks_enabled(self):
+        import dataclasses
+        from src.qq import intents as intents_module
+        from src.qq import worker as worker_module
+
+        workspace = self.root / "ws4"
+        workspace.mkdir()
+        (workspace / "d.md").write_text("secret", encoding="utf-8")
+
+        self.enqueue("读一下 d.md", message_id="task-1")
+        self.pending("task-1", intent="read_file", params={"path": "d.md"})
+        self.outbox.set_awaiting_confirm("task-1", confirm_id="K7M2P9QX", expires_at=9e9)
+        self.outbox.consume_confirm(sender=7, confirm_id="K7M2P9QX")
+
+        disabled = dataclasses.replace(worker_module.check_contract("read_file", {"path": "d.md"})[0], enabled=False)
+
+        with patch.dict("os.environ", {"PA_QQ_WORKSPACE": str(workspace)}, clear=False), \
+             patch(
+                 "src.qq.worker.check_contract",
+                 return_value=(disabled, {"path": "d.md"}, "disabled"),
+             ):
+            self.task_worker().run_once()
+
+        self.assertEqual(self.outbox.get("task-1")["state"], "denied")
+        self.assertNotIn("secret", self.client.sent[-1][1])
+
+    def test_confirm_disabled_blocks_control(self):
+        import dataclasses
+        from src.qq import intents as intents_module
+        from src.qq import worker as worker_module
+
+        self.enqueue("/confirm K7M2P9QX", queue="control", message_id="cmd-1")
+        self.pending("cmd-1", intent="confirm", params={"confirmation_id": "K7M2P9QX"}, state="pending_control")
+
+        disabled = dataclasses.replace(worker_module.check_contract("confirm", {"confirmation_id": "K7M2P9QX"})[0], enabled=False)
+
+        with patch(
+            "src.qq.worker.check_contract",
+            return_value=(disabled, {"confirmation_id": "K7M2P9QX"}, "disabled"),
+        ):
+            self.control_worker().run_once()
+
+        self.assertIn("未启用", self.client.sent[-1][1])
 
 
 if __name__ == "__main__":

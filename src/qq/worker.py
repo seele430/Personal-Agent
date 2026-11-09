@@ -5,6 +5,8 @@
 - `claim()` 原子认领（pending → running）；
 - `claim_send()` 原子发送认领（running → sending，且 cancelled=0）；
 - 取消发生在认领之前 → 认领失败、不发送；发生在 sending 之后 → 不承诺撤回。
+
+契约：task/control 都通过 `check_contract()` 检查注册表、enabled 与参数 Schema。
 """
 
 from __future__ import annotations
@@ -16,24 +18,30 @@ import time
 
 from pathlib import Path
 
-from pydantic import ValidationError
-
 from src.qq import router
-from src.qq.intents import get_spec
 from src.qq.inbound import QQInbound, MAX_REPLY_CHARS
+from src.qq.intents import check_contract
 from src.qq.onebot import OneBotError
 from src.qq.outbox import QQOutbox
 from src.qq.policy import (
+    PolicyError,
     ensure_workspace,
-    generate_confirmation_id,
     params_hash,
+    read_text_checked,
     truncate_for_qq,
+    validate_read_path,
 )
 
 
 DENY_TEXT = "QQ 端不支持执行命令。"
 UNAVAILABLE_TEXT = "QQ 端暂未开放出图/写文件。"
 CLARIFY_TEXT = "请再说清楚一点：可以问问题，或用 /status、/ask、/cancel。"
+
+CONTRACT_MESSAGES = {
+    "unregistered": "该意图未注册。",
+    "disabled": "该意图未启用。",
+    "invalid_params": "参数不合法，已拒绝。",
+}
 
 
 class BaseWorker:
@@ -46,6 +54,8 @@ class BaseWorker:
         self.poll_interval = poll_interval
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+
+    # ---------- 生命周期 ----------
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -69,41 +79,13 @@ class BaseWorker:
             if not self.run_once():
                 self._stop.wait(self.poll_interval)
 
-    def _run_confirmed_read(self, job: dict) -> bool:
-        from src.qq.policy import PolicyError, read_text_checked, validate_read_path
-
-        message_id = job["message_id"]
-        params = json.loads(job.get("params_json") or "{}")
-        workspace = ensure_workspace(os.getenv("PA_QQ_WORKSPACE") or Path(".").resolve())
-
-        try:
-            target = validate_read_path(params.get("path", ""), workspace)
-            content = read_text_checked(target)
-        except (PolicyError, OSError) as error:
-            self.reply(job, f"读取失败：{error}")
-
-            return True
-
-        self.outbox.set_routing(
-            message_id,
-            intent="read_file",
-            params=params,
-            params_hash=params_hash(params),
-            decision_source="confirmed",
-            state="running",
-            policy_decision="allow",
-        )
-        self.reply(job, truncate_for_qq(content, MAX_REPLY_CHARS))
-
-        return True
-
     def run_once(self) -> bool:  # pragma: no cover - 抽象
         raise NotImplementedError
 
-    # ---------- 发送（含发送认领） ----------
+    # ---------- 发送 ----------
 
     def notice(self, job: dict, text: str) -> bool:
-        """发送提示，不改变业务状态（用于确认提示/拒绝说明）。"""
+        """发送提示，不改变业务状态（确认提示/拒绝说明）。"""
 
         try:
             self.client.send_private_msg(int(job["sender"]), text)
@@ -146,105 +128,46 @@ class BaseWorker:
 
 
 class TaskWorker(BaseWorker):
-    def _run_confirmed_read(self, job: dict) -> bool:
-        from src.qq.policy import PolicyError, read_text_checked, validate_read_path
-
-        message_id = job["message_id"]
-        params = json.loads(job.get("params_json") or "{}")
-        workspace = ensure_workspace(os.getenv("PA_QQ_WORKSPACE") or Path(".").resolve())
-
-        try:
-            target = validate_read_path(params.get("path", ""), workspace)
-            content = read_text_checked(target)
-        except (PolicyError, OSError) as error:
-            self.reply(job, f"读取失败：{error}")
-
-            return True
-
-        self.outbox.set_routing(
-            message_id,
-            intent="read_file",
-            params=params,
-            params_hash=params_hash(params),
-            decision_source="confirmed",
-            state="running",
-            policy_decision="allow",
-        )
-        self.reply(job, truncate_for_qq(content, MAX_REPLY_CHARS))
-
-        return True
-
     def run_once(self) -> bool:
         job = self.outbox.claim("task")
 
         if job is None:
             return False
 
-        message_id = job["message_id"]
-
-        # 已确认的任务：直接按存下来的 intent/params 执行，不重新路由
         if int(job.get("confirm_used") or 0) == 1 and job.get("intent") == "read_file":
             return self._run_confirmed_read(job)
 
-        raw = job.get("raw_text") or ""
-        decision = router.classify(raw)
+        message_id = job["message_id"]
+        decision = router.classify(job.get("raw_text") or "")
 
         if decision["action"] in ("execute", "confirm"):
-            spec = get_spec(decision["intent"])
+            _spec, validated, error = check_contract(
+                decision["intent"], decision["params"]
+            )
 
-            if spec is None:
+            if error:
                 self.outbox.set_routing(
-                    message_id, intent=decision["intent"], params={}, params_hash=params_hash({}),
-                    decision_source=decision["source"], state="denied", policy_decision="deny",
-                )
-                self.notice(job, "该意图未注册。")
-
-                return True
-
-            if not spec.enabled:
-                self.outbox.set_routing(
-                    message_id, intent=decision["intent"], params={}, params_hash=params_hash({}),
-                    decision_source=decision["source"], state="denied", policy_decision="deny",
-                )
-                self.notice(job, "该意图未启用。")
-
-                return True
-
-            try:
-                validated = spec.params_schema(**decision["params"])
-            except ValidationError:
-                self.outbox.set_routing(
-                    message_id, intent=decision["intent"], params=decision["params"],
+                    message_id,
+                    intent=decision["intent"],
+                    params=decision["params"],
                     params_hash=params_hash(decision["params"]),
-                    decision_source=decision["source"], state="denied", policy_decision="deny",
+                    decision_source=decision["source"],
+                    state="denied",
+                    policy_decision="deny",
                 )
-                self.notice(job, "参数不合法，已拒绝。")
+                self.notice(job, CONTRACT_MESSAGES.get(error, "已拒绝。"))
 
                 return True
 
-            decision["params"] = validated.model_dump()
-
-        self.outbox.set_routing(
-            message_id,
-            intent=decision["intent"],
-            params=decision["params"],
-            params_hash=params_hash(decision["params"]),
-            decision_source=decision["source"],
-            state="running",
-            policy_decision=decision["action"],
-        )
+            decision["params"] = validated
 
         action = decision["action"]
 
         if action == "deny":
             self.outbox.set_routing(
-                message_id,
-                intent=decision["intent"],
-                params={},
-                params_hash=params_hash({}),
-                decision_source=decision["source"],
-                state="denied",
-                policy_decision="deny",
+                message_id, intent=decision["intent"], params={},
+                params_hash=params_hash({}), decision_source=decision["source"],
+                state="denied", policy_decision="deny",
             )
             self.notice(job, DENY_TEXT)
 
@@ -252,8 +175,9 @@ class TaskWorker(BaseWorker):
 
         if action == "unavailable":
             self.outbox.set_routing(
-                message_id, intent=decision["intent"], params={}, params_hash=params_hash({}),
-                decision_source=decision["source"], state="unavailable", policy_decision="deny",
+                message_id, intent=decision["intent"], params={},
+                params_hash=params_hash({}), decision_source=decision["source"],
+                state="unavailable", policy_decision="deny",
             )
             self.notice(job, UNAVAILABLE_TEXT)
 
@@ -261,8 +185,9 @@ class TaskWorker(BaseWorker):
 
         if action == "clarify":
             self.outbox.set_routing(
-                message_id, intent=decision["intent"], params={}, params_hash=params_hash({}),
-                decision_source=decision["source"], state="clarified", policy_decision="clarify",
+                message_id, intent=decision["intent"], params={},
+                params_hash=params_hash({}), decision_source=decision["source"],
+                state="clarified", policy_decision="clarify",
             )
             self.notice(job, CLARIFY_TEXT)
 
@@ -275,14 +200,18 @@ class TaskWorker(BaseWorker):
             from src.qq.policy import decide
 
             policy = decide(
-                intent=decision["intent"],
-                params=decision["params"],
-                route_action="confirm",
-                workspace=workspace,
+                intent=decision["intent"], params=decision["params"],
+                route_action="confirm", workspace=workspace,
             )
 
             if policy["decision"] != "confirm":
-                self.reply(job, f"不能读取：{policy['reason']}")
+                self.outbox.set_routing(
+                    message_id, intent=decision["intent"], params=decision["params"],
+                    params_hash=params_hash(decision["params"]),
+                    decision_source=decision["source"], state="denied",
+                    policy_decision=policy["decision"],
+                )
+                self.notice(job, f"不能读取：{policy['reason']}")
 
                 return True
 
@@ -291,15 +220,14 @@ class TaskWorker(BaseWorker):
                 confirm_id=policy["confirm_id"],
                 expires_at=time.time() + policy["ttl"],
             )
-            text = (
+            self.notice(
+                job,
                 f"要读取 {decision['params']['path']} 吗？"
-                f"回复 /confirm {policy['confirm_id']}（{policy['ttl']} 秒内有效）"
+                f"回复 /confirm {policy['confirm_id']}（{policy['ttl']} 秒内有效）",
             )
-            self.notice(job, text)
 
             return True
 
-        # allow
         if decision["intent"] == "status":
             text = "Personal Agent 在线；QQ 入站已接通。"
         elif decision["intent"] == "ask":
@@ -307,28 +235,31 @@ class TaskWorker(BaseWorker):
         else:
             text = DENY_TEXT
 
-        text = truncate_for_qq(text, MAX_REPLY_CHARS)
         self.outbox.set_routing(
-            message_id,
-            intent=decision["intent"],
-            params=decision["params"],
+            message_id, intent=decision["intent"], params=decision["params"],
             params_hash=params_hash(decision["params"]),
-            decision_source=decision["source"],
-            state="running",
+            decision_source=decision["source"], state="running",
             policy_decision="allow",
         )
-        self.reply(job, text)
+        self.reply(job, truncate_for_qq(text, MAX_REPLY_CHARS))
 
         return True
 
-
-class ControlWorker(BaseWorker):
-    terminal_state = "done"
     def _run_confirmed_read(self, job: dict) -> bool:
-        from src.qq.policy import PolicyError, read_text_checked, validate_read_path
-
         message_id = job["message_id"]
         params = json.loads(job.get("params_json") or "{}")
+        _spec, params, error = check_contract("read_file", params)
+
+        if error:
+            self.outbox.set_routing(
+                message_id, intent="read_file", params=params,
+                params_hash=params_hash(params), decision_source="confirmed",
+                state="denied", policy_decision="deny",
+            )
+            self.notice(job, CONTRACT_MESSAGES.get(error, "已拒绝。"))
+
+            return True
+
         workspace = ensure_workspace(os.getenv("PA_QQ_WORKSPACE") or Path(".").resolve())
 
         try:
@@ -340,17 +271,17 @@ class ControlWorker(BaseWorker):
             return True
 
         self.outbox.set_routing(
-            message_id,
-            intent="read_file",
-            params=params,
-            params_hash=params_hash(params),
-            decision_source="confirmed",
-            state="running",
-            policy_decision="allow",
+            message_id, intent="read_file", params=params,
+            params_hash=params_hash(params), decision_source="confirmed",
+            state="running", policy_decision="allow",
         )
         self.reply(job, truncate_for_qq(content, MAX_REPLY_CHARS))
 
         return True
+
+
+class ControlWorker(BaseWorker):
+    terminal_state = "done"
 
     def run_once(self) -> bool:
         job = self.outbox.claim("control")
@@ -358,8 +289,19 @@ class ControlWorker(BaseWorker):
         if job is None:
             return False
 
-        raw = (job.get("raw_text") or "").strip()
-        decision = router.classify(raw)
+        decision = router.classify(job.get("raw_text") or "")
+
+        if decision["intent"] in ("confirm", "cancel"):
+            _spec, checked, error = check_contract(
+                decision["intent"], decision["params"]
+            )
+
+            if error:
+                self.reply(job, CONTRACT_MESSAGES.get(error, "已拒绝。"))
+
+                return True
+
+            decision["params"] = checked
 
         if decision["intent"] == "confirm":
             confirm_id = decision["params"].get("confirmation_id", "")
@@ -370,11 +312,7 @@ class ControlWorker(BaseWorker):
                 consumed = self.outbox.consume_confirm(
                     sender=int(job["sender"]), confirm_id=confirm_id
                 )
-
-                if consumed is None:
-                    text = "确认已失效或不存在。"
-                else:
-                    text = "已确认，开始执行。"
+                text = "已确认，开始执行。" if consumed else "确认已失效或不存在。"
 
             self.reply(job, text)
 
@@ -398,7 +336,7 @@ class ControlWorker(BaseWorker):
 
             return True
 
-        self.reply(job, CLARIFY_TEXT)
+        self.notice(job, CLARIFY_TEXT)
 
         return True
 

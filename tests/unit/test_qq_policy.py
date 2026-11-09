@@ -54,6 +54,33 @@ class PathCase(unittest.TestCase):
                 with self.assertRaises(PolicyError):
                     validate_read_path(name, self.workspace)
 
+
+    def test_device_name_in_nested_segment(self):
+        for name in ("NUL/a.md", "safe/CON/b.md"):
+            with self.subTest(name=name):
+                with self.assertRaises(PolicyError) as caught:
+                    validate_read_path(name, self.workspace)
+
+                self.assertIn("设备名", str(caught.exception))
+
+    def test_read_growth_rejected(self):
+        from src.qq.policy import read_text_checked
+        from unittest.mock import patch as _patch
+
+        original = Path.read_bytes
+
+        def growing(self_path):
+            data = original(self_path)
+            self_path.write_bytes(data + b"extra")
+
+            return data
+
+        with _patch.object(Path, "read_bytes", growing):
+            with self.assertRaises(PolicyError) as caught:
+                read_text_checked(self.file)
+
+        self.assertIn("发生变化", str(caught.exception))
+
     def test_read_text_checked_ok(self):
         from src.qq.policy import read_text_checked
 
