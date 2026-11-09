@@ -1818,6 +1818,25 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # v1.4o（test_qq_threads.py）
+    "unit/test_qq_threads.py": TestSchema(
+        layer="unit",
+        domain="qq",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="low",
+    ),
+    # v1.4o（test_external_task_failover.py）
+    "unit/test_external_task_failover.py": TestSchema(
+        layer="unit",
+        domain="qq",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 

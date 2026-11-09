@@ -41,6 +41,10 @@ class ConfirmParams(BaseModel):
     confirmation_id: str = ""
 
 
+class ResetParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
 class DenyParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -118,6 +122,18 @@ CONFIRM_SPEC = IntentSpec(
     enabled=True,
 )
 
+RESET_SPEC = IntentSpec(
+    name="reset",
+    params_schema=ResetParams,
+    risk="low",
+    policy="allow",
+    handler="reset",
+    timeout_seconds=5.0,
+    retry_policy="none",
+    output_kind="text",
+    enabled=True,
+)
+
 EXEC_SPEC = IntentSpec(
     name="exec",
     params_schema=DenyParams,
@@ -139,6 +155,7 @@ INTENT_REGISTRY: dict[str, IntentSpec] = {
         READ_FILE_SPEC,
         CANCEL_SPEC,
         CONFIRM_SPEC,
+        RESET_SPEC,
         EXEC_SPEC,
     )
 }

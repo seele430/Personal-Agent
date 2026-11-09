@@ -19,7 +19,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-from src.collab.providers import build_provider, ProviderError
+import json
+import os
+import time
+
+from src.collab.providers import build_provider, build_providers
+from src.collab.relay import RETRYABLE, classify_error, ProviderError
 
 
 NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -85,6 +90,56 @@ def safe_artifact_name(raw: Any) -> str:
     return text
 
 
+CHAIN_ALIASES = {"ark", "deepseek", "openai", "openai-compat"}
+FAILOVER_BUDGET_SECONDS = 60.0
+AUDIT_PATH = Path("data") / "external-task-audit.jsonl"
+
+
+def _parse_chain(raw: str) -> list[str]:
+    parts = [part.strip().lower() for part in raw.split(",")]
+
+    if not parts or any(not part for part in parts):
+        raise RuntimeError("PA_RELAY_CHAIN 含空段")
+
+    if len(parts) > 2:
+        raise RuntimeError("PA_RELAY_CHAIN 最多 2 个 Provider")
+
+    if any(part == "qwen" for part in parts):
+        raise RuntimeError("Qwen Agent 不允许进入故障转移链")
+
+    if any(part not in CHAIN_ALIASES for part in parts):
+        raise RuntimeError(f"PA_RELAY_CHAIN 含未知 Provider：{parts}")
+
+    deduped = []
+
+    for part in parts:
+        if part not in deduped:
+            deduped.append(part)
+
+    return deduped
+
+
+def _audit_attempt(provider: str, error_class: str, duration: float, result: str) -> None:
+    try:
+        AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+        with AUDIT_PATH.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "provider": provider,
+                        "error_class": error_class,
+                        "duration_s": round(duration, 3),
+                        "result": result,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+    except OSError:
+        pass
+
+
 def external_task(tool_call, cancel_token=None) -> dict[str, Any]:
     args = _arguments(tool_call)
     prompt = str(args.get("prompt") or "").strip()
@@ -93,37 +148,92 @@ def external_task(tool_call, cancel_token=None) -> dict[str, Any]:
         raise ValueError("prompt 不能为空")
 
     artifact_name = safe_artifact_name(args.get("artifact_name"))
-    provider = build_provider()
-
-    if not provider.configured:
-        raise RuntimeError("未配置 OPENAI_API_KEY：无法调用外部模型 API")
-
-    if cancel_token is not None:
-        cancel_token.check()
-
     out_dir = Path.cwd() / ARTIFACT_DIR
+    chain_raw = (os.getenv("PA_RELAY_CHAIN") or "").strip()
 
-    try:
-        result = provider.submit(
-            prompt, artifact_name=artifact_name, out_dir=out_dir
-        )
+    if not chain_raw:
+        provider = build_provider()
 
-    except ProviderError as error:
-        message = str(error)
+        if not provider.configured:
+            raise RuntimeError("未配置 OPENAI_API_KEY：无法调用外部模型 API")
 
-        if "没有产出" in message:
-            message += "（agent 模式下请在 prompt 里写清要创建的文件名）"
+        if cancel_token is not None:
+            cancel_token.check()
 
-        raise RuntimeError(message) from None
+        try:
+            result = provider.submit(prompt, artifact_name=artifact_name, out_dir=out_dir)
+        except ProviderError as error:
+            message = str(error)
 
-    return {
-        "success": True,
-        "path": f"{ARTIFACT_DIR}/{artifact_name}",
-        "task_id": result["task_id"],
-        "model": result["model"],
-        "duration_s": result["duration_s"],
-        "usage": result["usage"],
-    }
+            if "没有产出" in message:
+                message += "（agent 模式下请在 prompt 里写清要创建的文件名）"
+
+            raise RuntimeError(message) from None
+
+        return {
+            "success": True,
+            "path": f"{ARTIFACT_DIR}/{artifact_name}",
+            "task_id": result["task_id"],
+            "model": result["model"],
+            "provider": getattr(provider, "name", "provider"),
+            "attempts": 1,
+            "duration_s": result["duration_s"],
+            "usage": result["usage"],
+        }
+
+    chain = _parse_chain(chain_raw)
+    providers = build_providers(chain)
+    deadline = time.monotonic() + FAILOVER_BUDGET_SECONDS
+    attempts = 0
+    last_error = ""
+
+    for name in chain:
+        if cancel_token is not None:
+            cancel_token.check()
+
+        remaining = deadline - time.monotonic()
+
+        if remaining <= 0:
+            break
+
+        provider = providers.get(name)
+
+        if provider is None or not getattr(provider, "configured", True):
+            _audit_attempt(name, "fatal", 0.0, "unconfigured")
+            raise RuntimeError(f"{name} 未配置")
+
+        if hasattr(provider, "timeout"):
+            provider.timeout = min(float(provider.timeout), remaining)
+
+        started = time.monotonic()
+        attempts += 1
+
+        try:
+            result = provider.submit(prompt, artifact_name=artifact_name, out_dir=out_dir)
+        except ProviderError as error:
+            error_class = classify_error(error)
+            _audit_attempt(name, error_class, time.monotonic() - started, "failed")
+            last_error = f"{name}: {error_class}"
+
+            if error_class != RETRYABLE:
+                raise RuntimeError(f"故障转移中止（{error_class}）：{error}") from None
+
+            continue
+
+        _audit_attempt(name, "ok", time.monotonic() - started, "succeeded")
+
+        return {
+            "success": True,
+            "path": f"{ARTIFACT_DIR}/{artifact_name}",
+            "task_id": result["task_id"],
+            "model": result["model"],
+            "provider": name,
+            "attempts": attempts,
+            "duration_s": time.monotonic() - started,
+            "usage": result["usage"],
+        }
+
+    raise RuntimeError(f"故障转移失败：{last_error or '链耗尽或超时'}")
 
 
 TOOL_DEFINITIONS = (

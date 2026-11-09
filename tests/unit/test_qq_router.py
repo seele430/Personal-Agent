@@ -109,5 +109,22 @@ class ClassifyCase(unittest.TestCase):
         self.assertEqual(result["action"], "deny")
 
 
+
+    def test_reset_command(self):
+        self.assertEqual(classify("/reset")["intent"], "reset")
+
+    def test_continue_uses_context(self):
+        result = classify("继续，说明怎么算的")
+
+        self.assertEqual(result["intent"], "ask")
+        self.assertTrue(result["use_context"])
+
+    def test_continue_read_file_keeps_priority(self):
+        result = classify("继续读取 reports/today.md")
+
+        self.assertEqual(result["intent"], "read_file")
+        self.assertFalse(result["use_context"])
+
+
 if __name__ == "__main__":
     unittest.main()

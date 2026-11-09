@@ -43,6 +43,15 @@ UNAVAILABLE_PATTERNS = (
     r"(写|存|保存)(成|到).*(文件|md|txt)",
 )
 
+CONTINUE_PREFIXES = (
+    "继续",
+    "接着",
+    "再补充",
+    "然后呢",
+    "继续说",
+    "接着写",
+)
+
 PATH_PATTERN = re.compile(r"[\w./\\-]*[\w-]+\.(md|txt|py|json|log|csv|ya?ml)")
 
 
@@ -83,6 +92,9 @@ def classify(text: str) -> dict:
 
         return _result("cancel", {"target": target}, "execute", "cancel", "command")
 
+    if message in ("/reset", "reset"):
+        return _result("reset", {}, "execute", "reset", "command")
+
     if message.startswith("/confirm"):
         confirmation_id = message[len("/confirm") :].strip()
 
@@ -112,14 +124,28 @@ def classify(text: str) -> dict:
     if _unavailable(message):
         return _result("unknown", {}, "unavailable", "not_open", "rule")
 
+    if any(message.startswith(prefix) for prefix in CONTINUE_PREFIXES):
+        return _result(
+            "ask", {"question": message}, "execute", "continue_ask", "rule", use_context=True
+        )
+
     return _result("ask", {"question": message}, "execute", "plain_text_ask", "rule")
 
 
-def _result(intent: str, params: dict, action: str, reason: str, source: str) -> dict:
+def _result(
+    intent: str,
+    params: dict,
+    action: str,
+    reason: str,
+    source: str,
+    *,
+    use_context: bool = False,
+) -> dict:
     return {
         "intent": intent,
         "params": params,
         "action": action,   # execute / confirm / deny / clarify / unavailable
         "reason": reason,
         "source": source,
+        "use_context": use_context,
     }

@@ -138,6 +138,9 @@ class QQInbound:
         if text.startswith("/cancel"):
             return "cancel", text[7:].strip()
 
+        if text in ("/reset", "reset"):
+            return "reset", ""
+
         return "unknown", ""
 
     # ---------- 任务 → 回复 ----------

@@ -361,5 +361,82 @@ class ContractCase(WorkerCase):
         self.assertIn("未启用", self.client.sent[-1][1])
 
 
+
+    def test_continue_uses_latest_turn(self):
+        from src.qq.threads import ThreadStore
+
+        threads = ThreadStore(self.root / "threads.db")
+        threads.append_turn(sender=7, question="3+3", answer="6", message_id="old")
+        captured = {}
+
+        def capture(command, question):
+            captured["prompt"] = question
+
+            return "答案"
+
+        self.enqueue("继续，说明怎么算的")
+        self.pending("1", intent="ask", params={"question": "继续，说明怎么算的"})
+
+        with patch.object(self.handler, "reply_for", side_effect=capture):
+            TaskWorker(
+                outbox=self.outbox, client=self.client, handler=self.handler, threads=threads
+            ).run_once()
+
+        self.assertIn("3+3", captured["prompt"])
+        self.assertIn("继续", captured["prompt"])
+        self.assertEqual(self.outbox.get("1")["state"], "sent")
+
+    def test_continue_without_history_skips_provider(self):
+        from src.qq.threads import ThreadStore
+
+        threads = ThreadStore(self.root / "threads.db")
+        self.enqueue("继续")
+        self.pending("1", intent="ask", params={"question": "继续"})
+        calls = []
+
+        with patch.object(self.handler, "reply_for", side_effect=lambda *a: calls.append(a) or "x"):
+            TaskWorker(
+                outbox=self.outbox, client=self.client, handler=self.handler, threads=threads
+            ).run_once()
+
+        self.assertEqual(calls, [])
+        self.assertIn("没有可继续", self.client.sent[0][1])
+
+    def test_reset_clears_sender_context(self):
+        from src.qq.threads import ThreadStore
+
+        threads = ThreadStore(self.root / "threads.db")
+        threads.append_turn(sender=7, question="q", answer="a", message_id="old")
+        self.enqueue("/reset")
+        self.pending("1", intent="reset")
+
+        TaskWorker(
+            outbox=self.outbox, client=self.client, handler=self.handler, threads=threads
+        ).run_once()
+
+        self.assertEqual(threads.count(7), 0)
+        self.assertIn("已清除", self.client.sent[0][1])
+
+    def test_send_failure_does_not_save_context(self):
+        from src.qq.threads import ThreadStore
+
+        threads = ThreadStore(self.root / "threads.db")
+
+        from src.qq.onebot import OneBotError
+
+        class BrokenClient(FakeClient):
+            def send_private_msg(self, user_id, text):
+                raise OneBotError("send failed")
+
+        self.enqueue("1+1")
+        self.pending("1", intent="ask", params={"question": "1+1"})
+        worker = TaskWorker(
+            outbox=self.outbox, client=BrokenClient(), handler=self.handler, threads=threads
+        )
+        worker.run_once()
+
+        self.assertEqual(threads.count(7), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
