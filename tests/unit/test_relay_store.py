@@ -355,5 +355,127 @@ class StoreCase(unittest.TestCase):
         self.assertTrue(verify(root, {"path": "committed.md", "sha256": __import__("hashlib").sha256(b"data").hexdigest(), "bytes": 4}))
 
 
+
+
+class _PausingConnection:
+    def __init__(self, connection, marker, entered, resume):
+        self.connection = connection
+        self.marker = marker
+        self.entered = entered
+        self.resume_event = resume
+        self.paused = False
+
+    def execute(self, sql, *args):
+        if self.marker and self.marker in sql and not self.paused:
+            self.paused = True
+            self.entered.set()
+            self.resume_event.wait(timeout=5)
+
+        return self.connection.execute(sql, *args)
+
+    def __getattr__(self, name):
+        return getattr(self.connection, name)
+
+
+class _PausingStore(RunStore):
+    def __init__(self, *args, **kwargs):
+        self.marker = None
+        self.entered = __import__("threading").Event()
+        self.resume_event = __import__("threading").Event()
+        super().__init__(*args, **kwargs)
+
+    def _session(self):
+        from contextlib import contextmanager
+
+        @contextmanager
+        def wrapper():
+            with super(_PausingStore, self)._session() as connection:
+                yield _PausingConnection(connection, self.marker, self.entered, self.resume_event)
+
+        return wrapper()
+
+
+
+
+class AtomicityCase(unittest.TestCase):
+    def setUp(self):
+        self._temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temporary.cleanup)
+        self.now = [1000.0]
+        self.store = _PausingStore(
+            Path(self._temporary.name) / "runs.db", clock=lambda: self.now[0]
+        )
+        self.run_id = self.store.create_run("task", ["a"])
+
+    def takeover(self, marker, run_step):
+        import threading
+
+        self.store.marker = marker
+        result = []
+        thread = threading.Thread(target=lambda: result.append(run_step()))
+        thread.start()
+        self.assertTrue(self.store.entered.wait(timeout=5))
+        self.now[0] += 1000
+        self.store.claim(self.run_id, "w2")
+        self.store.resume_event.set()
+        thread.join(timeout=10)
+        return result[0] if result else None
+
+    def test_step_done_guard_is_atomic(self):
+        run = self.store.claim(self.run_id, "w1")
+        token = run["fencing_token"]
+        self.store.step_begin(self.run_id, 1, "compose", "task", token)
+
+        returned = self.takeover("UPDATE collab_steps SET state='done'", lambda: self.store.step_done(self.run_id, 1, "compose", token, {"path": "a"}))
+
+        self.assertFalse(returned)
+        self.assertEqual(self.store.step_state(self.run_id, 1, "compose"), "running")
+
+    def test_step_failed_guard_is_atomic(self):
+        run = self.store.claim(self.run_id, "w1")
+        token = run["fencing_token"]
+        self.store.step_begin(self.run_id, 1, "compose", "task", token)
+
+        returned = self.takeover("UPDATE collab_steps SET state='failed'", lambda: self.store.step_failed(self.run_id, 1, "compose", token))
+
+        self.assertFalse(returned)
+        self.assertEqual(self.store.step_state(self.run_id, 1, "compose"), "running")
+
+    def test_step_accept_guard_is_atomic(self):
+        run = self.store.claim(self.run_id, "w1")
+        token = run["fencing_token"]
+        self.store.step_begin(self.run_id, 1, "compose", "task", token)
+        self.store.step_begin(self.run_id, 1, "compose", "task", token)
+
+        returned = self.takeover("UPDATE collab_steps SET state='done'", lambda: self.store.step_accept(self.run_id, 1, "compose", token, {"path": "a"}))
+
+        self.assertFalse(returned)
+        self.assertEqual(self.store.step_state(self.run_id, 1, "compose"), "needs_review")
+
+    def test_resume_rechecks_lease_atomically(self):
+        import threading
+
+        run = self.store.claim(self.run_id, "w1")
+        token = run["fencing_token"]
+        self.now[0] += 1000
+        self.store.marker = "UPDATE collab_runs SET state='pending'"
+        errors = []
+        thread = threading.Thread(target=lambda: self._resume_capture(errors))
+        thread.start()
+        self.assertTrue(self.store.entered.wait(timeout=5))
+        self.assertTrue(self.store.heartbeat(self.run_id, token, lease_seconds=120))
+        self.store.resume_event.set()
+        thread.join(timeout=10)
+
+        self.assertTrue(errors)
+        self.assertEqual(self.store.get(self.run_id)["state"], "running")
+
+    def _resume_capture(self, errors):
+        try:
+            self.store.resume(self.run_id)
+        except Exception as error:
+            errors.append(error)
+
+
 if __name__ == "__main__":
     unittest.main()

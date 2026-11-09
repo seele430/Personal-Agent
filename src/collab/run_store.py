@@ -114,6 +114,25 @@ class RunStore:
         finally:
             connection.close()
 
+    @contextmanager
+    def _write_session(self):
+        connection = sqlite3.connect(self.path, timeout=10, isolation_level=None)
+        connection.row_factory = sqlite3.Row
+        connection.execute("BEGIN IMMEDIATE")
+
+        try:
+            yield connection
+            connection.execute("COMMIT")
+        except Exception:
+            try:
+                connection.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
+
+            raise
+        finally:
+            connection.close()
+
     def _init(self):
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -268,16 +287,23 @@ class RunStore:
                 raise StoreError("already_succeeded")
 
             if state == "running":
-                expires = row["lease_expires_at"]
-
-                if expires is None or float(expires) >= self._clock():
-                    raise StoreError("running：租约未过期，不能 resume")
-
-                connection.execute(
+                now = self._clock()
+                cursor = connection.execute(
                     "UPDATE collab_runs SET state='pending', error=NULL, error_class=NULL, updated_at=? "
-                    "WHERE run_id=? AND state='running'",
-                    (self._clock(), run_id),
+                    "WHERE run_id=? AND state='running' "
+                    "AND lease_expires_at IS NOT NULL AND lease_expires_at < ?",
+                    (now, run_id, now),
                 )
+
+                if cursor.rowcount != 1:
+                    fresh = connection.execute(
+                        "SELECT * FROM collab_runs WHERE run_id = ?", (run_id,)
+                    ).fetchone()
+
+                    if fresh is not None and fresh["state"] == "needs_review":
+                        raise StoreError("needs_review：请用 --accept-step 或 --retry-step 明确处理")
+
+                    raise StoreError("running：租约未过期，不能 resume")
 
                 row = connection.execute(
                     "SELECT * FROM collab_runs WHERE run_id = ?", (run_id,)
@@ -330,7 +356,7 @@ class RunStore:
     def step_begin(self, run_id: str, revision: int, step_id: str, input_digest: str, token: int) -> str:
         """返回 execute / skip / needs_review；旧 token 抛 StaleWorker。"""
 
-        with self._session() as connection:
+        with self._write_session() as connection:
             run_row = connection.execute(
                 "SELECT fencing_token, revision, state FROM collab_runs WHERE run_id=?",
                 (run_id,),
@@ -381,18 +407,20 @@ class RunStore:
 
     def step_done(self, run_id: str, revision: int, step_id: str, token: int, manifest: dict | None) -> bool:
         with self._session() as connection:
-            if not self._run_owned(connection, run_id, revision, token, ("running",)):
-                return False
-
             cursor = connection.execute(
                 "UPDATE collab_steps SET state='done', artifact_manifest=?, updated_at=? "
-                "WHERE run_id=? AND revision=? AND step_id=? AND fencing_token=?",
+                "WHERE run_id=? AND revision=? AND step_id=? AND fencing_token=? "
+                "AND EXISTS (SELECT 1 FROM collab_runs r WHERE r.run_id=? AND r.revision=? "
+                "AND r.fencing_token=? AND r.state='running')",
                 (
                     json.dumps(manifest, ensure_ascii=False) if manifest else None,
                     self._clock(),
                     run_id,
                     revision,
                     step_id,
+                    int(token),
+                    run_id,
+                    revision,
                     int(token),
                 ),
             )
@@ -654,31 +682,41 @@ class RunStore:
 
     def step_failed(self, run_id: str, revision: int, step_id: str, token: int) -> bool:
         with self._session() as connection:
-            if not self._run_owned(connection, run_id, revision, token, ("running",)):
-                return False
-
             cursor = connection.execute(
                 "UPDATE collab_steps SET state='failed', updated_at=? "
-                "WHERE run_id=? AND revision=? AND step_id=? AND fencing_token=?",
-                (self._clock(), run_id, revision, step_id, int(token)),
+                "WHERE run_id=? AND revision=? AND step_id=? AND fencing_token=? "
+                "AND EXISTS (SELECT 1 FROM collab_runs r WHERE r.run_id=? AND r.revision=? "
+                "AND r.fencing_token=? AND r.state='running')",
+                (
+                    self._clock(),
+                    run_id,
+                    revision,
+                    step_id,
+                    int(token),
+                    run_id,
+                    revision,
+                    int(token),
+                ),
             )
 
             return cursor.rowcount == 1
 
     def step_accept(self, run_id: str, revision: int, step_id: str, token: int, manifest: dict | None) -> bool:
         with self._session() as connection:
-            if not self._run_owned(connection, run_id, revision, token, ("running", "needs_review")):
-                return False
-
             cursor = connection.execute(
                 "UPDATE collab_steps SET state='done', artifact_manifest=?, updated_at=? "
-                "WHERE run_id=? AND revision=? AND step_id=? AND state='needs_review' AND fencing_token=?",
+                "WHERE run_id=? AND revision=? AND step_id=? AND state='needs_review' AND fencing_token=? "
+                "AND EXISTS (SELECT 1 FROM collab_runs r WHERE r.run_id=? AND r.revision=? "
+                "AND r.fencing_token=? AND r.state IN ('running','needs_review'))",
                 (
                     json.dumps(manifest, ensure_ascii=False) if manifest else None,
                     self._clock(),
                     run_id,
                     revision,
                     step_id,
+                    int(token),
+                    run_id,
+                    revision,
                     int(token),
                 ),
             )
@@ -687,13 +725,21 @@ class RunStore:
 
     def step_retry(self, run_id: str, revision: int, step_id: str, token: int) -> bool:
         with self._session() as connection:
-            if not self._run_owned(connection, run_id, revision, token, ("running", "needs_review")):
-                return False
-
             cursor = connection.execute(
                 "UPDATE collab_steps SET state='pending', updated_at=? "
-                "WHERE run_id=? AND revision=? AND step_id=? AND state='needs_review' AND fencing_token=?",
-                (self._clock(), run_id, revision, step_id, int(token)),
+                "WHERE run_id=? AND revision=? AND step_id=? AND state='needs_review' AND fencing_token=? "
+                "AND EXISTS (SELECT 1 FROM collab_runs r WHERE r.run_id=? AND r.revision=? "
+                "AND r.fencing_token=? AND r.state IN ('running','needs_review'))",
+                (
+                    self._clock(),
+                    run_id,
+                    revision,
+                    step_id,
+                    int(token),
+                    run_id,
+                    revision,
+                    int(token),
+                ),
             )
 
             return cursor.rowcount == 1
@@ -712,7 +758,7 @@ class RunStore:
     def attempt_start(self, run_id: str, revision: int, attempt_no: int, provider: str, token: int, *, injected: bool = False) -> str:
         attempt_id = uuid.uuid4().hex
 
-        with self._session() as connection:
+        with self._write_session() as connection:
             run_row = connection.execute(
                 "SELECT fencing_token, revision, state FROM collab_runs WHERE run_id=?",
                 (run_id,),
