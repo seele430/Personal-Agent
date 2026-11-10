@@ -162,8 +162,10 @@ class PipelineCase(unittest.TestCase):
         self.assertTrue(report.passed)
 
     def test_expected_traversal_rejected(self):
-        outside = self.root / "outside.txt"
+        outside = self.root / self.run_id / "outside.txt"
         outside.write_text("secret", encoding="utf-8")
+
+        self.assertTrue(outside.is_file())
 
         report = verify_run(self.root, self.run_id, expected=("../outside.txt",))
 
