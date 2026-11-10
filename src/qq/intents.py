@@ -45,6 +45,13 @@ class ResetParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ContinueRunParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str = Field(min_length=8, max_length=64)
+    message: str = Field(min_length=1, max_length=2000)
+
+
 class DenyParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -134,6 +141,18 @@ RESET_SPEC = IntentSpec(
     enabled=True,
 )
 
+CONTINUE_RUN_SPEC = IntentSpec(
+    name="continue_run",
+    params_schema=ContinueRunParams,
+    risk="low",
+    policy="allow",
+    handler="continue_run",
+    timeout_seconds=190.0,
+    retry_policy="none",
+    output_kind="text",
+    enabled=True,
+)
+
 EXEC_SPEC = IntentSpec(
     name="exec",
     params_schema=DenyParams,
@@ -156,6 +175,7 @@ INTENT_REGISTRY: dict[str, IntentSpec] = {
         CANCEL_SPEC,
         CONFIRM_SPEC,
         RESET_SPEC,
+        CONTINUE_RUN_SPEC,
         EXEC_SPEC,
     )
 }

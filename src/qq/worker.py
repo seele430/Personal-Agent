@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 
 from src.qq import router
+from src.qq.collab_continue import ContinueError, continue_run
 from src.qq.inbound import QQInbound, MAX_REPLY_CHARS
 from src.qq.intents import check_contract
 from src.qq.onebot import OneBotError
@@ -216,6 +217,9 @@ class TaskWorker(BaseWorker):
 
             return True
 
+        if action == "execute" and decision["intent"] == "continue_run":
+            return self._run_continue(job, decision)
+
         if action == "deny":
             self.outbox.set_routing(
                 message_id, intent=decision["intent"], params={},
@@ -332,6 +336,47 @@ class TaskWorker(BaseWorker):
                 self.handler.record_audit(job, "context_saved", context_info)
             except Exception as error:  # 已发送事实不变；仅记录失败
                 self.handler.record_audit(job, "context_store_failed", str(error)[:120])
+
+        return True
+
+    def _run_continue(self, job: dict, decision: dict) -> bool:
+        message_id = job["message_id"]
+        params = decision["params"]
+        run_id = params.get("run_id", "")
+        message = params.get("message", "")
+
+        self.outbox.set_routing(
+            message_id, intent="continue_run", params=params,
+            params_hash=params_hash(params), decision_source=decision["source"],
+            state="running", policy_decision="allow",
+        )
+
+        try:
+            result = continue_run(run_id, message)
+        except ContinueError as error:
+            reasons = {
+                "missing": "缺少 run_id",
+                "invalid": "run_id 格式不合法",
+                "not_found": "找不到该任务",
+                "ambiguous": "前缀不唯一，请给完整 run_id",
+                "not_succeeded": "只有已成功的任务可以继续",
+                "timeout": "继续超时",
+                "relay_failed": "继续失败",
+            }
+            self.reply(job, f"继续失败：{reasons.get(error.code, '继续失败')}")
+            self.handler.record_audit(job, "qq_continue", f"run={run_id[:8]};ok=false;code={error.code}")
+
+            return True
+
+        revision = result.get("revision")
+        state = result.get("state")
+        artifacts = result.get("artifacts") or []
+        count = len(artifacts) if isinstance(artifacts, list) else 0
+        prefix = str(result.get("run_id") or run_id)[:8]
+        self.reply(job, f"已继续 {prefix}：revision {revision}，{state}，产物 {count} 个")
+        self.handler.record_audit(
+            job, "qq_continue", f"run={prefix};revision={revision};ok=true"
+        )
 
         return True
 

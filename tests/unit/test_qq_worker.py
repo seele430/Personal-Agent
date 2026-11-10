@@ -578,5 +578,33 @@ class ContractCase(WorkerCase):
         self.assertNotIn("秘密问题", audit_text)
 
 
+
+    def test_continue_run_success(self):
+        self.enqueue("/continue 12345678-1234-1234-1234-123456789012 再补一段")
+        self.pending(intent="continue_run")
+
+        with patch(
+            "src.qq.worker.continue_run",
+            return_value={"run_id": "12345678-1234-1234-1234-123456789012", "revision": 2, "state": "succeeded", "artifacts": ["a.txt"]},
+        ):
+            self.task_worker().run_once()
+
+        self.assertIn("已继续 12345678", self.client.sent[0][1])
+        self.assertIn("revision 2", self.client.sent[0][1])
+        self.assertEqual(self.outbox.get("1")["state"], "sent")
+
+    def test_continue_run_failure_safe_reply(self):
+        from src.qq.collab_continue import ContinueError
+
+        self.enqueue("/continue 12345678-1234-1234-1234-123456789012 再补一段")
+        self.pending(intent="continue_run")
+
+        with patch("src.qq.worker.continue_run", side_effect=ContinueError("not_succeeded")):
+            self.task_worker().run_once()
+
+        self.assertIn("只有已成功的任务可以继续", self.client.sent[0][1])
+        self.assertNotIn("再补一段", self.client.sent[0][1])
+
+
 if __name__ == "__main__":
     unittest.main()

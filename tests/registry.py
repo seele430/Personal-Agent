@@ -1895,6 +1895,16 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # v1.4b QQ 同任务继续（test_qq_continue.py）
+    "unit/test_qq_continue.py": TestSchema(
+        layer="unit",
+        domain="qq",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 

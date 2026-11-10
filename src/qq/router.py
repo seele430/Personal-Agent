@@ -110,6 +110,21 @@ def classify(text: str) -> dict:
 
         return _result("ask", {"question": question}, "execute", "ask", "command")
 
+    if message.startswith("/continue"):
+        rest = message[len("/continue") :].strip()
+        parts = rest.split(None, 1)
+
+        if len(parts) < 2:
+            return _result("unknown", {}, "clarify", "continue_usage", "command")
+
+        return _result(
+            "continue_run",
+            {"run_id": parts[0], "message": parts[1]},
+            "execute",
+            "continue_run",
+            "command",
+        )
+
     if message.startswith("/"):
         return _result("unknown", {}, "clarify", "unknown_command", "command")
 

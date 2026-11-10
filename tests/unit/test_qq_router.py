@@ -126,5 +126,21 @@ class ClassifyCase(unittest.TestCase):
         self.assertFalse(result["use_context"])
 
 
+
+    def test_continue_run_command(self):
+        run_id = "12345678-1234-1234-1234-123456789012"
+        result = classify(f"/continue {run_id} 再补一段")
+
+        self.assertEqual(result["intent"], "continue_run")
+        self.assertEqual(result["params"]["run_id"], run_id)
+        self.assertEqual(result["params"]["message"], "再补一段")
+
+    def test_continue_run_usage(self):
+        result = classify("/continue 12345678")
+
+        self.assertEqual(result["action"], "clarify")
+        self.assertEqual(result["reason"], "continue_usage")
+
+
 if __name__ == "__main__":
     unittest.main()
