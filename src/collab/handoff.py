@@ -253,7 +253,13 @@ def load_handoff(handoff_id: str, *, root: str | Path = "data/handoffs") -> dict
     if not UUID_RE.match(handoff_id or ""):
         raise HandoffError("invalid_handoff_id", "handoff_id 必须是 UUID")
 
-    base = Path(root) / handoff_id
+    root_path = Path(root)
+    checked_base = _check_components(root_path, handoff_id)
+
+    if checked_base is None:
+        raise HandoffError("unsafe_package_root", "handoff 包根目录不可信")
+
+    base = checked_base
 
     try:
         package = json.loads((base / "handoff.json").read_text(encoding="utf-8"))
@@ -269,8 +275,40 @@ def load_handoff(handoff_id: str, *, root: str | Path = "data/handoffs") -> dict
     if not isinstance(package.get("instruction"), str) or not package["instruction"].strip():
         raise HandoffError("invalid_handoff", "instruction 缺失")
 
-    if not isinstance(package.get("artifacts"), list):
-        raise HandoffError("invalid_handoff", "artifacts 缺失")
+    artifacts = package.get("artifacts")
+
+    if not isinstance(artifacts, list) or not 1 <= len(artifacts) <= MAX_FILES:
+        raise HandoffError("invalid_artifacts", "artifacts 必须为 1–5 项")
+
+    source_paths = set()
+    snapshot_paths = set()
+
+    for item in artifacts:
+        if not isinstance(item, dict):
+            raise HandoffError("invalid_artifacts", "artifact 必须是对象")
+
+        source = item.get("source_path")
+        snapshot = item.get("snapshot_path")
+        digest = item.get("sha256")
+        size = item.get("bytes")
+
+        if not isinstance(source, str) or not source.strip():
+            raise HandoffError("invalid_artifacts", "source_path 不合法")
+
+        if not isinstance(snapshot, str) or not snapshot.startswith("files/"):
+            raise HandoffError("invalid_artifacts", "snapshot_path 不合法")
+
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise HandoffError("invalid_artifacts", "sha256 不合法")
+
+        if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+            raise HandoffError("invalid_artifacts", "bytes 不合法")
+
+        if source in source_paths or snapshot in snapshot_paths:
+            raise HandoffError("duplicate_path", "source/snapshot 路径重复")
+
+        source_paths.add(source)
+        snapshot_paths.add(snapshot)
 
     if package.get("parent_provider") != PARENT_PROVIDER:
         raise HandoffError("provider_mismatch", "parent_provider 不匹配")
@@ -304,8 +342,12 @@ def build_task(package: dict, *, root: str | Path = "data/handoffs", expected_id
     if expected_id is not None and package.get("handoff_id") != expected_id:
         raise HandoffError("handoff_id_mismatch", "任务构造 ID 不一致")
 
-    base = Path(root) / package["handoff_id"]
-    _check_components(Path(root), package["handoff_id"])
+    checked = _check_components(Path(root), package["handoff_id"])
+
+    if checked is None:
+        raise HandoffError("unsafe_package_root", "handoff 包根目录不可信")
+
+    base = checked
     items = []
 
     for item in package.get("artifacts") or []:

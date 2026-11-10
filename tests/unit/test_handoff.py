@@ -489,5 +489,100 @@ class HandoffCase(unittest.TestCase):
         self.assertEqual(report["child_state"], "unknown")
 
 
+
+    def run_count(self):
+        import sqlite3
+
+        from contextlib import closing
+
+        with closing(sqlite3.connect(self.root / "collab.db")) as connection:
+            return connection.execute("select count(*) from collab_runs").fetchone()[0]
+
+    def test_empty_artifacts_on_load_rejected(self):
+        run_id, _ = self.make_run()
+        package = self.export(run_id)
+        path = self.handoff_root / package["handoff_id"] / "handoff.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["artifacts"] = []
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        runner = MockRunner()
+        store = RunStore(self.root / "collab.db")
+
+        with self.assertRaises(HandoffError) as caught:
+            run_handoff(package["handoff_id"], ["deepseek"], handoff_root=self.handoff_root, store=store, runner=runner)
+
+        self.assertEqual(caught.exception.code, "invalid_artifacts")
+        self.assertEqual(runner.calls, 0)
+        self.assertEqual(self.run_count(), 0)
+
+    def test_six_artifacts_on_load_rejected(self):
+        run_id, _ = self.make_run()
+        package = self.export(run_id)
+        path = self.handoff_root / package["handoff_id"] / "handoff.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        item = payload["artifacts"][0]
+        payload["artifacts"] = [dict(item, snapshot_path=f"files/{i:02d}.txt") for i in range(6)]
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        runner = MockRunner()
+        store = RunStore(self.root / "collab.db")
+
+        with self.assertRaises(HandoffError) as caught:
+            run_handoff(package["handoff_id"], ["deepseek"], handoff_root=self.handoff_root, store=store, runner=runner)
+
+        self.assertEqual(caught.exception.code, "invalid_artifacts")
+        self.assertEqual(runner.calls, 0)
+        self.assertEqual(self.run_count(), 0)
+
+    def test_duplicate_snapshot_on_load_rejected(self):
+        run_id, _ = self.make_run()
+        package = self.export(run_id)
+        path = self.handoff_root / package["handoff_id"] / "handoff.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["artifacts"].append(dict(payload["artifacts"][0]))
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with self.assertRaises(HandoffError) as caught:
+            load_handoff(package["handoff_id"], root=self.handoff_root)
+
+        self.assertEqual(caught.exception.code, "duplicate_path")
+
+    def test_malformed_item_on_load_rejected(self):
+        run_id, _ = self.make_run()
+        package = self.export(run_id)
+        path = self.handoff_root / package["handoff_id"] / "handoff.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["artifacts"] = ["not-an-object"]
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with self.assertRaises(HandoffError) as caught:
+            load_handoff(package["handoff_id"], root=self.handoff_root)
+
+        self.assertEqual(caught.exception.code, "invalid_artifacts")
+
+    def test_package_root_junction_rejected(self):
+        import subprocess as sp
+
+        run_id, _ = self.make_run()
+        package = self.export(run_id)
+        handoff_id = package["handoff_id"]
+        real = self.root / "real-package"
+        (self.handoff_root / handoff_id).rename(real)
+        link = self.handoff_root / handoff_id
+        result = sp.run(["cmd", "/c", "mklink", "/J", str(link), str(real)], capture_output=True)
+
+        if result.returncode != 0:
+            self.skipTest("junction 不可用")
+
+        runner = MockRunner()
+        store = RunStore(self.root / "collab.db")
+
+        with self.assertRaises(HandoffError) as caught:
+            run_handoff(handoff_id, ["deepseek"], handoff_root=self.handoff_root, store=store, runner=runner)
+
+        self.assertEqual(caught.exception.code, "unsafe_package_root")
+        self.assertEqual(runner.calls, 0)
+        self.assertEqual(self.run_count(), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
