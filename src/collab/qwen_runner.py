@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 import subprocess
@@ -57,6 +59,7 @@ class RunSpec:
     prompt_transport: str = "stdin"  # 实测可用
     safe_mode: bool = True
     bare: bool = False  # --bare 跳过 settings（无 auth），默认关闭
+    model_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def validate_spec(spec: RunSpec) -> None:
@@ -74,6 +77,15 @@ def validate_spec(spec: RunSpec) -> None:
 
     if spec.approval_mode not in ("plan", "yolo"):
         raise RunSpecError("invalid_approval_mode", spec.approval_mode)
+
+
+def transition(state: dict, new_state: str) -> None:
+    if state.get("state") != "running" or new_state not in (
+        "completed_unverified", "failed", "timeout", "cancelled", "unknown",
+    ):
+        raise RuntimeError(f"非法状态迁移：{state.get('state')} -> {new_state}")
+
+    state["state"] = new_state
 
 
 class QwenRunner:
@@ -140,10 +152,12 @@ class QwenRunner:
             "exit_code": None,
             "usage": {"input_tokens": None, "output_tokens": None, "total_tokens": None},
             "manifest_path": None,
+            "process_created_at": None,
             "cleanup": {
                 "required": False,
                 "kill_attempted": False,
                 "parent_reaped": None,
+                "descendants_seen": None,
                 "tree_cleanup_confirmed": None,
             },
         }
@@ -171,6 +185,7 @@ class QwenRunner:
             return state
 
         state["pid"] = process.pid
+        state["process_created_at"] = _creation_iso(process.pid)
         workspace.write_state(state)
         timed_out = False
 
@@ -210,6 +225,17 @@ class QwenRunner:
         if not state["cleanup"]["parent_reaped"]:
             state["state"] = "unknown"
             state["reason"] = {"code": "cleanup_failed", "message": "无法确认进程回收"}
+            workspace.write_state(state)
+
+            return state
+
+        tree_gone, count = _wait_tree_gone(process.pid)
+        state["cleanup"]["descendants_seen"] = count
+        state["cleanup"]["tree_cleanup_confirmed"] = tree_gone
+
+        if not tree_gone:
+            state["state"] = "unknown"
+            state["reason"] = {"code": "cleanup_failed", "message": "父进程已退出但仍有后代存活"}
             workspace.write_state(state)
 
             return state
@@ -257,7 +283,7 @@ class QwenRunner:
 
         try:
             check_session(parsed, spec.provider_session_id)
-            check_model(parsed, spec.model)
+            check_model(parsed, spec.model, aliases=spec.model_aliases)
         except EventError as error:
             state["state"] = "failed"
             state["reason"] = {"code": error.code, "message": str(error)[:200]}
@@ -308,9 +334,10 @@ class QwenRunner:
             return "", False
 
         parent_reaped = process.poll() is not None
-        tree_gone = _pid_exists(process.pid)
+        waited, count = _wait_tree_gone(process.pid)
         state["cleanup"]["parent_reaped"] = parent_reaped
-        state["cleanup"]["tree_cleanup_confirmed"] = bool(kill_ok and parent_reaped and tree_gone is False)
+        state["cleanup"]["descendants_seen"] = count
+        state["cleanup"]["tree_cleanup_confirmed"] = bool(kill_ok and parent_reaped and waited)
 
         return stdout, state["cleanup"]["tree_cleanup_confirmed"]
 
@@ -353,13 +380,106 @@ def _pid_exists(pid) -> bool | None:
     if result.returncode != 0:
         return None
 
-    for line in (result.stdout or "").splitlines():
-        cells = [cell.strip('"') for cell in line.split('","')]
+    try:
+        rows = list(csv.reader(io.StringIO(result.stdout or "")))
+    except csv.Error:
+        return None
 
-        if cells and cells[0].strip('"').isdigit() and int(cells[0].strip('"')) == int(pid):
+    for row in rows:
+        if len(row) >= 2 and row[1].strip().isdigit() and int(row[1].strip()) == int(pid):
             return True
 
     return False
+
+
+def _snapshot_processes() -> list[dict] | None:
+    command = [
+        "powershell", "-NoProfile", "-Command",
+        "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CreationDate | ConvertTo-Csv -NoTypeInformation",
+    ]
+
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=8)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    try:
+        rows = list(csv.reader(io.StringIO(result.stdout or "")))
+    except csv.Error:
+        return None
+
+    if not rows:
+        return None
+
+    processes = []
+
+    for row in rows[1:]:
+        if len(row) < 3:
+            continue
+
+        try:
+            processes.append({
+                "pid": int(row[0]),
+                "parent": int(row[1]),
+                "created": row[2],
+            })
+        except ValueError:
+            continue
+
+    return processes
+
+
+def _descendants(pid: int, snapshot: list[dict]) -> dict[int, str]:
+    children: dict[int, list[dict]] = {}
+
+    for item in snapshot:
+        children.setdefault(item["parent"], []).append(item)
+
+    found: dict[int, str] = {}
+    stack = [int(pid)]
+
+    while stack:
+        current = stack.pop()
+
+        for child in children.get(current, []):
+            if child["pid"] in found:
+                continue
+
+            found[child["pid"]] = child["created"]
+            stack.append(child["pid"])
+
+    return found
+
+
+def _wait_tree_gone(pid: int, timeout: float = 3.0) -> tuple[bool, int]:
+    deadline = time.monotonic() + timeout
+    last_count = 0
+
+    while True:
+        snapshot = _snapshot_processes()
+
+        if snapshot is None:
+            return False, last_count
+
+        descendants = _descendants(pid, snapshot)
+        last_count = len(descendants)
+
+        if not descendants:
+            return True, 0
+
+        if time.monotonic() >= deadline:
+            return False, last_count
+
+        time.sleep(0.2)
+
+
+def _creation_iso(pid) -> str | None:
+    created = _process_creation_time(pid)
+
+    return created.astimezone(timezone.utc).isoformat() if created else None
 
 
 def _pid_alive(pid, started_at: str | None) -> bool | None:
@@ -381,7 +501,7 @@ def _pid_alive(pid, started_at: str | None) -> bool | None:
     if expected.tzinfo is None:
         expected = expected.replace(tzinfo=timezone.utc)
 
-    if abs((creation - expected).total_seconds()) > 5:
+    if abs((creation - expected).total_seconds()) > 1:
         return False
 
     return True

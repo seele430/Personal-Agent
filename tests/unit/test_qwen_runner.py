@@ -19,16 +19,21 @@ def fixture(name: str) -> str:
 
 
 class FakeProcess:
-    def __init__(self, stdout: str, code: int = 0, timeout: bool = False, reaped: bool = True):
+    def __init__(self, stdout: str, code: int = 0, timeout: bool = False, reaped: bool = True, interrupt: bool = False):
         self.pid = 4242
         self._stdout = stdout
         self._code = code
         self._timeout = timeout
         self._reaped = reaped
+        self._interrupt = interrupt
         self._raised = False
         self.returncode = None
 
     def communicate(self, input=None, timeout=None):
+        if self._interrupt and not self._raised:
+            self._raised = True
+            raise KeyboardInterrupt()
+
         if self._timeout and not self._raised:
             self._raised = True
             raise subprocess.TimeoutExpired("qwen", timeout or 1)
@@ -64,10 +69,10 @@ class RunnerCase(unittest.TestCase):
         self.root = Path(self._temporary.name)
         self.runner = QwenRunner(root=self.root)
 
-    def execute(self, process, run_spec=None):
+    def execute(self, process, run_spec=None, tree=(True, 0)):
         with patch("src.collab.qwen_runner.subprocess.Popen", return_value=process), patch(
             "src.collab.qwen_runner.subprocess.run", return_value=subprocess.CompletedProcess([], 0, "", "")
-        ):
+        ), patch("src.collab.qwen_runner._wait_tree_gone", return_value=tree):
             return self.runner.execute(run_spec or spec())
 
     def success_fixture(self):
@@ -231,6 +236,154 @@ class RunnerCase(unittest.TestCase):
 
         self.assertEqual(state["state"], "failed")
         self.assertEqual(state["reason"]["code"], "model_mismatch")
+
+
+
+    def test_csv_real_format_pid_in_second_column(self):
+        from src.collab.qwen_runner import _pid_exists
+
+        output = '"System","4","Services","0","2,112 K"\n"python.exe","16980","Console","1","20,784 K"\n'
+
+        with patch(
+            "src.collab.qwen_runner.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 0, output, ""),
+        ):
+            self.assertTrue(_pid_exists(16980))
+
+    def test_pid_123_does_not_match_1234(self):
+        from src.collab.qwen_runner import _pid_exists
+
+        output = '"python.exe","1234","Console","1","20,784 K"\n'
+
+        with patch(
+            "src.collab.qwen_runner.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 0, output, ""),
+        ):
+            self.assertFalse(_pid_exists(123))
+
+    def test_empty_tasklist_means_absent(self):
+        from src.collab.qwen_runner import _pid_exists
+
+        with patch(
+            "src.collab.qwen_runner.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 0, "", ""),
+        ):
+            self.assertFalse(_pid_exists(123))
+
+    def test_tasklist_failure_is_none(self):
+        from src.collab.qwen_runner import _pid_exists
+
+        with patch(
+            "src.collab.qwen_runner.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 1, "", "error"),
+        ):
+            self.assertIsNone(_pid_exists(123))
+
+    def test_descendants_tree(self):
+        from src.collab.qwen_runner import _descendants
+
+        snapshot = [
+            {"pid": 10, "parent": 1, "created": "a"},
+            {"pid": 11, "parent": 10, "created": "b"},
+            {"pid": 12, "parent": 11, "created": "c"},
+            {"pid": 99, "parent": 1, "created": "d"},
+        ]
+
+        found = _descendants(10, snapshot)
+
+        self.assertEqual(set(found), {11, 12})
+
+    def test_normal_exit_with_live_descendants_is_unknown(self):
+        state = self.execute(FakeProcess(self.success_fixture()), tree=(False, 1))
+
+        self.assertEqual(state["state"], "unknown")
+        self.assertEqual(state["reason"]["code"], "cleanup_failed")
+
+    def test_kill_success_but_descendants_remain_unknown(self):
+        state = self.execute(FakeProcess("", timeout=True, reaped=True), tree=(False, 2))
+
+        self.assertEqual(state["state"], "unknown")
+
+    def test_ctrl_c_cleanup_success_cancelled(self):
+        state = self.execute(FakeProcess("", interrupt=True))
+
+        self.assertEqual(state["state"], "cancelled")
+
+    def test_ctrl_c_cleanup_failure_unknown(self):
+        state = self.execute(FakeProcess("", interrupt=True), tree=(False, 1))
+
+        self.assertEqual(state["state"], "unknown")
+
+    def test_creation_mismatch_means_pid_reuse(self):
+        from src.collab.qwen_runner import _pid_alive
+        from datetime import datetime, timezone
+
+        with patch("src.collab.qwen_runner._pid_exists", return_value=True), patch(
+            "src.collab.qwen_runner._process_creation_time",
+            return_value=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        ):
+            self.assertFalse(_pid_alive(123, "2026-01-01T00:10:00+00:00"))
+
+
+
+    def test_trailing_garbage_rejected(self):
+        state = self.execute(FakeProcess(self.success_fixture() + "garbage"))
+
+        self.assertEqual(state["state"], "failed")
+
+    def test_env_whitelist_drops_secrets(self):
+        runner = QwenRunner(root=self.root, env={"PATH": "x", "SECRET_TOKEN": "leak"})
+
+        self.assertNotIn("SECRET_TOKEN", runner.build_env())
+
+    def test_fsync_failure_raises(self):
+        from src.collab.qwen_workspace import RunWorkspace
+
+        workspace = RunWorkspace(self.root, "99999999-9999-9999-9999-999999999999").create()
+
+        with patch("src.collab.qwen_workspace.os.fsync", side_effect=OSError("disk")):
+            with self.assertRaises(OSError):
+                workspace.write_state({"state": "running"})
+
+    def test_illegal_transition_rejected(self):
+        from src.collab.qwen_runner import transition
+
+        state = {"state": "completed_unverified"}
+
+        with self.assertRaises(RuntimeError):
+            transition(state, "timeout")
+
+    def test_model_alias_accepted(self):
+        data = json.loads(self.success_fixture())
+        data[0]["model"] = "qwen3.8-max"
+        state = self.execute(
+            FakeProcess(json.dumps(data)),
+            run_spec=spec(model="flash-alias", model_aliases={"flash-alias": "qwen3.8-max"}),
+        )
+
+        self.assertEqual(state["state"], "completed_unverified")
+
+    def test_junction_rejected(self):
+        import subprocess as sp
+
+        target = Path(self.root) / "outside"
+        target.mkdir()
+        junction = Path(self.root) / "55555555-5555-5555-5555-555555555555"
+        junction.mkdir()
+        link = junction / "workspace" / "link"
+
+        try:
+            sp.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True, check=True)
+        except (OSError, sp.SubprocessError):
+            self.skipTest("junction 不可用")
+
+        from src.collab.qwen_workspace import ArtifactError, RunWorkspace
+
+        workspace = RunWorkspace(self.root, "55555555-5555-5555-5555-555555555555")
+        Path(self.root, "outside", "x.txt").write_text("x", encoding="utf-8")
+
+        with self.assertRaises(ArtifactError):
+            workspace.scan()
 
 
 if __name__ == "__main__":
