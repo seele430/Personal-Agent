@@ -46,7 +46,7 @@ class RunSpec:
     max_session_turns: int = 8
     max_tool_calls: int = 20
     timeout_seconds: float = 90.0
-    prompt_transport: str = "arg"  # stdin 实测不可用；默认 arg
+    prompt_transport: str = "stdin"  # 实测可用（此前失败是 --bare 认证问题）
     safe_mode: bool = True
     bare: bool = False  # --bare 会跳过 settings（无 auth），默认关闭
 

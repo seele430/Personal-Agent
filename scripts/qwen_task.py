@@ -30,7 +30,7 @@ def main(argv=None) -> int:
     run.add_argument("--allow-empty", action="store_true")
     run.add_argument("--max-wall-time", default="60s")
     run.add_argument("--timeout", type=float, default=90.0)
-    run.add_argument("--transport", default="arg", choices=("stdin", "arg"))
+    run.add_argument("--transport", default="stdin", choices=("stdin", "arg"))
     run.add_argument("--no-safe-mode", action="store_true")
     run.add_argument("--bare", action="store_true")
     run.add_argument("--root", default=str(DEFAULT_ROOT))
