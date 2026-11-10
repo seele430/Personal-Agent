@@ -107,7 +107,10 @@ def verify_run(root: str | Path, run_id: str, expected: tuple[str, ...] = ()) ->
         )
 
     if not checks:
-        checks.append(Check("artifacts", False, "没有可验收的产物"))
+        if not manifest.get("artifacts") and not expected:
+            checks.append(Check("artifacts", True, "无产物（plan/只读任务）"))
+        else:
+            checks.append(Check("artifacts", False, "没有可验收的产物"))
 
     return VerifyReport(
         passed=all(check.ok for check in checks),

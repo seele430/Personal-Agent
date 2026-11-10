@@ -133,5 +133,23 @@ class PipelineCase(unittest.TestCase):
         self.assertIn("qq down", report["notification_error"])
 
 
+
+    def test_no_artifacts_plan_passes(self):
+        (self.workspace / "out.txt").unlink()
+        self.manifest_path.write_text(
+            json.dumps({"run_id": self.run_id, "artifacts": []}),
+            encoding="utf-8",
+        )
+        state_path = self.root / self.run_id / "state.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["state"] = "completed_unverified"
+        state["approval_mode"] = "plan"
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+
+        report = verify_run(self.root, self.run_id)
+
+        self.assertTrue(report.passed)
+
+
 if __name__ == "__main__":
     unittest.main()
