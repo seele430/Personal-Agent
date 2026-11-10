@@ -39,8 +39,32 @@ class HandoffError(ValueError):
         self.code = code
 
 
-def _safe_source(workspace: Path, relative: str) -> Path | None:
+def _check_components(root: Path, relative: str) -> Path | None:
     if not relative or Path(relative).is_absolute():
+        return None
+
+    current = root
+
+    for part in Path(relative).parts:
+        if part in ("..", ""):
+            return None
+
+        current = current / part
+
+        if current.exists():
+            stats = os.lstat(current)
+            attributes = getattr(stats, "st_file_attributes", 0)
+
+            if current.is_symlink() or attributes & REPARSE_FLAG:
+                return None
+
+    return current
+
+
+def _safe_source(workspace: Path, relative: str) -> Path | None:
+    current = _check_components(workspace, relative)
+
+    if current is None:
         return None
 
     target = (workspace / relative).resolve()
@@ -113,6 +137,9 @@ def export_handoff(
 ) -> dict:
     if not (instruction or "").strip():
         raise HandoffError("empty_instruction", "instruction 不能为空")
+
+    if not UUID_RE.match(run_id or ""):
+        raise HandoffError("invalid_run_id", "run_id 必须是 UUID")
 
     try:
         task = registry.get(PARENT_PROVIDER, run_id)
@@ -236,12 +263,26 @@ def load_handoff(handoff_id: str, *, root: str | Path = "data/handoffs") -> dict
     if package.get("schema_version") != SCHEMA_VERSION:
         raise HandoffError("schema_mismatch", "schema_version 不支持")
 
+    if package.get("handoff_id") != handoff_id:
+        raise HandoffError("handoff_id_mismatch", "请求 ID 与包内 ID 不一致")
+
+    if not isinstance(package.get("instruction"), str) or not package["instruction"].strip():
+        raise HandoffError("invalid_handoff", "instruction 缺失")
+
+    if not isinstance(package.get("artifacts"), list):
+        raise HandoffError("invalid_handoff", "artifacts 缺失")
+
     if package.get("parent_provider") != PARENT_PROVIDER:
         raise HandoffError("provider_mismatch", "parent_provider 不匹配")
 
     for item in package.get("artifacts") or []:
         snapshot = item.get("snapshot_path", "")
-        target = (base / snapshot).resolve()
+        checked = _check_components(base, snapshot)
+
+        if checked is None:
+            raise HandoffError("snapshot_missing", snapshot)
+
+        target = checked.resolve()
 
         if not target.is_relative_to(base.resolve()) or not target.is_file():
             raise HandoffError("snapshot_missing", snapshot)
@@ -259,8 +300,12 @@ def load_handoff(handoff_id: str, *, root: str | Path = "data/handoffs") -> dict
     return package
 
 
-def build_task(package: dict, *, root: str | Path = "data/handoffs") -> str:
+def build_task(package: dict, *, root: str | Path = "data/handoffs", expected_id: str | None = None) -> str:
+    if expected_id is not None and package.get("handoff_id") != expected_id:
+        raise HandoffError("handoff_id_mismatch", "任务构造 ID 不一致")
+
     base = Path(root) / package["handoff_id"]
+    _check_components(Path(root), package["handoff_id"])
     items = []
 
     for item in package.get("artifacts") or []:
@@ -319,7 +364,7 @@ def run_handoff(
             "reused": True,
         }
 
-    task = build_task(package, root=handoff_root)
+    task = build_task(package, root=handoff_root, expected_id=handoff_id)
     child_run_id = store.create_run(task, names)
     package["child_run_id"] = child_run_id
     package["child_state"] = "pending"

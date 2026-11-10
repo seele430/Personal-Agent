@@ -75,6 +75,7 @@ class HandoffCase(unittest.TestCase):
 
         for name, text in files.items():
             data = text.encode("utf-8")
+            (workspace.workspace / name).parent.mkdir(parents=True, exist_ok=True)
             (workspace.workspace / name).write_bytes(data)
             entries.append({
                 "path": name,
@@ -315,6 +316,175 @@ class HandoffCase(unittest.TestCase):
         report = run_handoff(
             package["handoff_id"], ["deepseek"], handoff_root=self.handoff_root, store=store, runner=runner
         )
+
+        self.assertEqual(report["child_state"], "unknown")
+
+
+
+    def test_handoff_id_swap_rejected(self):
+        run_id, _ = self.make_run()
+        package = self.export(run_id)
+        path = self.handoff_root / package["handoff_id"] / "handoff.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["handoff_id"] = str(uuid.uuid4())
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        store = RunStore(self.root / "collab.db")
+
+        with self.assertRaises(HandoffError) as caught:
+            run_handoff(
+                package["handoff_id"], ["deepseek"],
+                handoff_root=self.handoff_root, store=store, runner=MockRunner(),
+            )
+
+        self.assertEqual(caught.exception.code, "handoff_id_mismatch")
+
+        import sqlite3
+
+        from contextlib import closing
+
+        with closing(sqlite3.connect(self.root / "collab.db")) as connection:
+            count = connection.execute("select count(*) from collab_runs").fetchone()[0]
+
+        self.assertEqual(count, 0)
+
+    def test_run_id_traversal_rejected(self):
+        with self.assertRaises(HandoffError) as caught:
+            export_handoff(
+                "../outside", "x", root=self.qwen_root,
+                registry=self.registry, out_dir=self.handoff_root,
+            )
+
+        self.assertEqual(caught.exception.code, "invalid_run_id")
+
+    def test_internal_junction_rejected(self):
+        import subprocess as sp
+
+        run_id, entries = self.make_run(files={"real/out.txt": "hello"})
+        workspace = RunWorkspace(self.qwen_root, run_id)
+        real = workspace.workspace / "real"
+        link = workspace.workspace / "link"
+        result = sp.run(["cmd", "/c", "mklink", "/J", str(link), str(real)], capture_output=True)
+
+        if result.returncode != 0:
+            self.skipTest("junction 不可用")
+
+        entries[0]["path"] = "link/out.txt"
+        workspace.manifest_path.write_text(json.dumps({"artifacts": entries}), encoding="utf-8")
+        self.registry.register(
+            "qwen-cli", run_id, run_id=run_id, state="succeeded", artifacts=("link/out.txt",)
+        )
+
+        with self.assertRaises(HandoffError) as caught:
+            self.export(run_id)
+
+        self.assertEqual(caught.exception.code, "unsafe_path")
+
+    def test_upstream_change_does_not_affect_snapshot(self):
+        run_id, _ = self.make_run()
+        package = self.export(run_id)
+        (self.qwen_root / run_id / "workspace" / "out.txt").write_text("changed", encoding="utf-8")
+
+        loaded = load_handoff(package["handoff_id"], root=self.handoff_root)
+
+        self.assertEqual(
+            (self.handoff_root / loaded["handoff_id"] / "files" / "00.txt").read_text(encoding="utf-8"),
+            "hello\n",
+        )
+
+    def test_snapshot_metadata_tamper_rejected(self):
+        run_id, _ = self.make_run()
+        package = self.export(run_id)
+        path = self.handoff_root / package["handoff_id"] / "handoff.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["artifacts"][0]["sha256"] = "0" * 64
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with self.assertRaises(HandoffError):
+            load_handoff(package["handoff_id"], root=self.handoff_root)
+
+    def test_non_utf8_rejected(self):
+        run_id = str(uuid.uuid4())
+        workspace = RunWorkspace(self.qwen_root, run_id).create()
+        data = b"\xff\xfe"
+        (workspace.workspace / "bad.bin").write_bytes(data)
+        import hashlib
+
+        workspace.manifest_path.write_text(json.dumps({"artifacts": [{
+            "path": "bad.bin", "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data),
+        }]}), encoding="utf-8")
+        (self.qwen_root / run_id / "state.json").write_text(json.dumps({"state": "completed_unverified"}), encoding="utf-8")
+        self.registry.register("qwen-cli", run_id, run_id=run_id, state="succeeded", artifacts=("bad.bin",))
+
+        with self.assertRaises(HandoffError) as caught:
+            self.export(run_id)
+
+        self.assertEqual(caught.exception.code, "not_utf8")
+
+    def test_directory_artifact_rejected(self):
+        run_id = str(uuid.uuid4())
+        workspace = RunWorkspace(self.qwen_root, run_id).create()
+        (workspace.workspace / "dir").mkdir()
+        workspace.manifest_path.write_text(json.dumps({"artifacts": [{
+            "path": "dir", "sha256": "0" * 64, "bytes": 0,
+        }]}), encoding="utf-8")
+        (self.qwen_root / run_id / "state.json").write_text(json.dumps({"state": "completed_unverified"}), encoding="utf-8")
+        self.registry.register("qwen-cli", run_id, run_id=run_id, state="succeeded", artifacts=("dir",))
+
+        with self.assertRaises(HandoffError) as caught:
+            self.export(run_id)
+
+        self.assertEqual(caught.exception.code, "unsafe_path")
+
+    def test_duplicate_path_rejected(self):
+        run_id, entries = self.make_run()
+        workspace = RunWorkspace(self.qwen_root, run_id)
+        entries.append(dict(entries[0]))
+        workspace.manifest_path.write_text(json.dumps({"artifacts": entries}), encoding="utf-8")
+
+        with self.assertRaises(HandoffError) as caught:
+            self.export(run_id)
+
+        self.assertEqual(caught.exception.code, "duplicate_path")
+
+    def test_budget_exact_boundary(self):
+        from src.collab.handoff import TOTAL_BUDGET, _compose
+
+        run_id, _ = self.make_run()
+        package = self.export(run_id)
+        base = self.handoff_root / package["handoff_id"]
+        items = [{
+            "source_path": item["source_path"],
+            "sha256": item["sha256"],
+            "text": (base / item["snapshot_path"]).read_bytes().decode("utf-8"),
+        } for item in package["artifacts"]]
+        overhead = len(_compose("", run_id, package["handoff_id"], items).encode("utf-8"))
+        exact = "x" * (TOTAL_BUDGET - overhead)
+
+        accepted = self.export(run_id, instruction=exact)
+        self.assertTrue(accepted["handoff_id"])
+
+        with self.assertRaises(HandoffError) as caught:
+            self.export(run_id, instruction=exact + "x")
+
+        self.assertEqual(caught.exception.code, "budget_exceeded")
+
+    def test_failed_second_call_not_rerun(self):
+        run_id, _ = self.make_run()
+        package = self.export(run_id)
+        runner = MockRunner(state="failed")
+        store = RunStore(self.root / "collab.db")
+        run_handoff(package["handoff_id"], ["deepseek"], handoff_root=self.handoff_root, store=store, runner=runner)
+        second = run_handoff(package["handoff_id"], ["deepseek"], handoff_root=self.handoff_root, store=store, runner=runner)
+
+        self.assertTrue(second["reused"])
+        self.assertEqual(runner.calls, 1)
+
+    def test_weird_runner_state_is_unknown(self):
+        run_id, _ = self.make_run()
+        package = self.export(run_id)
+        runner = MockRunner(state="weird")
+        store = RunStore(self.root / "collab.db")
+        report = run_handoff(package["handoff_id"], ["deepseek"], handoff_root=self.handoff_root, store=store, runner=runner)
 
         self.assertEqual(report["child_state"], "unknown")
 
