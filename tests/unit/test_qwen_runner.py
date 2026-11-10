@@ -18,6 +18,25 @@ def fixture(name: str) -> str:
     return (FIXTURES / name).read_text(encoding="utf-8")
 
 
+class FakeTracking:
+    instances = []
+
+    def __init__(self, pid, interval=0.3):
+        self.pid = pid
+        self.tracked = dict(getattr(FakeTracking, "seed", {}))
+        self.ok = True
+        self.started = False
+        FakeTracking.instances.append(self)
+
+    def start(self):
+        self.started = True
+
+        return self
+
+    def stop(self):
+        return dict(self.tracked)
+
+
 class FakeProcess:
     def __init__(self, stdout: str, code: int = 0, timeout: bool = False, reaped: bool = True, interrupt: bool = False):
         self.pid = 4242
@@ -69,10 +88,15 @@ class RunnerCase(unittest.TestCase):
         self.root = Path(self._temporary.name)
         self.runner = QwenRunner(root=self.root)
 
-    def execute(self, process, run_spec=None, tree=(True, 0, {})):
+    def execute(self, process, run_spec=None, tree=(True, 0, {}), seed=None):
+        FakeTracking.seed = seed or {}
+        FakeTracking.instances = []
+
         with patch("src.collab.qwen_runner.subprocess.Popen", return_value=process), patch(
             "src.collab.qwen_runner.subprocess.run", return_value=subprocess.CompletedProcess([], 0, "", "")
         ), patch("src.collab.qwen_runner._wait_tree_gone", return_value=tree), patch(
+            "src.collab.qwen_runner._Tracking", FakeTracking
+        ), patch(
             "src.collab.qwen_runner._creation_iso", return_value=getattr(self, "creation", "2026-01-01T00:00:00+00:00")
         ):
             return self.runner.execute(run_spec or spec())
@@ -486,5 +510,85 @@ class RunnerCase(unittest.TestCase):
         with patch("src.collab.qwen_workspace.os.fsync", side_effect=OSError("disk")):
             with self.assertRaises(RunSpecError):
                 self.runner.execute(spec())
+
+    def test_kill_path_keeps_pre_kill_tracked(self):
+        captured = {}
+
+        def fake_wait(pid, tracked=None, timeout=3.0):
+            captured["tracked"] = dict(tracked or {})
+
+            return False, len(tracked or {}), dict(tracked or {})
+
+        FakeTracking.seed = {5000: "child-before-kill"}
+        FakeTracking.instances = []
+
+        with patch("src.collab.qwen_runner.subprocess.Popen", return_value=FakeProcess("", timeout=True, reaped=True)), patch(
+            "src.collab.qwen_runner.subprocess.run", return_value=subprocess.CompletedProcess([], 0, "", "")
+        ), patch("src.collab.qwen_runner._wait_tree_gone", side_effect=fake_wait), patch(
+            "src.collab.qwen_runner._Tracking", FakeTracking
+        ), patch("src.collab.qwen_runner._creation_iso", return_value="2026-01-01T00:00:00+00:00"):
+            self.runner.execute(spec())
+
+        self.assertIn(5000, captured["tracked"])
+
+    def test_normal_path_tracking_starts_before_communicate(self):
+        order = []
+
+        class OrderTracking(FakeTracking):
+            def start(self):
+                order.append("start")
+
+                return super().start()
+
+        class OrderProcess(FakeProcess):
+            def communicate(self, input=None, timeout=None):
+                order.append("communicate")
+
+                return super().communicate(input=input, timeout=timeout)
+
+        with patch("src.collab.qwen_runner.subprocess.Popen", return_value=OrderProcess(self.success_fixture())), patch(
+            "src.collab.qwen_runner.subprocess.run", return_value=subprocess.CompletedProcess([], 0, "", "")
+        ), patch("src.collab.qwen_runner._wait_tree_gone", return_value=(True, 0, {})), patch(
+            "src.collab.qwen_runner._Tracking", OrderTracking
+        ), patch("src.collab.qwen_runner._creation_iso", return_value="2026-01-01T00:00:00+00:00"):
+            self.runner.execute(spec())
+
+        self.assertEqual(order[:2], ["start", "communicate"])
+
+    def test_creation_offset_means_different_process(self):
+        from datetime import datetime, timedelta, timezone
+        from src.collab.qwen_runner import _pid_alive
+
+        created = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+        with patch("src.collab.qwen_runner._pid_exists", return_value=True), patch(
+            "src.collab.qwen_runner._process_creation_time", return_value=created
+        ):
+            self.assertFalse(_pid_alive(123, (created + timedelta(seconds=0.5)).isoformat()))
+
+    def test_state_write_failure_after_start_raises(self):
+        from src.collab.qwen_runner import RunSpecError
+
+        calls = {"n": 0}
+        original = __import__("src.collab.qwen_workspace", fromlist=["RunWorkspace"]).RunWorkspace.write_state
+
+        def flaky(self_ws, state):
+            calls["n"] += 1
+
+            if calls["n"] >= 2:
+                raise OSError("disk")
+
+            return original(self_ws, state)
+
+        with patch("src.collab.qwen_workspace.RunWorkspace.write_state", flaky):
+            with self.assertRaises(RunSpecError):
+                self.execute(FakeProcess(self.success_fixture()))
+
+    def test_prompt_not_in_state(self):
+        state = self.execute(FakeProcess(self.success_fixture()), run_spec=spec(prompt="SECRET-PROMPT"))
+
+        self.assertNotIn("SECRET-PROMPT", json.dumps(state, ensure_ascii=False))
+
+
 if __name__ == "__main__":
     unittest.main()

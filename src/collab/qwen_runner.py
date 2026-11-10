@@ -13,6 +13,7 @@ import io
 import json
 import os
 import subprocess
+import threading
 import time
 import uuid
 
@@ -36,6 +37,41 @@ ENV_WHITELIST = (
     "PATH", "PATHEXT", "SystemRoot", "SYSTEMROOT", "TEMP", "TMP",
     "USERPROFILE", "HOME", "APPDATA", "LOCALAPPDATA", "COMSPEC",
 )
+
+
+class _Tracking:
+    """Popen 后立即启动的后代跟踪器；只并集，不覆盖。"""
+
+    def __init__(self, pid: int, interval: float = 0.3):
+        self.pid = int(pid)
+        self.interval = interval
+        self.tracked: dict[int, str] = {}
+        self.ok = False
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+
+    def start(self) -> "_Tracking":
+        self._thread.start()
+
+        return self
+
+    def _loop(self) -> None:
+        while not self._stop.wait(self.interval):
+            snapshot = _snapshot_processes()
+
+            if snapshot is None:
+                continue
+
+            self.ok = True
+
+            for key, value in _descendants(self.pid, snapshot).items():
+                self.tracked.setdefault(key, value)
+
+    def stop(self) -> dict[int, str]:
+        self._stop.set()
+        self._thread.join(timeout=2)
+
+        return dict(self.tracked)
 
 
 class RunSpecError(ValueError):
@@ -190,10 +226,18 @@ class QwenRunner:
 
         state["pid"] = process.pid
         state["process_created_at"] = _creation_iso(process.pid)
-        workspace.write_state(state)
+
+        try:
+            workspace.write_state(state)
+        except OSError as error:
+            self._kill_and_reap(process, state, workspace)
+
+            raise RunSpecError("state_write_failed", str(error)[:200]) from None
+
+        tracking = _Tracking(process.pid).start()
 
         if not state["process_created_at"]:
-            self._kill_and_reap(process, state, workspace)
+            self._kill_and_reap(process, state, workspace, tracking.stop())
             _finish(state, monotonic_start)
             _mark(state, "unknown", {"code": "cleanup_failed", "message": "无法取得进程创建时间"})
             workspace.write_state(state)
@@ -208,9 +252,9 @@ class QwenRunner:
             )
         except subprocess.TimeoutExpired:
             timed_out = True
-            stdout, _ = self._kill_and_reap(process, state, workspace)
+            stdout, _ = self._kill_and_reap(process, state, workspace, tracking.stop())
         except KeyboardInterrupt:
-            stdout, _ = self._kill_and_reap(process, state, workspace)
+            stdout, _ = self._kill_and_reap(process, state, workspace, tracking.stop())
             _finish(state, monotonic_start)
             _mark(state, "cancelled" if state["cleanup"]["tree_cleanup_confirmed"] else "unknown")
             workspace.write_state(state)
@@ -241,8 +285,13 @@ class QwenRunner:
 
             return state
 
-        initial = _snapshot_processes()
-        tracked = _descendants(process.pid, initial) if initial else {}
+        tracked = tracking.stop()
+        final = _snapshot_processes()
+
+        if final is not None:
+            for key, value in _descendants(process.pid, final).items():
+                tracked.setdefault(key, value)
+
         tree_gone, count, tracked = _wait_tree_gone(process.pid, tracked)
         state["cleanup"]["descendants_seen"] = count
         state["cleanup"]["tree_cleanup_confirmed"] = tree_gone
@@ -323,17 +372,22 @@ class QwenRunner:
 
         return state
 
-    def _kill_and_reap(self, process, state: dict, workspace: RunWorkspace):
+    def _kill_and_reap(self, process, state: dict, workspace: RunWorkspace, tracked: dict | None = None):
         state["cleanup"]["required"] = True
         state["cleanup"]["kill_attempted"] = True
-        workspace.write_state(state)
+
+        try:
+            workspace.write_state(state)
+        except OSError:
+            pass
         kill_ok = False
-        tracked = {}
+        tracked = dict(tracked or {})
 
         pre = _snapshot_processes()
 
         if pre is not None:
-            tracked = _descendants(process.pid, pre)
+            for key, value in _descendants(process.pid, pre).items():
+                tracked.setdefault(key, value)
 
         try:
             result = subprocess.run(
@@ -344,12 +398,13 @@ class QwenRunner:
             kill_ok = result.returncode == 0
         except (OSError, subprocess.SubprocessError):
             kill_ok = False
-        tracked = {}
+        tracked = dict(tracked or {})
 
         pre = _snapshot_processes()
 
         if pre is not None:
-            tracked = _descendants(process.pid, pre)
+            for key, value in _descendants(process.pid, pre).items():
+                tracked.setdefault(key, value)
 
         try:
             stdout, _ = process.communicate(timeout=10)
@@ -360,6 +415,12 @@ class QwenRunner:
             return "", False
 
         parent_reaped = process.poll() is not None
+        post = _snapshot_processes()
+
+        if post is not None:
+            for key, value in _descendants(process.pid, post).items():
+                tracked.setdefault(key, value)
+
         waited, count, tracked = _wait_tree_gone(process.pid, tracked)
         state["cleanup"]["parent_reaped"] = parent_reaped
         state["cleanup"]["descendants_seen"] = count
@@ -559,7 +620,7 @@ def _pid_alive(pid, started_at: str | None) -> bool | None:
     if expected.tzinfo is None:
         expected = expected.replace(tzinfo=timezone.utc)
 
-    if abs((creation - expected).total_seconds()) > 1:
+    if creation != expected:
         return False
 
     return True
