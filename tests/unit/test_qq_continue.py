@@ -124,5 +124,34 @@ class ContinueCase(unittest.TestCase):
         self.assertEqual(caught.exception.code, "relay_failed")
 
 
+
+    def test_continue_audit_does_not_store_body(self):
+        import os
+
+        from unittest.mock import patch
+
+        from src.qq.inbound import QQInbound
+
+        class FakeClient:
+            def send_private_msg(self, user_id, text):
+                return {"message_id": 1}
+
+        handler = QQInbound(owner_id=7, secret="s", client=FakeClient(), enabled=True)
+        audit_file = Path(self._temporary.name) / "qq-audit.jsonl"
+        event = {
+            "message_id": "m1",
+            "sender": {"user_id": 7},
+            "message": [{"type": "text", "data": {"text": "/continue de3f5a7e SECRET-BODY-123"}}],
+        }
+
+        with patch.dict(os.environ, {"PA_QQ_AUDIT": "1", "PERSONAL_AGENT_DATA_DIR": self._temporary.name}):
+            handler.record(event, "enqueued")
+
+        content = audit_file.read_text(encoding="utf-8")
+
+        self.assertNotIn("SECRET-BODY-123", content)
+        self.assertIn("/continue de3f5a7e [正文已省略]", content)
+
+
 if __name__ == "__main__":
     unittest.main()

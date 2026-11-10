@@ -224,10 +224,21 @@ class QQInbound:
             "sender": int(sender or 0),
             "message_id": str(event.get("message_id") or ""),
             "action": action,
-            "summary": self._text_of(event)[:AUDIT_SUMMARY_LIMIT],
+            "summary": self._summary_of(self._text_of(event)),
         }
         self.audit.append(record)
         self._persist(record)
+
+    @staticmethod
+    def _summary_of(text: str) -> str:
+        text = (text or "").strip()
+
+        if text.startswith("/continue"):
+            parts = text.split(None, 2)
+
+            return f"/continue {parts[1] if len(parts) > 1 else ''} [正文已省略]"
+
+        return text[:AUDIT_SUMMARY_LIMIT]
 
     def record_audit(self, job: dict, action: str, error: str = "") -> None:
         record = {
