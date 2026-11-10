@@ -11,13 +11,11 @@ from unittest.mock import patch
 from src.collab.qwen_runner import QwenRunner, RunSpec, status_of
 
 
-EVIDENCE = Path(
-    r"C:\Users\123\Documents\deepseek-harness\default-workspace\pa-v14a2-step0-20261109"
-)
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "qwen"
 
 
 def fixture(name: str) -> str:
-    return (EVIDENCE / name).read_text(encoding="utf-8")
+    return (FIXTURES / name).read_text(encoding="utf-8")
 
 
 class FakeProcess:
@@ -45,7 +43,7 @@ class FakeProcess:
 
 def spec(**overrides):
     base = dict(
-        run_id="run-1",
+        run_id="33333333-3333-3333-3333-333333333333",
         provider_session_id="11111111-1111-1111-1111-111111111111",
         prompt="say ok",
         model="qwen3.8-flash",
@@ -73,7 +71,7 @@ class RunnerCase(unittest.TestCase):
             return self.runner.execute(run_spec or spec())
 
     def success_fixture(self):
-        data = json.loads(fixture("success-schema.json"))
+        data = json.loads(fixture("success.json"))
         data[0]["session_id"] = "11111111-1111-1111-1111-111111111111"
         data[-1]["session_id"] = "11111111-1111-1111-1111-111111111111"
 
@@ -84,7 +82,7 @@ class RunnerCase(unittest.TestCase):
 
         self.assertEqual(state["state"], "completed_unverified")
         self.assertEqual(state["observed_model"], "qwen3.8-flash")
-        self.assertTrue((Path(self.root) / "run-1" / "state.json").exists())
+        self.assertTrue((Path(self.root) / "33333333-3333-3333-3333-333333333333" / "state.json").exists())
 
     def test_nonzero_exit_fails(self):
         state = self.execute(FakeProcess(self.success_fixture(), code=1))
@@ -93,7 +91,7 @@ class RunnerCase(unittest.TestCase):
         self.assertEqual(state["reason"]["code"], "provider_error")
 
     def test_model_fallback_fails(self):
-        data = json.loads(fixture("model-fallback-schema.json"))
+        data = json.loads(fixture("model_fallback.json"))
         data[0]["session_id"] = "11111111-1111-1111-1111-111111111111"
         data[-1]["session_id"] = "11111111-1111-1111-1111-111111111111"
         state = self.execute(FakeProcess(json.dumps(data)))
@@ -122,13 +120,14 @@ class RunnerCase(unittest.TestCase):
         state = self.execute(FakeProcess("", timeout=True, reaped=True))
 
         self.assertEqual(state["state"], "timeout")
-        self.assertTrue(state["cleanup"]["process_reaped"])
+        self.assertTrue(state["cleanup"]["parent_reaped"])
+        self.assertTrue(state["cleanup"]["tree_cleanup_confirmed"])
 
     def test_timeout_not_reaped_is_unknown(self):
         state = self.execute(FakeProcess("", timeout=True, reaped=False))
 
         self.assertEqual(state["state"], "unknown")
-        self.assertEqual(state["reason"]["code"], "watchdog_timeout")
+        self.assertEqual(state["reason"]["code"], "cleanup_failed")
 
     def test_missing_artifact_fails(self):
         state = self.execute(
@@ -151,18 +150,87 @@ class RunnerCase(unittest.TestCase):
         self.assertNotIn("QWEN_API_KEY", env)
 
     def test_stale_running_reconciled(self):
-        workspace = Path(self.root) / "stale"
+        workspace = Path(self.root) / "44444444-4444-4444-4444-444444444444"
         workspace.mkdir()
         (workspace / "state.json").write_text(
-            json.dumps({"state": "running", "pid": 999999, "run_id": "stale"}),
+            json.dumps({"state": "running", "pid": 999999, "run_id": "44444444-4444-4444-4444-444444444444"}),
             encoding="utf-8",
         )
 
         with patch("src.collab.qwen_runner._pid_alive", return_value=False):
-            state = status_of(self.root, "stale")
+            state = status_of(self.root, "44444444-4444-4444-4444-444444444444")
 
         self.assertEqual(state["state"], "unknown")
         self.assertEqual(state["reason"]["code"], "stale_running")
+
+
+
+    def test_yolo_requires_expected_artifacts(self):
+        from src.collab.qwen_runner import RunSpecError, validate_spec
+
+        with self.assertRaises(RunSpecError) as caught:
+            validate_spec(spec(approval_mode="yolo"))
+
+        self.assertEqual(caught.exception.code, "expected_artifacts_required")
+
+    def test_non_uuid_run_id_rejected(self):
+        from src.collab.qwen_runner import RunSpecError, validate_spec
+
+        with self.assertRaises(RunSpecError):
+            validate_spec(spec(run_id="not-a-uuid"))
+
+    def test_existing_run_directory_rejected(self):
+        from src.collab.qwen_runner import RunSpecError
+
+        (Path(self.root) / "77777777-7777-7777-7777-777777777777").mkdir(parents=True)
+
+        with self.assertRaises(RunSpecError):
+            self.runner.execute(spec(run_id="77777777-7777-7777-7777-777777777777"))
+
+    def test_native_exit_55_is_not_timeout(self):
+        state = self.execute(FakeProcess("", code=55))
+
+        self.assertEqual(state["state"], "failed")
+        self.assertEqual(state["reason"]["code"], "native_limit")
+
+    def test_kill_failure_is_unknown(self):
+        def failing_run(*args, **kwargs):
+            return subprocess.CompletedProcess(args, 1, "", "")
+
+        with patch("src.collab.qwen_runner.subprocess.Popen", return_value=FakeProcess("", timeout=True, reaped=True)), patch(
+            "src.collab.qwen_runner.subprocess.run", side_effect=failing_run
+        ):
+            state = self.runner.execute(spec())
+
+        self.assertEqual(state["state"], "unknown")
+
+    def test_popen_failure_is_failed(self):
+        with patch("src.collab.qwen_runner.subprocess.Popen", side_effect=OSError("no exe")):
+            state = self.runner.execute(spec())
+
+        self.assertEqual(state["state"], "failed")
+        self.assertEqual(state["reason"]["code"], "provider_error")
+
+    def test_stale_when_liveness_unknown(self):
+        workspace = Path(self.root) / "88888888-8888-8888-8888-888888888888"
+        workspace.mkdir()
+        (workspace / "state.json").write_text(
+            json.dumps({"state": "running", "pid": 1234, "run_id": workspace.name}),
+            encoding="utf-8",
+        )
+
+        with patch("src.collab.qwen_runner._pid_alive", return_value=None):
+            state = status_of(self.root, workspace.name)
+
+        self.assertEqual(state["state"], "unknown")
+
+    def test_missing_model_field_fails(self):
+        data = json.loads(self.success_fixture())
+        data[0].pop("model", None)
+        state = self.execute(FakeProcess(json.dumps(data)))
+
+        self.assertEqual(state["state"], "failed")
+        self.assertEqual(state["reason"]["code"], "model_mismatch")
 
 
 if __name__ == "__main__":

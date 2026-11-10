@@ -86,5 +86,34 @@ class WorkspaceCase(unittest.TestCase):
         self.assertFalse(self.ws.state_path.with_suffix(".json.tmp").exists())
 
 
+
+    def test_single_file_size_limit(self):
+        big = self.ws.workspace / "big.bin"
+        big.write_bytes(b"x" * (5 * 1024 * 1024 + 1))
+
+        with self.assertRaises(ArtifactError) as caught:
+            self.ws.scan()
+
+        self.assertEqual(caught.exception.code, "artifact_rejected")
+
+    def test_total_size_limit(self):
+        for index in range(5):
+            (self.ws.workspace / f"part{index}.bin").write_bytes(b"x" * (4 * 1024 * 1024 + 1))
+
+        with self.assertRaises(ArtifactError) as caught:
+            self.ws.scan()
+
+        self.assertEqual(caught.exception.code, "artifact_rejected")
+
+    def test_existing_run_directory_refused(self):
+        from src.collab.qwen_workspace import WorkspaceError
+
+        existing = RunWorkspace(self.root, "repeat-run")
+        existing.create()
+
+        with self.assertRaises(WorkspaceError):
+            RunWorkspace(self.root, "repeat-run").create()
+
+
 if __name__ == "__main__":
     unittest.main()

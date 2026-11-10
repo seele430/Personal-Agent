@@ -1,0 +1,259 @@
+[
+  {
+    "type": "system",
+    "subtype": "init",
+    "uuid": "8dc36752-bcfa-4f9f-a535-45084394207f",
+    "session_id": "8dc36752-bcfa-4f9f-a535-45084394207f",
+    "cwd": "C:\\Users\\123\\Documents\\deepseek-harness\\default-workspace",
+    "tools": [
+      "read_mcp_resource",
+      "skill",
+      "read_file",
+      "search_memory",
+      "zoom_image",
+      "grep_search",
+      "cron_list",
+      "cron_delete",
+      "autofix_pr",
+      "web_fetch",
+      "list_agents",
+      "task_stop",
+      "enter_worktree",
+      "exit_worktree",
+      "record_artifact",
+      "get_goal",
+      "update_goal",
+      "tool_call",
+      "tool_search",
+      "agent",
+      "glob",
+      "report_findings",
+      "cron_create",
+      "loop_wakeup",
+      "send_message",
+      "manage_memory",
+      "web_search"
+    ],
+    "mcp_servers": [],
+    "model": "qwen3.8-max",
+    "permission_mode": "plan",
+    "slash_commands": [
+      "advisor",
+      "agent-delegation",
+      "auth",
+      "auto-memory",
+      "autofix-pr",
+      "batch",
+      "batch-api",
+      "bug",
+      "clear",
+      "compress",
+      "compress-fast",
+      "config",
+      "context",
+      "coordinate",
+      "curator",
+      "dataviz",
+      "diff",
+      "docs",
+      "doctor",
+      "effort",
+      "export",
+      "extension-creator",
+      "extensions",
+      "goal",
+      "goal-draft",
+      "hooks",
+      "import-config",
+      "init",
+      "insight",
+      "language",
+      "loop",
+      "model",
+      "new-app",
+      "output-style",
+      "qc-helper",
+      "reverse-engineer-anything",
+      "review",
+      "simplify",
+      "stats",
+      "status",
+      "stuck",
+      "summary",
+      "tasks",
+      "update",
+      "workflow-authoring",
+      "workflow-creator",
+      "workflows",
+      "zvec-grep-install"
+    ],
+    "qwen_code_version": "0.27.0",
+    "agents": [
+      "general-purpose",
+      "Explore",
+      "statusline-setup",
+      "review-agent",
+      "claude-code",
+      "codex"
+    ]
+  },
+  {
+    "type": "assistant",
+    "uuid": "afb0c573-fd36-4d23-aa5d-20780c56cee1",
+    "session_id": "8dc36752-bcfa-4f9f-a535-45084394207f",
+    "parent_tool_use_id": null,
+    "message": {
+      "id": "afb0c573-fd36-4d23-aa5d-20780c56cee1",
+      "type": "message",
+      "role": "assistant",
+      "model": "qwen3.8-max",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "The user just said \"hi\". I should respond briefly. Plan mode is active but there's no task. I should not do anything elaborate. Just greet and ask what they want... but wait, the interaction mode reminder says this is non-interactive single-turn and I must never ask a question. Hmm, but plan mode says ask questions. The system prompt says \"Never ask the user a question, even if the user explicitly requests one.\"\n\nSo just respond briefly with an offer of what I can do, no question.\n\nKeep it short.",
+          "signature": ""
+        }
+      ],
+      "stop_reason": null,
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  },
+  {
+    "type": "assistant",
+    "uuid": "43eba110-d799-46a8-b534-73b5cea06551",
+    "session_id": "8dc36752-bcfa-4f9f-a535-45084394207f",
+    "parent_tool_use_id": null,
+    "message": {
+      "id": "43eba110-d799-46a8-b534-73b5cea06551",
+      "type": "message",
+      "role": "assistant",
+      "model": "qwen3.8-max",
+      "content": [
+        {
+          "type": "text",
+          "text": "Hi! I'm ready to help with your work in `C:\\Users\\123\\Documents\\deepseek-harness\\default-workspace`.\n\nRight now I'm in plan mode, so I'll only read and investigate — no edits or state changes. Tell me what you'd like done (a bug to fix, a file to write, something in this workspace to explain) and I'll dig in and come back with a concrete plan.\n\nA few things I can see here that you might be working with:\n- `项目全景与规划-20261016.md`, `给千问-项目进度与学习程度-20261009.md` — project/status docs\n- `面试背诵卡-AI-Agent岗.md`, `浙江国企-本科计算机岗位清单-20261024.md` — job-hunt materials\n- Various probe/agent scripts (`activation-probe.cjs`, `agnes-media-index.js`, `asar_read.cjs`)"
+        }
+      ],
+      "stop_reason": null,
+      "usage": {
+        "input_tokens": 10728,
+        "output_tokens": 326,
+        "cache_read_input_tokens": 0,
+        "total_tokens": 11054
+      }
+    }
+  },
+  {
+    "type": "result",
+    "subtype": "success",
+    "uuid": "6418614c-78aa-4785-bce1-2c660ff3eef0",
+    "session_id": "8dc36752-bcfa-4f9f-a535-45084394207f",
+    "is_error": false,
+    "duration_ms": 22598,
+    "duration_api_ms": 10203,
+    "num_turns": 1,
+    "result": "Hi! I'm ready to help with your work in `C:\\Users\\123\\Documents\\deepseek-harness\\default-workspace`.\n\nRight now I'm in plan mode, so I'll only read and investigate — no edits or state changes. Tell me what you'd like done (a bug to fix, a file to write, something in this workspace to explain) and I'll dig in and come back with a concrete plan.\n\nA few things I can see here that you might be working with:\n- `项目全景与规划-20261016.md`, `给千问-项目进度与学习程度-20261009.md` — project/status docs\n- `面试背诵卡-AI-Agent岗.md`, `浙江国企-本科计算机岗位清单-20261024.md` — job-hunt materials\n- Various probe/agent scripts (`activation-probe.cjs`, `agnes-media-index.js`, `asar_read.cjs`)",
+    "usage": {
+      "input_tokens": 17918,
+      "output_tokens": 781,
+      "cache_read_input_tokens": 0,
+      "total_tokens": 18699
+    },
+    "permission_denials": [],
+    "stats": {
+      "models": {
+        "qwen3.8-max": {
+          "api": {
+            "totalRequests": 3,
+            "totalErrors": 0,
+            "totalLatencyMs": 23348
+          },
+          "tokens": {
+            "prompt": 17918,
+            "candidates": 781,
+            "total": 18699,
+            "cached": 0,
+            "thoughts": 290
+          },
+          "bySource": {
+            "main": {
+              "api": {
+                "totalRequests": 2,
+                "totalErrors": 0,
+                "totalLatencyMs": 11057
+              },
+              "tokens": {
+                "prompt": 11370,
+                "candidates": 352,
+                "total": 11722,
+                "cached": 0,
+                "thoughts": 111
+              }
+            },
+            "managed-auto-memory-extractor": {
+              "api": {
+                "totalRequests": 1,
+                "totalErrors": 0,
+                "totalLatencyMs": 12291
+              },
+              "tokens": {
+                "prompt": 6548,
+                "candidates": 429,
+                "total": 6977,
+                "cached": 0,
+                "thoughts": 179
+              }
+            }
+          }
+        }
+      },
+      "tools": {
+        "totalCalls": 0,
+        "totalSuccess": 0,
+        "totalFail": 0,
+        "totalDurationMs": 0,
+        "totalDecisions": {
+          "accept": 0,
+          "reject": 0,
+          "modify": 0,
+          "auto_accept": 0
+        },
+        "byName": {}
+      },
+      "files": {
+        "totalLinesAdded": 0,
+        "totalLinesRemoved": 0
+      },
+      "skills": {
+        "totalCalls": 0,
+        "totalSuccess": 0,
+        "totalFail": 0,
+        "byName": {}
+      },
+      "billableOutputTokens": {
+        "qwen3.8-max": {
+          "total": 781,
+          "bySource": {
+            "main": 352,
+            "managed-auto-memory-extractor": 429
+          }
+        }
+      },
+      "generation": {
+        "timedRequests": 2,
+        "totalTtftMs": 3794,
+        "totalGenerationDurationMs": 18454,
+        "totalThroughputOutputTokens": 755,
+        "last": {
+          "model": "qwen3.8-max",
+          "ttftMs": 2061,
+          "generationDurationMs": 10222,
+          "outputTokens": 429
+        }
+      }
+    }
+  }
+]

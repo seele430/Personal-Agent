@@ -29,6 +29,12 @@ MAX_TOTAL_BYTES = 20 * 1024 * 1024
 REPARSE_FLAG = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 
 
+class WorkspaceError(ValueError):
+    def __init__(self, code: str, message: str = ""):
+        super().__init__(message or code)
+        self.code = code
+
+
 class ArtifactError(ValueError):
     def __init__(self, code: str, message: str = ""):
         super().__init__(message or code)
@@ -43,7 +49,10 @@ class RunWorkspace:
         self.manifest_path = self.root / "manifest.json"
 
     def create(self) -> "RunWorkspace":
-        self.workspace.mkdir(parents=True, exist_ok=True)
+        if self.root.exists():
+            raise WorkspaceError("run_exists", f"运行目录已存在：{self.root}")
+
+        self.workspace.mkdir(parents=True)
 
         return self
 
@@ -110,7 +119,9 @@ class RunWorkspace:
 
         _atomic_json(
             self.manifest_path,
-            {"run_id": self.root.name, "artifacts": manifest, "limits": {
+            {"run_id": self.root.name, "scanned_at": __import__("datetime").datetime.now(
+                __import__("datetime").timezone.utc).isoformat(), "scan_result": "ok",
+             "artifacts": manifest, "limits": {
                 "max_files": MAX_FILES,
                 "max_file_bytes": MAX_FILE_BYTES,
                 "max_total_bytes": MAX_TOTAL_BYTES,
@@ -144,5 +155,10 @@ def _check_relative(path: Path, root: Path) -> None:
 def _atomic_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    with open(temporary, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(data, ensure_ascii=False, indent=2))
+        handle.flush()
+        os.fsync(handle.fileno())
+
     os.replace(temporary, path)

@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.collab.qwen_runner import QwenRunner, RunSpec, status_of  # noqa: E402
+from src.collab.qwen_runner import QwenRunner, RunSpec, RunSpecError, status_of  # noqa: E402
 
 
 DEFAULT_ROOT = ROOT / "data" / "qwen-runs"
@@ -23,7 +23,8 @@ def main(argv=None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run")
-    run.add_argument("--prompt", required=True)
+    run.add_argument("--prompt", help="不安全：会进入进程 argv；建议用 stdin 或 --prompt-file")
+    run.add_argument("--prompt-file")
     run.add_argument("--model", default="qwen3.8-flash")
     run.add_argument("--approval-mode", default="plan", choices=("plan", "yolo"))
     run.add_argument("--expect", action="append", default=[])
@@ -45,10 +46,18 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "run":
-        spec = RunSpec(
+        if args.prompt_file:
+            prompt = Path(args.prompt_file).read_text(encoding="utf-8")
+        elif args.prompt:
+            prompt = args.prompt
+        else:
+            prompt = sys.stdin.read()
+
+        try:
+            spec = RunSpec(
             run_id=str(uuid.uuid4()),
             provider_session_id=str(uuid.uuid4()),
-            prompt=args.prompt,
+            prompt=prompt,
             model=args.model,
             approval_mode=args.approval_mode,
             expected_artifacts={path: args.allow_empty for path in args.expect},
@@ -57,14 +66,24 @@ def main(argv=None) -> int:
             prompt_transport=args.transport,
             safe_mode=not args.no_safe_mode,
             bare=args.bare,
-        )
-        state = QwenRunner(root=args.root).execute(spec)
+            )
+            state = QwenRunner(root=args.root).execute(spec)
+        except RunSpecError as error:
+            print(json.dumps({"error": error.code, "message": str(error)}, ensure_ascii=False))
+
+            return 2
+
         print(json.dumps(state, ensure_ascii=False, indent=2))
 
         return 0 if state.get("state") == "completed_unverified" else 1
 
     if args.command == "status":
-        state = status_of(args.root, args.run_id)
+        try:
+            state = status_of(args.root, args.run_id)
+        except RunSpecError as error:
+            print(json.dumps({"error": error.code}, ensure_ascii=False))
+
+            return 2
 
         if state is None:
             print(json.dumps({"error": "not_found", "run_id": args.run_id}))
@@ -76,18 +95,41 @@ def main(argv=None) -> int:
 
     root = Path(args.root)
     items = []
+    totals = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "billed_known": True}
 
     if root.exists():
         for entry in sorted(root.iterdir()):
-            if entry.is_dir():
-                state = status_of(root, entry.name)
-                items.append({
-                    "run_id": entry.name,
-                    "state": (state or {}).get("state"),
-                    "requested_model": (state or {}).get("requested_model"),
-                })
+            if not entry.is_dir():
+                continue
 
-    print(json.dumps(items, ensure_ascii=False, indent=2))
+            try:
+                state = status_of(root, entry.name)
+            except RunSpecError:
+                continue
+
+            state = state or {}
+            usage = state.get("usage") or {}
+            items.append({
+                "run_id": entry.name,
+                "provider_session_id": state.get("provider_session_id"),
+                "state": state.get("state"),
+                "reason": state.get("reason"),
+                "requested_model": state.get("requested_model"),
+                "observed_model": state.get("observed_model"),
+                "manifest_path": state.get("manifest_path"),
+                "usage": usage,
+                "duration_ms": state.get("duration_ms"),
+            })
+
+            for key in ("input_tokens", "output_tokens", "total_tokens"):
+                value = usage.get(key)
+
+                if isinstance(value, int):
+                    totals[key] += value
+                else:
+                    totals["billed_known"] = False
+
+    print(json.dumps({"runs": items, "totals": totals}, ensure_ascii=False, indent=2))
 
     return 0
 

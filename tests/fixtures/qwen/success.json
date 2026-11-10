@@ -1,0 +1,259 @@
+[
+  {
+    "type": "system",
+    "subtype": "init",
+    "uuid": "6e7c57c4-d3f6-4fc1-8610-de455e7b8dda",
+    "session_id": "6e7c57c4-d3f6-4fc1-8610-de455e7b8dda",
+    "cwd": "C:\\Users\\123\\Documents\\deepseek-harness\\default-workspace",
+    "tools": [
+      "read_mcp_resource",
+      "skill",
+      "read_file",
+      "search_memory",
+      "zoom_image",
+      "grep_search",
+      "cron_list",
+      "cron_delete",
+      "autofix_pr",
+      "web_fetch",
+      "list_agents",
+      "task_stop",
+      "enter_worktree",
+      "exit_worktree",
+      "record_artifact",
+      "get_goal",
+      "update_goal",
+      "tool_call",
+      "tool_search",
+      "agent",
+      "glob",
+      "report_findings",
+      "cron_create",
+      "loop_wakeup",
+      "send_message",
+      "manage_memory",
+      "web_search"
+    ],
+    "mcp_servers": [],
+    "model": "qwen3.8-flash",
+    "permission_mode": "plan",
+    "slash_commands": [
+      "advisor",
+      "agent-delegation",
+      "auth",
+      "auto-memory",
+      "autofix-pr",
+      "batch",
+      "batch-api",
+      "bug",
+      "clear",
+      "compress",
+      "compress-fast",
+      "config",
+      "context",
+      "coordinate",
+      "curator",
+      "dataviz",
+      "diff",
+      "docs",
+      "doctor",
+      "effort",
+      "export",
+      "extension-creator",
+      "extensions",
+      "goal",
+      "goal-draft",
+      "hooks",
+      "import-config",
+      "init",
+      "insight",
+      "language",
+      "loop",
+      "model",
+      "new-app",
+      "output-style",
+      "qc-helper",
+      "reverse-engineer-anything",
+      "review",
+      "simplify",
+      "stats",
+      "status",
+      "stuck",
+      "summary",
+      "tasks",
+      "update",
+      "workflow-authoring",
+      "workflow-creator",
+      "workflows",
+      "zvec-grep-install"
+    ],
+    "qwen_code_version": "0.27.0",
+    "agents": [
+      "general-purpose",
+      "Explore",
+      "statusline-setup",
+      "review-agent",
+      "claude-code",
+      "codex"
+    ]
+  },
+  {
+    "type": "assistant",
+    "uuid": "535a78e0-9c7b-45e3-9efd-e0ca1aac0db7",
+    "session_id": "6e7c57c4-d3f6-4fc1-8610-de455e7b8dda",
+    "parent_tool_use_id": null,
+    "message": {
+      "id": "535a78e0-9c7b-45e3-9efd-e0ca1aac0db7",
+      "type": "message",
+      "role": "assistant",
+      "model": "qwen3.8-flash",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "The user just says \"<PROMPT>\". Plan mode is active, but this is a trivial request. I should just respond \"ok\". No tool needed.\n\nThere's a memory hint: \"must-actually-create-files-not-just-answer-in-reply\" — but the user explicitly asked just to <PROMPT>, so no file creation needed here.\n\nI should respond concisely.",
+          "signature": ""
+        }
+      ],
+      "stop_reason": null,
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  },
+  {
+    "type": "assistant",
+    "uuid": "a7f885b1-4525-4501-8c57-cb03f0f9a4f5",
+    "session_id": "6e7c57c4-d3f6-4fc1-8610-de455e7b8dda",
+    "parent_tool_use_id": null,
+    "message": {
+      "id": "a7f885b1-4525-4501-8c57-cb03f0f9a4f5",
+      "type": "message",
+      "role": "assistant",
+      "model": "qwen3.8-flash",
+      "content": [
+        {
+          "type": "text",
+          "text": "ok"
+        }
+      ],
+      "stop_reason": null,
+      "usage": {
+        "input_tokens": 10729,
+        "output_tokens": 81,
+        "cache_read_input_tokens": 10723,
+        "total_tokens": 10810
+      }
+    }
+  },
+  {
+    "type": "result",
+    "subtype": "success",
+    "uuid": "23fe8d0e-1609-42d8-a459-6d549a07a8dd",
+    "session_id": "6e7c57c4-d3f6-4fc1-8610-de455e7b8dda",
+    "is_error": false,
+    "duration_ms": 3498,
+    "duration_api_ms": 2154,
+    "num_turns": 1,
+    "result": "ok",
+    "usage": {
+      "input_tokens": 17710,
+      "output_tokens": 163,
+      "cache_read_input_tokens": 17055,
+      "total_tokens": 17873
+    },
+    "permission_denials": [],
+    "stats": {
+      "models": {
+        "qwen3.8-flash": {
+          "api": {
+            "totalRequests": 3,
+            "totalErrors": 0,
+            "totalLatencyMs": 4091
+          },
+          "tokens": {
+            "prompt": 17710,
+            "candidates": 163,
+            "total": 17873,
+            "cached": 17055,
+            "thoughts": 97
+          },
+          "bySource": {
+            "main": {
+              "api": {
+                "totalRequests": 2,
+                "totalErrors": 0,
+                "totalLatencyMs": 2838
+              },
+              "tokens": {
+                "prompt": 11372,
+                "candidates": 107,
+                "total": 11479,
+                "cached": 10723,
+                "thoughts": 77
+              }
+            },
+            "managed-auto-memory-extractor": {
+              "api": {
+                "totalRequests": 1,
+                "totalErrors": 0,
+                "totalLatencyMs": 1253
+              },
+              "tokens": {
+                "prompt": 6338,
+                "candidates": 56,
+                "total": 6394,
+                "cached": 6332,
+                "thoughts": 20
+              }
+            }
+          }
+        }
+      },
+      "tools": {
+        "totalCalls": 0,
+        "totalSuccess": 0,
+        "totalFail": 0,
+        "totalDurationMs": 0,
+        "totalDecisions": {
+          "accept": 0,
+          "reject": 0,
+          "modify": 0,
+          "auto_accept": 0
+        },
+        "byName": {}
+      },
+      "files": {
+        "totalLinesAdded": 0,
+        "totalLinesRemoved": 0
+      },
+      "skills": {
+        "totalCalls": 0,
+        "totalSuccess": 0,
+        "totalFail": 0,
+        "byName": {}
+      },
+      "billableOutputTokens": {
+        "qwen3.8-flash": {
+          "total": 163,
+          "bySource": {
+            "main": 107,
+            "managed-auto-memory-extractor": 56
+          }
+        }
+      },
+      "generation": {
+        "timedRequests": 2,
+        "totalTtftMs": 1478,
+        "totalGenerationDurationMs": 1684,
+        "totalThroughputOutputTokens": 137,
+        "last": {
+          "model": "qwen3.8-flash",
+          "ttftMs": 854,
+          "generationDurationMs": 394,
+          "outputTokens": 56
+        }
+      }
+    }
+  }
+]

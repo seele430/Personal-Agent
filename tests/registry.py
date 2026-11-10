@@ -1865,6 +1865,16 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # v1.4a-3 Qwen CLI（test_qwen_cli.py）
+    "unit/test_qwen_cli.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 

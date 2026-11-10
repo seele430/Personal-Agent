@@ -35,6 +35,9 @@ def parse_events(stdout: str) -> dict:
     if not isinstance(data, list) or not data:
         raise EventError("invalid_output", "顶层不是非空数组")
 
+    if any(not isinstance(event, dict) for event in data):
+        raise EventError("invalid_output", "事件元素必须是对象")
+
     inits = [event for event in data if event.get("type") == "system" and event.get("subtype") == "init"]
     results = [event for event in data if event.get("type") == "result"]
 
@@ -88,11 +91,11 @@ def check_session(parsed: dict, expected: str) -> str:
     init_sid = parsed["init"].get("session_id")
     result_sid = parsed["result"].get("session_id")
 
-    if init_sid is None and result_sid is None:
-        raise EventError("session_mismatch", "事件中缺少 session_id")
+    if not isinstance(init_sid, str) or not isinstance(result_sid, str):
+        raise EventError("session_mismatch", "init 与 result 都必须包含 session_id")
 
     for value in (init_sid, result_sid):
-        if value is not None and value != expected:
+        if value != expected:
             raise EventError("session_mismatch", f"got={value} expected={expected}")
 
     return expected
@@ -105,15 +108,24 @@ def is_success(parsed: dict) -> bool:
 
 
 def usage_of(parsed: dict) -> dict:
-    usage = parsed["result"].get("usage") or {}
+    usage = parsed["result"].get("usage")
 
-    def number(key: str):
+    if usage is None:
+        return {"input_tokens": None, "output_tokens": None, "total_tokens": None}
+
+    if not isinstance(usage, dict):
+        raise EventError("invalid_output", "usage 必须是对象")
+
+    result = {}
+
+    for key in ("input_tokens", "output_tokens", "total_tokens"):
         value = usage.get(key)
 
-        return int(value) if isinstance(value, (int, float)) else None
+        if value is None:
+            result[key] = None
+        elif isinstance(value, bool) or not isinstance(value, int):
+            raise EventError("invalid_output", f"usage.{key} 必须是整数")
+        else:
+            result[key] = value
 
-    return {
-        "input_tokens": number("input_tokens"),
-        "output_tokens": number("output_tokens"),
-        "total_tokens": number("total_tokens"),
-    }
+    return result
