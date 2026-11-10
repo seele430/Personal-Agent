@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 809d6e6389397298 -->
+<!-- membership-digest: 9991eeb7526a3c4a -->
 
-## unit — L1 单元测试 (76 files)
+## unit — L1 单元测试 (79 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -75,6 +75,9 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_qq_threads.py` | tests/unit/ | qq | temporary_sqlite | mocked | low | registered-inferred |
 | `unit/test_qq_worker.py` | tests/unit/ | qq | temporary_sqlite | mocked | medium | registered-inferred |
 | `unit/test_qwen_agent.py` | tests/unit/ | collab | none | mocked | medium | registered-inferred |
+| `unit/test_qwen_events.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
+| `unit/test_qwen_runner.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
+| `unit/test_qwen_workspace.py` | tests/unit/ | collab | none | mocked | medium | registered-inferred |
 | `unit/test_real_provider.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
 | `unit/test_relay.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
 | `unit/test_relay_artifacts.py` | tests/unit/ | collab | none | mocked | low | registered-inferred |

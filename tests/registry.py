@@ -1837,6 +1837,34 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # v1.4a-2 Qwen Runner（test_qwen_events.py）
+    "unit/test_qwen_events.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+    # v1.4a-2 Qwen Runner（test_qwen_workspace.py）
+    "unit/test_qwen_workspace.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
+    # v1.4a-2 Qwen Runner（test_qwen_runner.py）
+    "unit/test_qwen_runner.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 
