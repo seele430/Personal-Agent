@@ -16,6 +16,7 @@
 渠道在**投递时**判定（不是入队时快照），所以角色变更会立刻生效。
 """
 
+import os
 import sqlite3
 
 from contextlib import closing
@@ -26,9 +27,10 @@ from src.config import paths
 
 NTFY = "ntfy"
 IN_APP = "in_app"
+QQ = "qq"
 
-# worker 只搬运这一种；另一种由用户通过接口自取。
-CHANNELS = frozenset({NTFY, IN_APP})
+# worker 只搬运 ntfy/qq；in_app 由用户通过接口自取。
+CHANNELS = frozenset({NTFY, IN_APP, QQ})
 
 OWNER_ROLE = "owner"
 
@@ -78,4 +80,12 @@ def channel_for_owner(owner_id: str | None) -> str:
     if owner_id is None:
         return NTFY
 
-    return channel_for_role(role_of_user(owner_id))
+    role = role_of_user(owner_id)
+
+    if role != OWNER_ROLE:
+        return IN_APP
+
+    if (os.getenv("PA_QQ_NOTIFY") or "").strip() == "1":
+        return QQ
+
+    return NTFY

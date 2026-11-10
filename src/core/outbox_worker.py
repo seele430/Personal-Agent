@@ -8,10 +8,13 @@ from src.config import paths
 from src.core.access_policy import decide_access, AccessAction
 from src.core.notification_delivery import (
     NTFY,
+    QQ,
     channel_for_owner,
 )
 from src.core.task_engine import init_task_db
 from src.notification import send_notification
+from src.qq.onebot import OneBotError
+from src.core.qq_notify import send_qq_notification
 
 
 def utc_time_after(seconds=0):
@@ -60,7 +63,9 @@ def process_one_notification():
         # 只有站长的通知才进全局 ntfy。
         # 其他归属（管理员/普通用户）转站内，不碰网络 ——
         # 否则别人的监控结果会推到站长手机上。
-        if channel_for_owner(owner_id) != NTFY:
+        channel = channel_for_owner(owner_id)
+
+        if channel not in (NTFY, QQ):
             conn.execute(
                 """
                 UPDATE notification_outbox
@@ -91,7 +96,35 @@ def process_one_notification():
 
     # 数据库事务已经提交，开始网络发送
     try:
-        send_notification(message)
+        if channel == QQ:
+            send_qq_notification(message)
+        else:
+            send_notification(message)
+
+    except OneBotError as exc:
+        next_attempt = attempts + 1
+        delay = min(60 * (2 ** min(attempts, 6)), 3600)
+        status = "failed" if next_attempt >= 5 else "pending"
+
+        with closing(sqlite3.connect(paths.tasks_db, timeout=10)) as conn, conn:
+            conn.execute(
+                """
+                UPDATE notification_outbox
+                SET status = ?,
+                    next_attempt_at = ?
+                WHERE id = ?
+                  AND status = 'sending'
+                """,
+                (
+                    status,
+                    utc_time_after(delay) if status == "pending" else None,
+                    notification_id
+                )
+            )
+
+        print(f"通知 {notification_id} QQ 发送失败：{type(exc).__name__}")
+        print(f"任务状态：{status}")
+        return False
 
     except (requests.RequestException, ValueError) as exc:
         next_attempt = attempts + 1
@@ -152,7 +185,7 @@ def process_one_notification():
             (notification_id,)
         )
 
-    print(f"通知 {notification_id} 已提交到 ntfy")
+    print(f"通知 {notification_id} 已提交到 {channel}")
     return True
 
 

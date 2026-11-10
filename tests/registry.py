@@ -1925,6 +1925,26 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # v1.3 QQ 通知（test_qq_notify.py）
+    "test_qq_notify.py": TestSchema(
+        layer="unit",
+        domain="notifications",
+        database="none",
+        authentication="mocked",
+        external_network="mocked",
+        risk="medium",
+    ),
+
+    # v1.3 QQ 通知（test_outbox_qq.py）
+    "test_outbox_qq.py": TestSchema(
+        layer="unit",
+        domain="notifications",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 
