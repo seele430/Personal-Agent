@@ -161,7 +161,11 @@ class QwenRunner:
                 "tree_cleanup_confirmed": None,
             },
         }
-        workspace.write_state(state)
+        try:
+            workspace.write_state(state)
+        except OSError as error:
+            raise RunSpecError("state_write_failed", str(error)[:200]) from None
+
         monotonic_start = time.monotonic()
 
         try:
@@ -178,7 +182,7 @@ class QwenRunner:
             )
         except OSError as error:
             _finish(state, monotonic_start)
-            state["state"] = "failed"
+            _mark(state, "failed")
             state["reason"] = {"code": "provider_error", "message": str(error)[:200]}
             workspace.write_state(state)
 
@@ -187,6 +191,14 @@ class QwenRunner:
         state["pid"] = process.pid
         state["process_created_at"] = _creation_iso(process.pid)
         workspace.write_state(state)
+
+        if not state["process_created_at"]:
+            self._kill_and_reap(process, state, workspace)
+            _finish(state, monotonic_start)
+            _mark(state, "unknown", {"code": "cleanup_failed", "message": "无法取得进程创建时间"})
+            workspace.write_state(state)
+
+            return state
         timed_out = False
 
         try:
@@ -200,7 +212,7 @@ class QwenRunner:
         except KeyboardInterrupt:
             stdout, _ = self._kill_and_reap(process, state, workspace)
             _finish(state, monotonic_start)
-            state["state"] = "cancelled" if state["cleanup"]["tree_cleanup_confirmed"] else "unknown"
+            _mark(state, "cancelled" if state["cleanup"]["tree_cleanup_confirmed"] else "unknown")
             workspace.write_state(state)
 
             return state
@@ -212,10 +224,10 @@ class QwenRunner:
 
         if timed_out:
             if state["cleanup"]["parent_reaped"] and state["cleanup"]["tree_cleanup_confirmed"]:
-                state["state"] = "timeout"
+                _mark(state, "timeout")
                 state["reason"] = {"code": "watchdog_timeout", "message": "外层看门狗触发"}
             else:
-                state["state"] = "unknown"
+                _mark(state, "unknown")
                 state["reason"] = {"code": "cleanup_failed", "message": "无法确认整棵进程树回收"}
 
             workspace.write_state(state)
@@ -223,18 +235,20 @@ class QwenRunner:
             return state
 
         if not state["cleanup"]["parent_reaped"]:
-            state["state"] = "unknown"
+            _mark(state, "unknown")
             state["reason"] = {"code": "cleanup_failed", "message": "无法确认进程回收"}
             workspace.write_state(state)
 
             return state
 
-        tree_gone, count = _wait_tree_gone(process.pid)
+        initial = _snapshot_processes()
+        tracked = _descendants(process.pid, initial) if initial else {}
+        tree_gone, count, tracked = _wait_tree_gone(process.pid, tracked)
         state["cleanup"]["descendants_seen"] = count
         state["cleanup"]["tree_cleanup_confirmed"] = tree_gone
 
         if not tree_gone:
-            state["state"] = "unknown"
+            _mark(state, "unknown")
             state["reason"] = {"code": "cleanup_failed", "message": "父进程已退出但仍有后代存活"}
             workspace.write_state(state)
 
@@ -247,7 +261,7 @@ class QwenRunner:
 
     def _judge(self, state: dict, workspace: RunWorkspace, stdout: str, exit_code, spec: RunSpec) -> dict:
         if exit_code == 55:
-            state["state"] = "failed"
+            _mark(state, "failed")
             state["reason"] = {"code": "native_limit", "message": "原生墙钟/工具调用上限（exit 55）"}
 
             return state
@@ -255,7 +269,7 @@ class QwenRunner:
         try:
             parsed = parse_events(stdout)
         except EventError as error:
-            state["state"] = "failed"
+            _mark(state, "failed")
             provider_message = _provider_error_message(stdout)
             state["reason"] = (
                 {"code": "provider_error", "message": provider_message}
@@ -270,13 +284,13 @@ class QwenRunner:
         try:
             state["usage"] = usage_of(parsed)
         except EventError as error:
-            state["state"] = "failed"
+            _mark(state, "failed")
             state["reason"] = {"code": error.code, "message": str(error)[:200]}
 
             return state
 
         if exit_code != 0:
-            state["state"] = "failed"
+            _mark(state, "failed")
             state["reason"] = {"code": "provider_error", "message": f"exit={exit_code}"}
 
             return state
@@ -285,13 +299,13 @@ class QwenRunner:
             check_session(parsed, spec.provider_session_id)
             check_model(parsed, spec.model, aliases=spec.model_aliases)
         except EventError as error:
-            state["state"] = "failed"
+            _mark(state, "failed")
             state["reason"] = {"code": error.code, "message": str(error)[:200]}
 
             return state
 
         if not is_success(parsed):
-            state["state"] = "failed"
+            _mark(state, "failed")
             state["reason"] = {"code": "provider_error", "message": "result 非成功"}
 
             return state
@@ -299,12 +313,12 @@ class QwenRunner:
         try:
             manifest = workspace.scan(spec.expected_artifacts)
         except ArtifactError as error:
-            state["state"] = "failed"
+            _mark(state, "failed")
             state["reason"] = {"code": error.code, "message": str(error)[:200]}
 
             return state
 
-        state["state"] = "completed_unverified"
+        _mark(state, "completed_unverified")
         state["manifest_path"] = str(workspace.manifest_path)
 
         return state
@@ -314,6 +328,12 @@ class QwenRunner:
         state["cleanup"]["kill_attempted"] = True
         workspace.write_state(state)
         kill_ok = False
+        tracked = {}
+
+        pre = _snapshot_processes()
+
+        if pre is not None:
+            tracked = _descendants(process.pid, pre)
 
         try:
             result = subprocess.run(
@@ -324,6 +344,12 @@ class QwenRunner:
             kill_ok = result.returncode == 0
         except (OSError, subprocess.SubprocessError):
             kill_ok = False
+        tracked = {}
+
+        pre = _snapshot_processes()
+
+        if pre is not None:
+            tracked = _descendants(process.pid, pre)
 
         try:
             stdout, _ = process.communicate(timeout=10)
@@ -334,12 +360,19 @@ class QwenRunner:
             return "", False
 
         parent_reaped = process.poll() is not None
-        waited, count = _wait_tree_gone(process.pid)
+        waited, count, tracked = _wait_tree_gone(process.pid, tracked)
         state["cleanup"]["parent_reaped"] = parent_reaped
         state["cleanup"]["descendants_seen"] = count
         state["cleanup"]["tree_cleanup_confirmed"] = bool(kill_ok and parent_reaped and waited)
 
         return stdout, state["cleanup"]["tree_cleanup_confirmed"]
+
+
+def _mark(state: dict, new_state: str, reason: dict | None = None) -> None:
+    transition(state, new_state)
+
+    if reason is not None:
+        state["reason"] = reason
 
 
 def _finish(state: dict, monotonic_start: float) -> None:
@@ -414,20 +447,31 @@ def _snapshot_processes() -> list[dict] | None:
     if not rows:
         return None
 
+    header = [cell.strip() for cell in rows[0]]
+
+    if not {"ProcessId", "ParentProcessId", "CreationDate"}.issubset(set(header)):
+        return None
+
     processes = []
 
     for row in rows[1:]:
-        if len(row) < 3:
+        if not any(cell.strip() for cell in row):
             continue
+
+        if len(row) < 3:
+            return None
 
         try:
             processes.append({
                 "pid": int(row[0]),
                 "parent": int(row[1]),
-                "created": row[2],
+                "created": row[2].strip(),
             })
         except ValueError:
-            continue
+            return None
+
+    if not processes:
+        return None
 
     return processes
 
@@ -454,24 +498,38 @@ def _descendants(pid: int, snapshot: list[dict]) -> dict[int, str]:
     return found
 
 
-def _wait_tree_gone(pid: int, timeout: float = 3.0) -> tuple[bool, int]:
+def _still_same(pid: int, created: str, snapshot: list[dict]) -> bool:
+    for item in snapshot:
+        if item["pid"] != pid:
+            continue
+
+        return item["created"] == created
+
+    return False
+
+
+def _wait_tree_gone(pid: int, tracked: dict[int, str] | None = None, timeout: float = 3.0) -> tuple[bool, int, dict[int, str]]:
+    """等待根 PID 的全部后代消失；tracked 为已跟踪集合，结束时返回并集。"""
+
+    tracked = dict(tracked or {})
     deadline = time.monotonic() + timeout
-    last_count = 0
 
     while True:
         snapshot = _snapshot_processes()
 
         if snapshot is None:
-            return False, last_count
+            return False, len(tracked), tracked
 
-        descendants = _descendants(pid, snapshot)
-        last_count = len(descendants)
+        for key, value in _descendants(pid, snapshot).items():
+            tracked.setdefault(key, value)
 
-        if not descendants:
-            return True, 0
+        alive = [key for key, created in tracked.items() if _still_same(key, created, snapshot)]
+
+        if not alive:
+            return True, 0, tracked
 
         if time.monotonic() >= deadline:
-            return False, last_count
+            return False, len(alive), tracked
 
         time.sleep(0.2)
 
@@ -542,10 +600,10 @@ def status_of(root: str | Path, run_id: str) -> dict | None:
         return None
 
     if state.get("state") == "running":
-        alive = _pid_alive(state.get("pid"), state.get("process_started_at"))
+        alive = _pid_alive(state.get("pid"), state.get("process_created_at"))
 
         if alive is not True:
-            state["state"] = "unknown"
+            _mark(state, "unknown")
             state["reason"] = {"code": "stale_running", "message": "进程不存在或无法确认身份"}
             workspace.write_state(state)
 

@@ -69,10 +69,12 @@ class RunnerCase(unittest.TestCase):
         self.root = Path(self._temporary.name)
         self.runner = QwenRunner(root=self.root)
 
-    def execute(self, process, run_spec=None, tree=(True, 0)):
+    def execute(self, process, run_spec=None, tree=(True, 0, {})):
         with patch("src.collab.qwen_runner.subprocess.Popen", return_value=process), patch(
             "src.collab.qwen_runner.subprocess.run", return_value=subprocess.CompletedProcess([], 0, "", "")
-        ), patch("src.collab.qwen_runner._wait_tree_gone", return_value=tree):
+        ), patch("src.collab.qwen_runner._wait_tree_gone", return_value=tree), patch(
+            "src.collab.qwen_runner._creation_iso", return_value=getattr(self, "creation", "2026-01-01T00:00:00+00:00")
+        ):
             return self.runner.execute(run_spec or spec())
 
     def success_fixture(self):
@@ -294,13 +296,13 @@ class RunnerCase(unittest.TestCase):
         self.assertEqual(set(found), {11, 12})
 
     def test_normal_exit_with_live_descendants_is_unknown(self):
-        state = self.execute(FakeProcess(self.success_fixture()), tree=(False, 1))
+        state = self.execute(FakeProcess(self.success_fixture()), tree=(False, 1, {}))
 
         self.assertEqual(state["state"], "unknown")
         self.assertEqual(state["reason"]["code"], "cleanup_failed")
 
     def test_kill_success_but_descendants_remain_unknown(self):
-        state = self.execute(FakeProcess("", timeout=True, reaped=True), tree=(False, 2))
+        state = self.execute(FakeProcess("", timeout=True, reaped=True), tree=(False, 2, {}))
 
         self.assertEqual(state["state"], "unknown")
 
@@ -310,7 +312,7 @@ class RunnerCase(unittest.TestCase):
         self.assertEqual(state["state"], "cancelled")
 
     def test_ctrl_c_cleanup_failure_unknown(self):
-        state = self.execute(FakeProcess("", interrupt=True), tree=(False, 1))
+        state = self.execute(FakeProcess("", interrupt=True), tree=(False, 1, {}))
 
         self.assertEqual(state["state"], "unknown")
 
@@ -365,26 +367,124 @@ class RunnerCase(unittest.TestCase):
 
     def test_junction_rejected(self):
         import subprocess as sp
-
-        target = Path(self.root) / "outside"
-        target.mkdir()
-        junction = Path(self.root) / "55555555-5555-5555-5555-555555555555"
-        junction.mkdir()
-        link = junction / "workspace" / "link"
-
-        try:
-            sp.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True, check=True)
-        except (OSError, sp.SubprocessError):
-            self.skipTest("junction 不可用")
-
         from src.collab.qwen_workspace import ArtifactError, RunWorkspace
 
-        workspace = RunWorkspace(self.root, "55555555-5555-5555-5555-555555555555")
-        Path(self.root, "outside", "x.txt").write_text("x", encoding="utf-8")
+        run_id = "55555555-5555-5555-5555-555555555555"
+        workspace = RunWorkspace(self.root, run_id).create()
+        target = Path(self.root) / "outside"
+        target.mkdir()
+        (target / "x.txt").write_text("x", encoding="utf-8")
+        link = workspace.workspace / "link"
+
+        result = sp.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True)
+
+        if result.returncode != 0:
+            self.fail(f"junction 创建失败：{result.stderr.decode('utf-8', 'replace')[:200]}")
 
         with self.assertRaises(ArtifactError):
             workspace.scan()
 
+    def test_junction_in_intermediate_directory(self):
+        import subprocess as sp
+        from src.collab.qwen_workspace import ArtifactError, RunWorkspace
 
+        run_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        workspace = RunWorkspace(self.root, run_id).create()
+        target = Path(self.root) / "outside2"
+        target.mkdir()
+        (target / "y.txt").write_text("y", encoding="utf-8")
+        (workspace.workspace / "sub").mkdir()
+        link = workspace.workspace / "sub" / "link"
+
+        result = sp.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True)
+
+        if result.returncode != 0:
+            self.fail(f"junction 创建失败：{result.stderr.decode('utf-8', 'replace')[:200]}")
+
+        (link / "inside.txt").write_text("z", encoding="utf-8")
+
+        with self.assertRaises(ArtifactError):
+            workspace.scan()
+
+    def test_missing_creation_time_is_unknown(self):
+        self.creation = None
+        self.addCleanup(lambda: setattr(self, "creation", "2026-01-01T00:00:00+00:00"))
+
+        state = self.execute(FakeProcess(self.success_fixture()))
+
+        self.assertEqual(state["state"], "unknown")
+
+    def test_status_uses_process_created_at(self):
+        run_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        workspace = Path(self.root) / run_id
+        workspace.mkdir()
+        (workspace / "state.json").write_text(
+            json.dumps({
+                "run_id": run_id,
+                "state": "running",
+                "pid": 1234,
+                "process_started_at": "2026-01-01T00:00:00+00:00",
+                "process_created_at": "2026-01-02T00:00:00+00:00",
+            }),
+            encoding="utf-8",
+        )
+
+        with patch("src.collab.qwen_runner._pid_alive", return_value=False) as mock_alive:
+            status_of(self.root, run_id)
+
+        passed = mock_alive.call_args.args[1]
+        self.assertEqual(passed, "2026-01-02T00:00:00+00:00")
+
+    def test_empty_snapshot_is_failure(self):
+        from src.collab.qwen_runner import _wait_tree_gone
+
+        with patch("src.collab.qwen_runner._snapshot_processes", return_value=None):
+            gone, count, tracked = _wait_tree_gone(123)
+
+        self.assertFalse(gone)
+
+    def test_header_only_snapshot_is_none(self):
+        from src.collab.qwen_runner import _snapshot_processes
+
+        header = '"ProcessId","ParentProcessId","CreationDate"\n'
+
+        with patch(
+            "src.collab.qwen_runner.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 0, header, ""),
+        ):
+            self.assertIsNone(_snapshot_processes())
+
+    def test_malformed_snapshot_is_none(self):
+        from src.collab.qwen_runner import _snapshot_processes
+
+        data = '"ProcessId","ParentProcessId","CreationDate"\n"x","y","z"\n'
+
+        with patch(
+            "src.collab.qwen_runner.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 0, data, ""),
+        ):
+            self.assertIsNone(_snapshot_processes())
+
+    def test_tracked_descendant_reuse_detected(self):
+        from src.collab.qwen_runner import _wait_tree_gone
+
+        snapshot = [
+            {"pid": 10, "parent": 1, "created": "old"},
+            {"pid": 11, "parent": 10, "created": "new"},
+        ]
+
+        with patch("src.collab.qwen_runner._snapshot_processes", return_value=snapshot), patch(
+            "src.collab.qwen_runner.time.sleep"
+        ):
+            gone, count, tracked = _wait_tree_gone(10, {11: "old"}, timeout=1)
+
+        self.assertTrue(gone)
+
+    def test_fsync_initial_failure_raises(self):
+        from src.collab.qwen_runner import RunSpecError
+
+        with patch("src.collab.qwen_workspace.os.fsync", side_effect=OSError("disk")):
+            with self.assertRaises(RunSpecError):
+                self.runner.execute(spec())
 if __name__ == "__main__":
     unittest.main()
