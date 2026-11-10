@@ -606,5 +606,24 @@ class ContractCase(WorkerCase):
         self.assertNotIn("再补一段", self.client.sent[0][1])
 
 
+
+    def test_continue_run_counts_manifest(self):
+        self.enqueue("/continue 12345678-1234-1234-1234-123456789012 再补一段")
+        self.pending(intent="continue_run")
+
+        with patch(
+            "src.qq.worker.continue_run",
+            return_value={
+                "run_id": "12345678-1234-1234-1234-123456789012",
+                "revision": 5,
+                "state": "succeeded",
+                "manifest": {"path": "x/r5/result.md", "sha256": "a", "bytes": 40},
+            },
+        ):
+            self.task_worker().run_once()
+
+        self.assertIn("产物 1 个", self.client.sent[0][1])
+
+
 if __name__ == "__main__":
     unittest.main()

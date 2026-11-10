@@ -43,8 +43,8 @@ v1.4a 本地与模拟闭环、B1 功能链、v1.5–v1.8，均有实测证据。
 | v1.4a-3 | Runner 接入 Registry / Verify / 通知 | 通知仅 mock；无自动监听 | ✅ **通过（c3c0d1f）** |
 | v1.4a-4 | 运行目录监听 + 自动 finalize | 仅轮询；无真实 QQ 发送 | ✅ **通过（c3c0d1f）** |
 | v1.4a-5 | 只读合同 + expected containment | 合同需显式声明；非防篡改 | ✅ **通过（c3c0d1f）** |
-| v1.4b（PA 执行链路） | `/continue` 入队→路由→relay→revision | 消息进 argv；outbox 存正文 | 🟡 **部分通过（b0cdf69）** |
-| v1.4b（QQ 端到端） | 真实 QQ 发指令 → 收到回复 | NapCat 注入故障；outbox failed | ❌ **未通过** |
+| v1.4b（PA 执行链路） | `/continue` 入队→路由→relay→revision | 消息进 argv；outbox 存正文 | ✅ **通过（92835ff）** |
+| v1.4b（QQ 端到端） | 真实 QQ 发指令 → 收到回复 | 消息进 argv；outbox 存正文 | ✅ **通过（真机截图+审计）** |
 | B1 | A1–A6 功能证据 ✅ + pytest 原命令 ✅ | 版本路线偏离原计划，**owner 已接受**（2026-11-09） | ✅ **通过** |
 | v1.5–v1.8 | ✅（本轮聚合复跑） | 未逐条重新推导每条新增判据 | ✅ **通过（有限复跑）** |
 

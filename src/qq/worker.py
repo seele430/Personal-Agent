@@ -371,7 +371,14 @@ class TaskWorker(BaseWorker):
         revision = result.get("revision")
         state = result.get("state")
         artifacts = result.get("artifacts") or []
-        count = len(artifacts) if isinstance(artifacts, list) else 0
+        manifest = result.get("manifest")
+
+        if isinstance(artifacts, list) and artifacts:
+            count = len(artifacts)
+        elif isinstance(manifest, dict) and manifest.get("path"):
+            count = 1
+        else:
+            count = 0
         prefix = str(result.get("run_id") or run_id)[:8]
         self.reply(job, f"已继续 {prefix}：revision {revision}，{state}，产物 {count} 个")
         self.handler.record_audit(
