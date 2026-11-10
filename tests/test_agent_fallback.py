@@ -249,5 +249,156 @@ class FallbackCase(unittest.TestCase):
         self.assertIn("error_class=server", text)
 
 
+
+    def test_none_response_default_path(self):
+        usage = FakeUsage()
+        client = FakeClient([None])
+
+        with patch.object(agent, "client", client), patch.object(
+            agent, "_get_usage_store", return_value=usage
+        ):
+            with agent.track_chat_usage("u", "r"):
+                with self.assertRaises(RuntimeError):
+                    agent._completion([], "auto", tools=[])
+
+        self.assertEqual(len(client.calls), 1)
+        self.assertEqual([item["model"] for item in usage.records], [agent.MODEL])
+
+    def test_none_response_after_500_uses_backup(self):
+        usage = FakeUsage()
+        client = FakeClient([StatusError(500), None])
+
+        with patch.object(agent, "client", client), patch.object(
+            agent, "MODEL_FALLBACKS", ["backup"]
+        ), patch.object(agent, "_get_usage_store", return_value=usage):
+            with agent.track_chat_usage("u", "r"):
+                with self.assertRaises(RuntimeError):
+                    agent._completion([], "auto", tools=[])
+
+        self.assertEqual(len(client.calls), 2)
+        self.assertEqual([item["model"] for item in usage.records], ["backup"])
+
+    def test_empty_choices_after_500_matches_none(self):
+        empty = SimpleNamespace(choices=[], usage=None)
+        client = FakeClient([StatusError(500), empty])
+
+        with patch.object(agent, "client", client), patch.object(agent, "MODEL_FALLBACKS", ["backup"]):
+            with self.assertRaises(RuntimeError):
+                agent._completion([], "auto", tools=[])
+
+        self.assertEqual(len(client.calls), 2)
+
+    def test_sdk_exception_classification(self):
+        import httpx
+        from openai import APIConnectionError, APITimeoutError
+
+        request = httpx.Request("POST", "http://example.test/v1/chat/completions")
+        self.assertEqual(agent._classify_completion_error(APITimeoutError(request=request))[0], "timeout")
+        self.assertEqual(agent._classify_completion_error(APIConnectionError(request=request))[0], "connection")
+
+    def test_empty_usage_chunk_then_error_falls_back(self):
+        class UsageOnlyThenError:
+            def __init__(self):
+                self.closed = False
+
+            def __iter__(self):
+                yield SimpleNamespace(
+                    usage=SimpleNamespace(prompt_tokens=1, completion_tokens=0, total_tokens=1),
+                    choices=[],
+                )
+                raise TimeoutError("slow")
+
+            def close(self):
+                self.closed = True
+
+        first = UsageOnlyThenError()
+        second = TextStream("ok")
+        seen = []
+
+        with patch.object(agent, "client", FakeClient([first, second])), patch.object(
+            agent, "MODEL_FALLBACKS", ["backup"]
+        ):
+            agent._completion([], "auto", tools=[], on_delta=seen.append)
+
+        self.assertTrue(first.closed)
+        self.assertEqual(seen, ["ok"])
+
+    def test_trace_model_sequence(self):
+        from contextlib import contextmanager
+
+        models = []
+
+        @contextmanager
+        def fake_span(name, **kwargs):
+            models.append(kwargs.get("model"))
+            yield
+
+        with patch.object(agent, "trace_span", fake_span):
+            self.run_completion([StatusError(500), response("ok")], fallbacks=["backup"])
+
+        self.assertEqual(models, [agent.MODEL, "backup"])
+
+    def test_audit_fields_and_no_secret(self):
+        with self.assertLogs("personal_agent.usage", level="WARNING") as captured:
+            self.run_completion(
+                [StatusError(500), response("ok")], fallbacks=["backup"]
+            )
+
+        text = "\n".join(captured.output)
+        for field in ("request_id=", "from=", "to=", "error_class=server", "exception_type="):
+            self.assertIn(field, text)
+
+        self.assertNotIn("SECRET-PROMPT", text)
+
+    def test_all_failures_record_no_usage(self):
+        usage = FakeUsage()
+
+        with patch.object(agent, "_get_usage_store", return_value=usage):
+            with agent.track_chat_usage("u", "r") as scope:
+                with self.assertRaises(StatusError):
+                    self.run_completion(
+                        [StatusError(500), StatusError(502), StatusError(503)],
+                        fallbacks=["b1", "b2"],
+                    )
+
+        self.assertEqual(usage.records, [])
+        self.assertEqual(scope.completed_calls, 0)
+
+    def test_cancel_between_attempts(self):
+        class SecondCheckToken:
+            def check(self):
+                self.calls += 1
+
+                if self.calls >= 2:
+                    raise ChatCancelled("stop")
+
+            def __init__(self):
+                self.calls = 0
+
+        token = SecondCheckToken()
+        client = FakeClient([StatusError(500), response("never")])
+
+        with patch.object(agent, "client", client), patch.object(agent, "MODEL_FALLBACKS", ["backup"]):
+            with self.assertRaises(ChatCancelled):
+                agent._completion([], "auto", tools=[], cancel_token=token)
+
+        self.assertEqual(len(client.calls), 1)
+
+    def test_kwargs_full_fields(self):
+        messages = [{"role": "user", "content": "hi"}]
+        tools = [{"type": "function"}]
+
+        client = FakeClient([response("ok")])
+
+        with patch.object(agent, "client", client):
+            agent._completion(messages, "required", tools=tools)
+
+        call = client.calls[0]
+        self.assertEqual(call["tool_choice"], "required")
+        self.assertEqual(call["tools"], tools)
+        self.assertEqual(call["max_tokens"], agent.MAX_OUTPUT_TOKENS)
+        self.assertEqual(messages, [{"role": "user", "content": "hi"}])
+
+
 if __name__ == "__main__":
     unittest.main()

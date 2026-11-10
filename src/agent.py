@@ -485,7 +485,6 @@ def _completion(
     started = time.monotonic()
     response = None
     selected_model = None
-    last_error = None
 
     for index, attempt_model in enumerate(attempts):
         kwargs = dict(base_kwargs)
@@ -522,7 +521,6 @@ def _completion(
         except ChatCancelled:
             raise
         except Exception as error:  # noqa: BLE001 - 分类后决定是否切换
-            last_error = error
             error_class, retryable = _classify_completion_error(error)
 
             if (
@@ -543,10 +541,7 @@ def _completion(
                 type(error).__name__,
             )
 
-    if response is None or selected_model is None:
-        if last_error is not None:
-            raise last_error
-
+    if selected_model is None:
         raise RuntimeError("模型没有返回有效结果")
 
     latency_ms = int(
