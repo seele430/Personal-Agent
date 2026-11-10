@@ -1885,6 +1885,16 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # v1.4a-4 Qwen 目录监听（test_qwen_watcher.py）
+    "unit/test_qwen_watcher.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 

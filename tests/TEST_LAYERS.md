@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 014d0b328f9443fa -->
+<!-- membership-digest: 34ea10962d83e230 -->
 
-## unit — L1 单元测试 (81 files)
+## unit — L1 单元测试 (82 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -79,6 +79,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_qwen_events.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
 | `unit/test_qwen_pipeline.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
 | `unit/test_qwen_runner.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
+| `unit/test_qwen_watcher.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
 | `unit/test_qwen_workspace.py` | tests/unit/ | collab | none | mocked | medium | registered-inferred |
 | `unit/test_real_provider.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
 | `unit/test_relay.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
