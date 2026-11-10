@@ -1875,6 +1875,16 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # v1.4a-3 Qwen Registry/Verify/通知（test_qwen_pipeline.py）
+    "unit/test_qwen_pipeline.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 

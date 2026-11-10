@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.collab.qwen_runner import QwenRunner, RunSpec, RunSpecError, status_of  # noqa: E402
+from src.collab.qwen_pipeline import PipelineError, finalize_run  # noqa: E402
+from src.collab.registry import ExternalTaskRegistry  # noqa: E402
 
 
 DEFAULT_ROOT = ROOT / "data" / "qwen-runs"
@@ -39,6 +41,13 @@ def main(argv=None) -> int:
     status = sub.add_parser("status")
     status.add_argument("run_id")
     status.add_argument("--root", default=str(DEFAULT_ROOT))
+
+    finalize = sub.add_parser("finalize")
+    finalize.add_argument("run_id")
+    finalize.add_argument("--expect", action="append", default=[])
+    finalize.add_argument("--db", default=None)
+    finalize.add_argument("--notify", action="store_true")
+    finalize.add_argument("--root", default=str(DEFAULT_ROOT))
 
     listing = sub.add_parser("list")
     listing.add_argument("--root", default=str(DEFAULT_ROOT))
@@ -76,6 +85,41 @@ def main(argv=None) -> int:
         print(json.dumps(state, ensure_ascii=False, indent=2))
 
         return 0 if state.get("state") == "completed_unverified" else 1
+
+    if args.command == "finalize":
+        sender = None
+
+        if args.notify:
+            import os
+
+            from src.qq.onebot import OneBotClient
+
+            owner = os.environ.get("PA_QQ_OWNER")
+
+            if not owner:
+                print(json.dumps({"error": "missing_owner", "message": "PA_QQ_OWNER 未配置"}, ensure_ascii=False))
+
+                return 2
+
+            client = OneBotClient(base_url=os.environ.get("PA_QQ_API", "http://127.0.0.1:3001"))
+            sender = lambda text: client.send_private_msg(int(owner), text)  # noqa: E731
+
+        try:
+            report = finalize_run(
+                root=args.root,
+                run_id=args.run_id,
+                registry=ExternalTaskRegistry(args.db),
+                expected=tuple(args.expect),
+                sender=sender,
+            )
+        except (PipelineError, RunSpecError) as error:
+            print(json.dumps({"error": getattr(error, "code", "error"), "message": str(error)}, ensure_ascii=False))
+
+            return 2
+
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+
+        return 0 if report["state"] == "succeeded" else 1
 
     if args.command == "status":
         try:
