@@ -41,6 +41,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="qwen_watch")
     parser.add_argument("--root", default=str(DEFAULT_ROOT))
     parser.add_argument("--db", default=str(DEFAULT_DB))
+    parser.add_argument("--once", action="store_true")
     parser.add_argument("--interval", type=float, default=None)
     parser.add_argument("--notify", action="store_true")
 

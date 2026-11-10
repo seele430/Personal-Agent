@@ -129,5 +129,38 @@ class WatcherCase(unittest.TestCase):
         self.assertEqual(len(payload["processed"]), 1)
 
 
+
+    def test_zero_artifact_write_task_not_succeeded_or_notified(self):
+        run_id = str(uuid.uuid4())
+        (self.runs / run_id / "workspace").mkdir(parents=True)
+        (self.runs / run_id / "manifest.json").write_text(
+            json.dumps({"run_id": run_id, "artifacts": []}),
+            encoding="utf-8",
+        )
+        (self.runs / run_id / "state.json").write_text(
+            json.dumps({"run_id": run_id, "state": "completed_unverified", "approval_mode": "plan"}),
+            encoding="utf-8",
+        )
+        calls = []
+
+        report = scan_once(root=self.runs, registry=self.registry, sender=lambda text: calls.append(text))
+
+        self.assertEqual(report["processed"][0]["state"], "failed")
+        self.assertEqual(self.registry.get("qwen-cli", run_id).state, "failed")
+        self.assertEqual(calls, [])
+
+    def test_cli_once_flag_accepted(self):
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            code = watcher_cli.main([
+                "--root", str(self.runs),
+                "--db", str(self.root / "once.db"),
+                "--once",
+            ])
+
+        self.assertEqual(code, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

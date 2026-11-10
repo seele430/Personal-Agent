@@ -100,6 +100,7 @@ class RunSpec:
     safe_mode: bool = True
     bare: bool = False  # --bare 跳过 settings（无 auth），默认关闭
     model_aliases: dict[str, str] = field(default_factory=dict)
+    allow_no_artifacts: bool = False  # 显式只读合同：允许空产物
 
 
 def validate_spec(spec: RunSpec) -> None:
@@ -184,6 +185,7 @@ class QwenRunner:
             "requested_model": spec.model,
             "observed_model": None,
             "approval_mode": spec.approval_mode,
+            "allow_no_artifacts": bool(spec.allow_no_artifacts),
             "pid": None,
             "process_started_at": started.isoformat(),
             "started_at": started.isoformat(),

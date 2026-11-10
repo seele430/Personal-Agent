@@ -54,6 +54,18 @@ class VerifyReport:
         }
 
 
+def _safe_path(workspace: Path, relative: str) -> Path | None:
+    if not relative or Path(relative).is_absolute():
+        return None
+
+    target = (workspace / relative).resolve()
+
+    if not target.is_relative_to(workspace.resolve()) or target.is_symlink():
+        return None
+
+    return target
+
+
 def verify_run(root: str | Path, run_id: str, expected: tuple[str, ...] = ()) -> VerifyReport:
     state = status_of(root, run_id)
 
@@ -74,15 +86,14 @@ def verify_run(root: str | Path, run_id: str, expected: tuple[str, ...] = ()) ->
     except (OSError, json.JSONDecodeError):
         raise PipelineError("invalid_manifest", "manifest 不可读") from None
 
-    root_path = workspace.workspace.resolve()
     checks: list[Check] = []
     artifacts: list[str] = []
 
     for item in manifest.get("artifacts", []):
         relative = item.get("path", "")
-        target = (workspace.workspace / relative).resolve()
+        target = _safe_path(workspace.workspace, relative)
 
-        if not relative or not target.is_relative_to(root_path):
+        if target is None:
             checks.append(Check(f"path:{relative}", False, "路径越界"))
             continue
 
@@ -97,18 +108,21 @@ def verify_run(root: str | Path, run_id: str, expected: tuple[str, ...] = ()) ->
         artifacts.append(relative)
 
     for relative in expected:
-        target = workspace.workspace / relative
+        target = _safe_path(workspace.workspace, relative)
         checks.append(
             Check(
                 f"expected:{relative}",
-                target.is_file() and target.stat().st_size > 0,
+                target is not None and target.is_file() and target.stat().st_size > 0,
                 "预期产物存在且非空",
             )
         )
 
     if not checks:
         if not manifest.get("artifacts") and not expected:
-            checks.append(Check("artifacts", True, "无产物（plan/只读任务）"))
+            if state.get("allow_no_artifacts") is True:
+                checks.append(Check("no_artifacts_contract", True, "显式只读合同：允许无产物"))
+            else:
+                checks.append(Check("no_artifacts_contract", False, "未声明允许无产物"))
         else:
             checks.append(Check("artifacts", False, "没有可验收的产物"))
 

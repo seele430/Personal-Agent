@@ -36,6 +36,7 @@ def main(argv=None) -> int:
     run.add_argument("--transport", default="stdin", choices=("stdin", "arg"))
     run.add_argument("--no-safe-mode", action="store_true")
     run.add_argument("--bare", action="store_true")
+    run.add_argument("--allow-no-artifacts", action="store_true")
     run.add_argument("--root", default=str(DEFAULT_ROOT))
 
     status = sub.add_parser("status")
@@ -75,6 +76,7 @@ def main(argv=None) -> int:
             prompt_transport=args.transport,
             safe_mode=not args.no_safe_mode,
             bare=args.bare,
+            allow_no_artifacts=args.allow_no_artifacts,
             )
             state = QwenRunner(root=args.root).execute(spec)
         except RunSpecError as error:

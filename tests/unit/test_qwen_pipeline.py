@@ -134,7 +134,19 @@ class PipelineCase(unittest.TestCase):
 
 
 
-    def test_no_artifacts_plan_passes(self):
+    def test_no_artifacts_without_contract_fails(self):
+        (self.workspace / "out.txt").unlink()
+        self.manifest_path.write_text(
+            json.dumps({"run_id": self.run_id, "artifacts": []}),
+            encoding="utf-8",
+        )
+
+        report = verify_run(self.root, self.run_id)
+
+        self.assertFalse(report.passed)
+        self.assertEqual(report.checks[0].name, "no_artifacts_contract")
+
+    def test_no_artifacts_with_contract_passes(self):
         (self.workspace / "out.txt").unlink()
         self.manifest_path.write_text(
             json.dumps({"run_id": self.run_id, "artifacts": []}),
@@ -142,14 +154,19 @@ class PipelineCase(unittest.TestCase):
         )
         state_path = self.root / self.run_id / "state.json"
         state = json.loads(state_path.read_text(encoding="utf-8"))
-        state["state"] = "completed_unverified"
-        state["approval_mode"] = "plan"
+        state["allow_no_artifacts"] = True
         state_path.write_text(json.dumps(state), encoding="utf-8")
 
         report = verify_run(self.root, self.run_id)
 
         self.assertTrue(report.passed)
 
+    def test_expected_traversal_rejected(self):
+        outside = self.root / "outside.txt"
+        outside.write_text("secret", encoding="utf-8")
 
+        report = verify_run(self.root, self.run_id, expected=("../outside.txt",))
+
+        self.assertFalse(report.passed)
 if __name__ == "__main__":
     unittest.main()
