@@ -39,6 +39,10 @@ ENV_WHITELIST = (
 )
 
 
+class TrackingError(RuntimeError):
+    pass
+
+
 class _Tracking:
     """Popen 后立即启动的后代跟踪器；只并集，不覆盖。"""
 
@@ -46,7 +50,6 @@ class _Tracking:
         self.pid = int(pid)
         self.interval = interval
         self.tracked: dict[int, str] = {}
-        self.ok = False
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, daemon=True)
 
@@ -62,14 +65,15 @@ class _Tracking:
             if snapshot is None:
                 continue
 
-            self.ok = True
-
             for key, value in _descendants(self.pid, snapshot).items():
                 self.tracked.setdefault(key, value)
 
     def stop(self) -> dict[int, str]:
         self._stop.set()
-        self._thread.join(timeout=2)
+        self._thread.join(timeout=10.0)
+
+        if self._thread.is_alive():
+            raise TrackingError("tracking_incomplete")
 
         return dict(self.tracked)
 
@@ -237,7 +241,8 @@ class QwenRunner:
         tracking = _Tracking(process.pid).start()
 
         if not state["process_created_at"]:
-            self._kill_and_reap(process, state, workspace, tracking.stop())
+            tracked, _ = self._stop_tracking(tracking, process, state, workspace, monotonic_start)
+            self._kill_and_reap(process, state, workspace, tracked)
             _finish(state, monotonic_start)
             _mark(state, "unknown", {"code": "cleanup_failed", "message": "无法取得进程创建时间"})
             workspace.write_state(state)
@@ -252,9 +257,19 @@ class QwenRunner:
             )
         except subprocess.TimeoutExpired:
             timed_out = True
-            stdout, _ = self._kill_and_reap(process, state, workspace, tracking.stop())
+            tracked, ok = self._stop_tracking(tracking, process, state, workspace, monotonic_start)
+
+            if not ok:
+                return state
+
+            stdout, _ = self._kill_and_reap(process, state, workspace, tracked)
         except KeyboardInterrupt:
-            stdout, _ = self._kill_and_reap(process, state, workspace, tracking.stop())
+            tracked, ok = self._stop_tracking(tracking, process, state, workspace, monotonic_start)
+
+            if not ok:
+                return state
+
+            stdout, _ = self._kill_and_reap(process, state, workspace, tracked)
             _finish(state, monotonic_start)
             _mark(state, "cancelled" if state["cleanup"]["tree_cleanup_confirmed"] else "unknown")
             workspace.write_state(state)
@@ -285,7 +300,11 @@ class QwenRunner:
 
             return state
 
-        tracked = tracking.stop()
+        tracked, ok = self._stop_tracking(tracking, process, state, workspace, monotonic_start)
+
+        if not ok:
+            return state
+
         final = _snapshot_processes()
 
         if final is not None:
@@ -308,6 +327,18 @@ class QwenRunner:
 
         return result
 
+    def _stop_tracking(self, tracking, process, state, workspace, monotonic_start):
+        try:
+            return tracking.stop(), True
+        except TrackingError:
+            self._kill_and_reap(process, state, workspace)
+            _finish(state, monotonic_start)
+            state["cleanup"]["tree_cleanup_confirmed"] = False
+            _mark(state, "unknown", {"code": "cleanup_failed", "message": "跟踪线程未完成"})
+            workspace.write_state(state)
+
+            return {}, False
+
     def _judge(self, state: dict, workspace: RunWorkspace, stdout: str, exit_code, spec: RunSpec) -> dict:
         if exit_code == 55:
             _mark(state, "failed")
@@ -318,13 +349,10 @@ class QwenRunner:
         try:
             parsed = parse_events(stdout)
         except EventError as error:
-            _mark(state, "failed")
-            provider_message = _provider_error_message(stdout)
-            state["reason"] = (
-                {"code": "provider_error", "message": provider_message}
-                if provider_message
-                else {"code": error.code, "message": str(error)[:200]}
-            )
+            if _has_provider_error(stdout):
+                _mark(state, "failed", {"code": "provider_error", "message": "Provider 返回错误"})
+            else:
+                _mark(state, "failed", {"code": error.code, "message": str(error)[:200]})
 
             return state
 
@@ -441,18 +469,18 @@ def _finish(state: dict, monotonic_start: float) -> None:
     state["duration_ms"] = int((time.monotonic() - monotonic_start) * 1000)
 
 
-def _provider_error_message(stdout: str) -> str:
+def _has_provider_error(stdout: str) -> bool:
     try:
         data = json.loads(stdout)
     except (json.JSONDecodeError, TypeError):
-        return ""
+        return False
 
     if not isinstance(data, list) or not data:
-        return ""
+        return False
 
-    error = data[-1].get("error") if isinstance(data[-1], dict) else None
+    last = data[-1]
 
-    return str(error.get("message"))[:200] if isinstance(error, dict) and error.get("message") else ""
+    return isinstance(last, dict) and isinstance(last.get("error"), dict)
 
 
 def _pid_exists(pid) -> bool | None:

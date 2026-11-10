@@ -590,5 +590,57 @@ class RunnerCase(unittest.TestCase):
         self.assertNotIn("SECRET-PROMPT", json.dumps(state, ensure_ascii=False))
 
 
+
+    def test_slow_snapshot_result_is_merged(self):
+        import time as _time
+
+        from src.collab.qwen_runner import _Tracking
+
+        snapshot = [{"pid": 5000, "parent": 4242, "created": "child"}]
+
+        def slow_snapshot():
+            _time.sleep(2.5)
+
+            return snapshot
+
+        with patch("src.collab.qwen_runner._snapshot_processes", slow_snapshot):
+            tracking = _Tracking(4242, interval=0.05).start()
+            _time.sleep(0.2)
+            tracked = tracking.stop()
+
+        self.assertIn(5000, tracked)
+        self.assertFalse(tracking._thread.is_alive())
+
+    def test_tracking_incomplete_is_unknown(self):
+        class BrokenTracking(FakeTracking):
+            def stop(self):
+                from src.collab.qwen_runner import TrackingError
+
+                raise TrackingError("incomplete")
+
+        with patch("src.collab.qwen_runner.subprocess.Popen", return_value=FakeProcess(self.success_fixture())), patch(
+            "src.collab.qwen_runner.subprocess.run", return_value=subprocess.CompletedProcess([], 0, "", "")
+        ), patch("src.collab.qwen_runner._Tracking", BrokenTracking), patch(
+            "src.collab.qwen_runner._creation_iso", return_value="2026-01-01T00:00:00+00:00"
+        ):
+            state = self.runner.execute(spec())
+
+        self.assertEqual(state["state"], "unknown")
+
+    def test_provider_error_does_not_leak_prompt(self):
+        error_event = [{
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": True,
+            "session_id": "11111111-1111-1111-1111-111111111111",
+            "error": {"message": "provider rejected prompt: SECRET-PROMPT-7f3e"},
+        }]
+        state = self.execute(FakeProcess(json.dumps(error_event)))
+
+        blob = json.dumps(state, ensure_ascii=False)
+        self.assertNotIn("SECRET-PROMPT-7f3e", blob)
+        self.assertEqual(state["reason"]["message"], "Provider 返回错误")
+
+
 if __name__ == "__main__":
     unittest.main()
