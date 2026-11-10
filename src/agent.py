@@ -16,7 +16,7 @@ from typing import Iterator
 from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import APIConnectionError, APITimeoutError, OpenAI
 
 from types import SimpleNamespace
 
@@ -83,6 +83,52 @@ client = OpenAI(
 )
 
 MODEL = os.getenv("MODEL", "deepseek-flash")
+
+
+def _parse_model_fallbacks(raw_value: str, primary_model: str) -> list[str]:
+    names: list[str] = []
+
+    for item in (raw_value or "").split(","):
+        name = item.strip()
+
+        if not name or name == primary_model or name in names:
+            continue
+
+        names.append(name)
+
+        if len(names) == 2:
+            break
+
+    return names
+
+
+MODEL_FALLBACKS = _parse_model_fallbacks(
+    os.getenv("MODEL_FALLBACKS", ""), MODEL
+)
+
+
+def _classify_completion_error(error: Exception) -> tuple[str, bool]:
+    if isinstance(error, ChatCancelled):
+        return "cancelled", False
+
+    if isinstance(error, (APITimeoutError, TimeoutError)):
+        return "timeout", True
+
+    if isinstance(error, (APIConnectionError, ConnectionError)):
+        return "connection", True
+
+    status = getattr(error, "status_code", None)
+
+    if isinstance(status, int):
+        if status == 429:
+            return "rate_limit", True
+
+        if status in (500, 502, 503, 504):
+            return "server", True
+
+        return "http", False
+
+    return "unknown", False
 
 MAX_OUTPUT_TOKENS = 2048
 MAX_USER_MESSAGE_BYTES = 32000
@@ -332,7 +378,7 @@ def validate_user_input(
 # DeepSeek 专属参数
 # ==========================================
 
-def _is_deepseek_flash() -> bool:
+def _is_deepseek_flash(model: str | None = None) -> bool:
 
     try:
         hostname = urlsplit(
@@ -341,7 +387,7 @@ def _is_deepseek_flash() -> bool:
 
         return (
             hostname == "api.deepseek.com"
-            and MODEL == "deepseek-flash"
+            and (model or MODEL) == "deepseek-flash"
         )
 
     except (TypeError, ValueError):
@@ -352,7 +398,7 @@ def _is_deepseek_flash() -> bool:
 # 执行一次模型调用
 # ==========================================
 
-def _consume_completion_stream(raw_stream, on_delta, cancel_token):
+def _consume_completion_stream(raw_stream, on_delta, cancel_token, stream_state=None):
     """Accumulate SDK deltas while forwarding text and honoring cancellation."""
 
     content = []
@@ -384,9 +430,13 @@ def _consume_completion_stream(raw_stream, on_delta, cancel_token):
             delta = getattr(choice, "delta", None)
             text = getattr(delta, "content", None)
             if text:
+                if stream_state is not None:
+                    stream_state["output_started"] = True
                 content.append(text)
                 on_delta(text)
             for item in getattr(delta, "tool_calls", None) or []:
+                if stream_state is not None:
+                    stream_state["output_started"] = True
                 index = getattr(item, "index", 0) or 0
                 call = tool_calls.setdefault(
                     index, {"id": "", "name": "", "arguments": ""}
@@ -424,45 +474,85 @@ def _completion(
     cancel_token: CancellationToken | None = None,
 ):
 
-    kwargs = {
-        "model": MODEL,
+    base_kwargs = {
         "messages": messages,
         "tools": REMINDER_TOOLS if tools is None else tools,
         "tool_choice": tool_choice,
         "max_tokens": MAX_OUTPUT_TOKENS,
     }
 
-    if _is_deepseek_flash():
-        kwargs["extra_body"] = {
-            "thinking": {
-                "type": "disabled",
-            },
-        }
-
-    # 单调时钟：不受系统时间调整影响
+    attempts = [MODEL] + list(MODEL_FALLBACKS)
     started = time.monotonic()
+    response = None
+    selected_model = None
+    last_error = None
 
-    with trace_span("llm.generate", model=MODEL):
-        if cancel_token is not None:
-            cancel_token.check()
-        if on_delta is None:
-            response = client.chat.completions.create(**kwargs)
-        else:
-            raw_stream = client.chat.completions.create(
-                **kwargs,
-                stream=True,
-                stream_options={"include_usage": True},
+    for index, attempt_model in enumerate(attempts):
+        kwargs = dict(base_kwargs)
+        kwargs["model"] = attempt_model
+
+        if _is_deepseek_flash(attempt_model):
+            kwargs["extra_body"] = {
+                "thinking": {
+                    "type": "disabled",
+                },
+            }
+
+        stream_state = {"output_started": False}
+
+        try:
+            if cancel_token is not None:
+                cancel_token.check()
+
+            with trace_span("llm.generate", model=attempt_model):
+                if on_delta is None:
+                    response = client.chat.completions.create(**kwargs)
+                else:
+                    raw_stream = client.chat.completions.create(
+                        **kwargs,
+                        stream=True,
+                        stream_options={"include_usage": True},
+                    )
+                    response = _consume_completion_stream(
+                        raw_stream, on_delta, cancel_token, stream_state
+                    )
+
+            selected_model = attempt_model
+            break
+        except ChatCancelled:
+            raise
+        except Exception as error:  # noqa: BLE001 - 分类后决定是否切换
+            last_error = error
+            error_class, retryable = _classify_completion_error(error)
+
+            if (
+                not retryable
+                or stream_state["output_started"]
+                or index == len(attempts) - 1
+            ):
+                raise
+
+            scope = _current_usage.get()
+            logger.warning(
+                "model_fallback request_id=%s from=%s to=%s "
+                "error_class=%s exception_type=%s",
+                getattr(scope, "request_id", "-"),
+                attempt_model,
+                attempts[index + 1],
+                error_class,
+                type(error).__name__,
             )
-            response = _consume_completion_stream(
-                raw_stream, on_delta, cancel_token
-            )
+
+    if response is None or selected_model is None:
+        if last_error is not None:
+            raise last_error
+
+        raise RuntimeError("模型没有返回有效结果")
 
     latency_ms = int(
         (time.monotonic() - started) * 1000
     )
 
-    # trace 字段在校验之前提取，
-    # 这样异常结束的调用也能留下记录。
     choice = (
         response.choices[0]
         if getattr(response, "choices", None)
@@ -502,7 +592,7 @@ def _completion(
                 user_id=scope.user_id,
                 request_id=scope.request_id,
                 call_number=scope.completed_calls,
-                model=MODEL,
+                model=selected_model,
                 response=response,
                 latency_ms=latency_ms,
                 finish_reason=finish_reason,

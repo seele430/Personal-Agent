@@ -17,14 +17,15 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 4aeb0554206ee72c -->
+<!-- membership-digest: 6c571f241a942bb4 -->
 
-## unit — L1 单元测试 (84 files)
+## unit — L1 单元测试 (85 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
 | `test_agent_bounds.py` | tests/ 根 | agent | none | none | low | registered-inferred |
 | `test_agent_call_count.py` | tests/ 根 | agent | none | none | low | registered-inferred |
+| `test_agent_fallback.py` | tests/ 根 | agent | none | mocked | medium | registered-inferred |
 | `test_agent_usage.py` | tests/ 根 | agent | none | none | low | registered-inferred |
 | `test_autoscale.py` | tests/ 根 | platform_nodes | none | none | low | registered-inferred |
 | `test_elastic_controller.py` | tests/ 根 | platform_elastic | temporary_sqlite | none | low | registered-inferred |

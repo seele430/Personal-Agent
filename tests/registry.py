@@ -1915,6 +1915,16 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # v1.3 聊天模型 fallback（test_agent_fallback.py）
+    "test_agent_fallback.py": TestSchema(
+        layer="unit",
+        domain="agent",
+        database="none",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 
