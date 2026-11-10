@@ -1905,6 +1905,16 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # v1.4c 跨 Agent 工件接力（test_handoff.py）
+    "unit/test_handoff.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="mocked",
+        risk="medium",
+    ),
 }
 
 
