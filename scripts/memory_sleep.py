@@ -13,7 +13,8 @@ sys.path.insert(0, str(ROOT))
 
 from src import config  # noqa: E402
 from src.memory.sleep import (  # noqa: E402
-    SleepError, ab_retrieval, apply, evaluate_ab, propose, replica_freeze, restore, validate,
+    SleepError, ab_paired, ab_retrieval, apply, evaluate_ab, group_metrics, propose,
+    replica_freeze, restore, validate,
 )
 from src.memory.store import MemoryStore  # noqa: E402
 from src.memory.versions import MemoryVersions  # noqa: E402
@@ -68,6 +69,8 @@ def main(argv=None) -> int:
     ab.add_argument("--owner", required=True)
     ab.add_argument("--queries", required=True)
     ab.add_argument("--as-of", required=True)
+    ab.add_argument("--groups")
+    ab.add_argument("--rounds", type=int, default=3)
     ab.add_argument("--candidate")
 
     args = parser.parse_args(argv)
@@ -113,13 +116,31 @@ def main(argv=None) -> int:
 
         if args.command == "ab":
             queries = json.loads(Path(args.queries).read_text(encoding="utf-8"))["queries"]
+            groups = json.loads(Path(args.groups).read_text(encoding="utf-8"))["groups"] if args.groups else None
             before = ab_retrieval(store, args.owner, queries, as_of=args.as_of)
+            before_groups = group_metrics(store, args.owner, groups, as_of=args.as_of) if groups else None
 
-            if args.candidate:
-                apply(store, candidate, snapshot)
+            if not args.candidate:
+                print(json.dumps({"before": before, "before_groups": before_groups}, ensure_ascii=False, indent=2))
+                return 0
 
-            after = ab_retrieval(store, args.owner, queries, as_of=args.as_of)
-            result = evaluate_ab(before, after)
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as temp:
+                replica = Path(temp) / "after.db"
+                replica_freeze(store.db_path, replica)
+                after_store = MemoryStore(replica)
+                apply(after_store, candidate, snapshot)
+                after = ab_retrieval(after_store, args.owner, queries, as_of=args.as_of)
+                after_groups = group_metrics(after_store, args.owner, groups, as_of=args.as_of) if groups else None
+                paired = ab_paired(
+                    store, after_store, args.owner, queries,
+                    as_of=args.as_of, rounds=args.rounds,
+                )
+                after_store.close() if hasattr(after_store, "close") else None
+
+            result = evaluate_ab(before, after, before_groups=before_groups, after_groups=after_groups)
+            result["paired"] = paired
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0 if result["passed"] else 3
 

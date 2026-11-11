@@ -20,7 +20,7 @@ import time
 from contextlib import closing
 from pathlib import Path
 
-from src.memory.models import MemoryError, utc_now
+from src.memory.models import MemoryError, normalize_time, utc_now
 from src.memory.versions import MemoryVersions
 
 
@@ -154,6 +154,7 @@ def _supersede_cycles(items: list) -> set[int]:
 
 
 def propose(store, owner_id: str, *, as_of: str, snapshot) -> dict:
+    as_of = normalize_time(as_of, field="as_of") or ""
     items = store.list_items(owner_id, include_deleted=True, limit=100000)
     active = [item for item in items if _active(item, as_of)]
     by_id = {item.id: item for item in items}
@@ -296,8 +297,14 @@ def validate(store, candidate: dict, snapshot) -> dict:
 
     as_of = candidate.get("as_of")
 
-    if not isinstance(as_of, str) or not as_of.strip():
-        errors.append("as_of")
+    try:
+        normalized_as_of = normalize_time(as_of, field="as_of")
+    except MemoryError:
+        normalized_as_of = None
+        errors.append("as_of_invalid")
+
+    if normalized_as_of != as_of:
+        errors.append("as_of_not_normalized")
 
     ops = candidate.get("ops")
 
@@ -367,7 +374,7 @@ def _snapshot_matches(connection, snapshot_items: list[dict]) -> bool:
         return False
 
     for item in snapshot_items:
-        if _dict_hash(current[item["id"]]) != _dict_hash(item):
+        if _canonical(current[item["id"]]) != _canonical(item):
             return False
 
     return True
@@ -523,7 +530,7 @@ def ab_retrieval(store, owner_id: str, queries: list[dict], *, as_of: str, k: in
     }
 
 
-def evaluate_ab(before: dict, after: dict) -> dict:
+def evaluate_ab(before: dict, after: dict, *, before_groups=None, after_groups=None) -> dict:
     reasons = []
 
     if after["recall_at_5"] < before["recall_at_5"]:
@@ -532,7 +539,33 @@ def evaluate_ab(before: dict, after: dict) -> dict:
     if after["mrr"] < before["mrr"]:
         reasons.append("mrr_regressed")
 
-    return {"passed": not reasons, "reasons": reasons, "before": before, "after": after}
+    if before_groups is not None and after_groups is not None:
+        for name, before_group in before_groups.items():
+            after_group = after_groups.get(name, {})
+
+            if after_group.get("recall_at_5", 0.0) < before_group.get("recall_at_5", 0.0):
+                reasons.append(f"group_recall_regressed:{name}")
+
+            if after_group.get("mrr", 0.0) < before_group.get("mrr", 0.0):
+                reasons.append(f"group_mrr_regressed:{name}")
+
+            before_top1 = before_group.get("conflict_top1")
+            after_top1 = after_group.get("conflict_top1")
+
+            if before_top1 is not None and (after_top1 is None or after_top1 < before_top1):
+                reasons.append(f"conflict_top1_regressed:{name}")
+
+            if after_group.get("unanswerable_false_hits", 0) > 0:
+                reasons.append(f"unanswerable_false_hits:{name}")
+
+            if after_group.get("revived", 0) > 0:
+                reasons.append(f"deleted_revived:{name}")
+
+    return {
+        "passed": not reasons, "reasons": reasons,
+        "before": before, "after": after,
+        "before_groups": before_groups, "after_groups": after_groups,
+    }
 
 def group_metrics(store, owner_id: str, groups: list[dict], *, as_of: str, k: int = 5) -> dict:
     """按组统计 recall / 冲突 top1 / 不可回答误命中 / 删除复活。"""
@@ -546,6 +579,7 @@ def group_metrics(store, owner_id: str, groups: list[dict], *, as_of: str, k: in
     try:
         for group in groups:
             expected_hits = 0
+            reciprocal = 0.0
             total = 0
             conflict_top1 = 0
             conflict_total = 0
@@ -562,7 +596,10 @@ def group_metrics(store, owner_id: str, groups: list[dict], *, as_of: str, k: in
                     continue
 
                 total += 1
-                expected_hits += 1 if expected & set(keys) else 0
+                hit = bool(expected & set(keys))
+                expected_hits += 1 if hit else 0
+                rank = next((index + 1 for index, key in enumerate(keys) if key in expected), None)
+                reciprocal += (1.0 / rank) if rank else 0.0
 
                 if expected:
                     conflict_total += 1
@@ -574,6 +611,7 @@ def group_metrics(store, owner_id: str, groups: list[dict], *, as_of: str, k: in
             report[group["name"]] = {
                 "total": total,
                 "recall_at_5": (expected_hits / total) if total else 0.0,
+                "mrr": (reciprocal / total) if total else 0.0,
                 "conflict_top1": (conflict_top1 / conflict_total) if conflict_total else None,
                 "unanswerable_false_hits": false_hits,
                 "revived": revived,
@@ -582,3 +620,45 @@ def group_metrics(store, owner_id: str, groups: list[dict], *, as_of: str, k: in
         store_module.utc_now = original
 
     return report
+
+def ab_paired(before_store, after_store, owner_id: str, queries: list[dict], *, as_of: str, rounds: int = 3) -> dict:
+    """ABBA 交错多轮延迟：每轮 A,B,B,A；保存每轮原始样本。"""
+
+    import src.memory.store as store_module
+
+    as_of = normalize_time(as_of, field="as_of") or ""
+    original = store_module.utc_now
+    store_module.utc_now = lambda: as_of
+    order = [("before", before_store), ("after", after_store), ("after", after_store), ("before", before_store)]
+    samples = {"before": [], "after": []}
+
+    try:
+        for _ in range(max(1, int(rounds))):
+            for arm, current in order:
+                values = []
+
+                for spec in queries:
+                    started = time.perf_counter()
+                    current.search(owner_id, spec["query"], k=5)
+                    values.append((time.perf_counter() - started) * 1000)
+
+                samples[arm].append(values)
+    finally:
+        store_module.utc_now = original
+
+    deltas = []
+    for index, (before_round, after_round) in enumerate(zip(samples["before"], samples["after"])):
+        deltas.append([after - before for before, after in zip(before_round, after_round)])
+
+    pooled_before = [value for round_values in samples["before"] for value in round_values]
+    pooled_after = [value for round_values in samples["after"] for value in round_values]
+
+    return {
+        "rounds": max(1, int(rounds)),
+        "order": [arm for arm, _ in order],
+        "before_samples_ms": samples["before"],
+        "after_samples_ms": samples["after"],
+        "paired_deltas_ms": deltas,
+        "before_latency": _latency(pooled_before),
+        "after_latency": _latency(pooled_after),
+    }

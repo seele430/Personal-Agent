@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from src.memory import sleep
+from src.memory.models import MemoryError
 from src.memory.store import MemoryStore
 from src.memory.versions import MemoryVersions
 
@@ -300,7 +301,7 @@ class SleepCase(unittest.TestCase):
             "base_snapshot_id": snapshot.id,
             "base_sha256": snapshot.sha256,
             "owner_id": OWNER,
-            "as_of": AS_OF,
+            "as_of": sleep.normalize_time(AS_OF, field="as_of"),
             "ops": ops,
             "reports": {},
         }
@@ -402,8 +403,16 @@ class SleepCase(unittest.TestCase):
         )
         owner = fixture["owner_id"]
 
+        ids = {}
+
         for spec in fixture["items"]:
-            item = self.store.add_item(owner, **spec)
+            data = {key: value for key, value in spec.items() if key not in ("ref", "supersedes_ref")}
+
+            if spec.get("supersedes_ref"):
+                data["supersedes_id"] = ids[spec["supersedes_ref"]]
+
+            item = self.store.add_item(owner, **data)
+            ids[spec.get("ref") or spec["key"]] = item.id
 
             if spec["key"] in fixture["deleted_keys"]:
                 self.store.delete_item(item.id)
@@ -415,6 +424,63 @@ class SleepCase(unittest.TestCase):
         self.assertEqual(metrics["conflict"]["conflict_top1"], 1.0)
         self.assertEqual(metrics["unanswerable"]["unanswerable_false_hits"], 0)
         self.assertEqual(metrics["deletion"]["revived"], 0)
+        self.assertEqual(metrics["supersede"]["recall_at_5"], 1.0)
+        self.assertEqual(metrics["expired"]["unanswerable_false_hits"], 0)
+        self.assertEqual(metrics["future"]["unanswerable_false_hits"], 0)
+
+
+
+    def test_created_at_drift_rejected(self):
+        first = self.add("same")
+        self.add("same")
+        candidate, snapshot = self.plan()
+        self.sql(
+            "UPDATE memory_items SET created_at = ? WHERE id = ?",
+            ("2020-01-01T00:00:00+00:00", first.id),
+        )
+
+        with self.assertRaises(sleep.SleepError) as caught:
+            sleep.apply(self.store, candidate, snapshot)
+
+        self.assertIn("base_mismatch", str(caught.exception))
+
+    def test_invalid_as_of_rejected(self):
+        item = self.add("same")
+        self.add("same")
+        snapshot = self.snapshot()
+        candidate = self._forge(snapshot, [{
+            "op": "expire", "reason": "exact_dedupe", "item_id": item.id,
+            "expected_sha256": sleep.item_hash(item), "evidence_ids": [item.id],
+        }])
+        candidate["as_of"] = "not-a-time"
+        candidate["candidate_id"] = sleep._sha({k: v for k, v in candidate.items() if k != "candidate_id"})
+        result = sleep.validate(self.store, candidate, snapshot)
+        self.assertFalse(result["ok"])
+        self.assertIn("as_of_invalid", result["errors"])
+
+        with self.assertRaises(MemoryError):
+            sleep.propose(self.store, OWNER, as_of="not-a-time", snapshot=snapshot)
+
+    def test_group_gate_fails_on_safety_regression(self):
+        before_groups = {"conflict": {"recall_at_5": 1.0, "mrr": 1.0, "conflict_top1": 1.0, "unanswerable_false_hits": 0, "revived": 0}}
+        after_groups = {"conflict": {"recall_at_5": 1.0, "mrr": 1.0, "conflict_top1": 0.0, "unanswerable_false_hits": 2, "revived": 1}}
+        result = sleep.evaluate_ab(
+            {"recall_at_5": 1.0, "mrr": 1.0}, {"recall_at_5": 1.0, "mrr": 1.0},
+            before_groups=before_groups, after_groups=after_groups,
+        )
+        self.assertFalse(result["passed"])
+        self.assertIn("conflict_top1_regressed:conflict", result["reasons"])
+        self.assertIn("unanswerable_false_hits:conflict", result["reasons"])
+        self.assertIn("deleted_revived:conflict", result["reasons"])
+
+    def test_ab_paired_rounds_recorded(self):
+        self.add("alpha project fact", key="a")
+        queries = [{"query": "alpha", "expected_keys": ["a"]}]
+        result = sleep.ab_paired(self.store, self.store, OWNER, queries, as_of=AS_OF, rounds=2)
+        self.assertEqual(result["rounds"], 2)
+        self.assertEqual(result["order"], ["before", "after", "after", "before"])
+        self.assertEqual(len(result["paired_deltas_ms"]), 4)
+        self.assertEqual(len(result["before_samples_ms"]), 4)
 
 
 if __name__ == "__main__":
