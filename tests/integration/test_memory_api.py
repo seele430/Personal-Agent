@@ -90,5 +90,18 @@ class MemoryApiCase(unittest.TestCase):
         self.assertNotIn("owner_id", body["items"][0])
 
 
+
+    def test_delete_endpoint(self):
+        item_id = self._request("POST", "/api/memory/items", json={"text": "删我"}).json()["id"]
+        self.assertEqual(self._request("DELETE", f"/api/memory/items/{item_id}").status_code, 204)
+        self.assertEqual(self._request("GET", f"/api/memory/items/{item_id}").status_code, 200)
+        self.assertIsNotNone(self._request("GET", f"/api/memory/items/{item_id}").json()["text"])
+
+    def test_delete_cross_owner_404(self):
+        item_id = self._request("POST", "/api/memory/items", json={"text": "x"}).json()["id"]
+        app.dependency_overrides[get_current_user] = lambda: {"id": "u2", "role": "member"}
+        self.assertEqual(self._request("DELETE", f"/api/memory/items/{item_id}").status_code, 404)
+
+
 if __name__ == "__main__":
     unittest.main()

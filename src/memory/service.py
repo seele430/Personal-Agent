@@ -201,3 +201,13 @@ def history(owner_id: str, item_id: int, *, limit: int = 50) -> dict:
         "truncation_reason": truncation_reason,
         "window_has_current": current_id is not None and any(row["id"] == current_id for row in rows),
     }
+
+def delete(owner_id: str, item_id: int) -> bool:
+    store = get_memory_store()
+    item = store.get_item(item_id)
+
+    if item is None or item.owner_id != owner_id:
+        return False
+
+    store.delete_item(item_id)
+    return True

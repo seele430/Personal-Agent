@@ -123,3 +123,25 @@
   border-radius: 6px;
   padding: 3px 6px;
 }
+
+
+.memory-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.memory-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memory-edit textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #333);
+  background: transparent;
+  color: inherit;
+  resize: vertical;
+}

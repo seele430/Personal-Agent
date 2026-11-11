@@ -132,5 +132,21 @@ class MemoryServiceCase(unittest.TestCase):
         self.assertTrue(any(row["id"] == first.id for row in result["items"]))
 
 
+
+    def test_delete_owner_only_and_list_excludes(self):
+        item = service.remember("u1", "要删的", key="k")
+        self.assertFalse(service.delete("u2", item.id))
+        self.assertTrue(service.delete("u1", item.id))
+        self.assertEqual(service.list_current("u1")["total"], 0)
+        self.assertIsNotNone(service.get_item("u1", item.id).deleted_at)
+
+    def test_delete_keeps_history(self):
+        item = service.remember("u1", "旧值", key="k")
+        service.remember("u1", "新值", key="k")
+        service.delete("u1", item.id)
+        history = service.history("u1", item.id)
+        self.assertEqual(history["items"][0]["version_status"], "deleted")
+
+
 if __name__ == "__main__":
     unittest.main()

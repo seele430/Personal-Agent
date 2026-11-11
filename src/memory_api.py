@@ -126,6 +126,21 @@ def get_item(
     return _item(item)
 
 
+@router.delete("/items/{item_id}", status_code=204)
+def delete_item(
+    item_id: int,
+    response: Response,
+    user: dict = Depends(get_current_user),
+):
+    owner = _owner(user)
+    response.headers["Cache-Control"] = "no-store"
+
+    if not service.delete(owner, item_id):
+        raise HTTPException(status_code=404, detail="memory_not_found")
+
+    return Response(status_code=204)
+
+
 @router.get("/items/{item_id}/history")
 def get_history(
     item_id: int,

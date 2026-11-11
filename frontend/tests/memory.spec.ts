@@ -134,3 +134,89 @@ test.describe("记忆面板", () => {
     expectNoUnmockedApi(unexpected);
   });
 });
+
+test.describe("记忆编辑与删除", () => {
+  test("编辑走同 key 新版本", async ({ page }) => {
+    const unexpected = await setupPage(page);
+    const posts: string[] = [];
+    await page.route("**/api/memory/items?*", async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ mode: "list", items: [ITEM], total: 1, limit: 20, offset: 0, has_more: false }),
+      });
+    });
+    await page.route("**/api/memory/items/2", async (route: Route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(ITEM) });
+    });
+    await page.route("**/api/memory/items/2/history", async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ anchor_id: 2, current_id: 2, items: [], count: 0, total_count: 0, truncated: false, window_has_current: true }),
+      });
+    });
+    await page.route("**/api/memory/items", async (route: Route) => {
+      if (route.request().method() !== "POST") {
+        return route.continue();
+      }
+
+      posts.push(route.request().postData() ?? "");
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ ...ITEM, id: 3 }),
+      });
+    });
+
+    await login(page);
+    await openMemory(page);
+    await page.locator(".memory-table tbody tr").first().click();
+    await page.getByRole("button", { name: "编辑" }).click();
+    await page.getByLabel("编辑记忆内容").fill("改为喜欢乌龙");
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect.poll(() => posts.length).toBe(1);
+    expect(JSON.parse(posts[0])).toMatchObject({ text: "改为喜欢乌龙", key: "drink" });
+    expectNoUnmockedApi(unexpected);
+  });
+
+  test("删除二次确认后才发 DELETE", async ({ page }) => {
+    const unexpected = await setupPage(page);
+    const deletes: string[] = [];
+    let accepted = false;
+    page.on("dialog", async (dialog) => {
+      accepted = true;
+      await dialog.accept();
+    });
+    await page.route("**/api/memory/items?*", async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ mode: "list", items: [ITEM], total: 1, limit: 20, offset: 0, has_more: false }),
+      });
+    });
+    await page.route("**/api/memory/items/2", async (route: Route) => {
+      if (route.request().method() === "DELETE") {
+        deletes.push(route.request().url());
+        return route.fulfill({ status: 204, body: "" });
+      }
+
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(ITEM) });
+    });
+    await page.route("**/api/memory/items/2/history", async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ anchor_id: 2, current_id: 2, items: [], count: 0, total_count: 0, truncated: false, window_has_current: true }),
+      });
+    });
+
+    await login(page);
+    await openMemory(page);
+    await page.locator(".memory-table tbody tr").first().click();
+    await page.getByRole("button", { name: "删除" }).click();
+    await expect.poll(() => deletes.length).toBe(1);
+    expect(accepted).toBe(true);
+    expectNoUnmockedApi(unexpected);
+  });
+});

@@ -59,6 +59,9 @@ export default function MemoryView({ authToken }: { authToken?: string }) {
   const [detail, setDetail] = useState<MemoryItem | null>(null);
   const [history, setHistory] = useState<History | null>(null);
   const [historyError, setHistoryError] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState("");
+  const [busy, setBusy] = useState(false);
   const requestRef = useRef(0);
 
   const load = useCallback(async (nextMode: "list" | "search", nextQuery: string, nextOffset: number) => {
@@ -111,6 +114,8 @@ export default function MemoryView({ authToken }: { authToken?: string }) {
     setDetail(item);
     setHistory(null);
     setHistoryError("");
+    setEditing(false);
+    setEditText(item.text);
 
     try {
       const [detailResponse, historyResponse] = await Promise.all([
@@ -129,6 +134,64 @@ export default function MemoryView({ authToken }: { authToken?: string }) {
       }
     } catch {
       setHistoryError("历史加载失败");
+    }
+  }
+
+  async function saveEdit() {
+    if (!detail) return;
+    setBusy(true);
+
+    try {
+      const response = await fetch("/api/memory/items", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: editText,
+          key: detail.key,
+          kind: detail.kind,
+          layer: detail.layer,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`保存失败（${response.status}）`);
+      }
+
+      const created = await response.json();
+      setEditing(false);
+      setDetail({ ...detail, ...created, text: editText });
+      void load("list", "", 0);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "保存失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeItem() {
+    if (!detail) return;
+
+    if (!window.confirm(`确认删除记忆 #${detail.id}？`)) return;
+
+    setBusy(true);
+
+    try {
+      const response = await fetch(`/api/memory/items/${detail.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        throw new Error(`删除失败（${response.status}）`);
+      }
+
+      setDetail(null);
+      setHistory(null);
+      void load("list", "", 0);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "删除失败");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -232,9 +295,23 @@ export default function MemoryView({ authToken }: { authToken?: string }) {
         <aside className="memory-detail">
           <header>
             <h3>记忆 #{detail.id}</h3>
-            <button type="button" onClick={() => { setDetail(null); setHistory(null); }}>关闭</button>
+            <div className="memory-actions">
+              <button type="button" onClick={() => { setEditing(true); setEditText(detail.text); }} disabled={busy}>编辑</button>
+              <button type="button" onClick={() => void removeItem()} disabled={busy}>删除</button>
+              <button type="button" onClick={() => { setDetail(null); setHistory(null); }}>关闭</button>
+            </div>
           </header>
-          <p className="memory-full">{detail.text}</p>
+          {editing ? (
+            <div className="memory-edit">
+              <textarea value={editText} onChange={(event) => setEditText(event.target.value)} rows={4} aria-label="编辑记忆内容" />
+              <div className="memory-actions">
+                <button type="button" onClick={() => void saveEdit()} disabled={busy || !editText.trim()}>保存</button>
+                <button type="button" onClick={() => setEditing(false)} disabled={busy}>取消</button>
+              </div>
+            </div>
+          ) : (
+            <p className="memory-full">{detail.text}</p>
+          )}
           <p>key：{detail.key || "无"}；类型：{detail.kind}；层：{detail.layer}</p>
           <p>信任：{TRUST_TEXT[detail.trust] ?? detail.trust}</p>
           <p>生效：{detail.valid_from}{detail.valid_to ? ` → ${detail.valid_to}` : ""}</p>
