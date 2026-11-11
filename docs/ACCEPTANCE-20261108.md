@@ -29,9 +29,9 @@ v1.4a 本地与模拟闭环、B1 功能链、v1.5–v1.8，均有实测证据。
 | v1.0 | ✅ 达标 | ⚠️ W6 重跑超预算（≥7 次 vs 2 次） | 🟡 **部分通过（成果通过 / 过程偏差）** |
 | v1.1 | 短素材 ✅ / 长素材 93.3% | 无真人素材 | 🟡 **部分通过** |
 | v1.2 | 本地 TLS 8/8 + 手机真机 + Caddy loopback 反代 | LAN/手机经 Caddy 未验；owner 决定不追 | 🟡 **部分通过（反代 loopback 通过）** |
-| v1.3 | 时间线/Diff/CLI + fallback + QQ 通知 + Office | Sleep 已实验（Phase 1/2）后整体删除：无价值 | 🟡 **部分通过（Sleep 不做）** |
-| v1.4a | 本地 Registry/Guard/Verify + 模拟 Provider + **真实外部 API** ✅ + **真实外部 Agent（Qwen Code）✅** + **ntfy 通知出站 ✅** | QQ 入站/接力未做 | 🟡 **部分通过（仅缺 QQ）** |
-| v1.4b/c | 真机入站 ✅ + `/ask` ✅ + 队列/状态机 ✅ + `/cancel` ✅ | 优先级队列未做 | 🟡 **部分通过** |
+| v1.3 | 时间线/Diff/CLI + fallback + QQ 通知 + Office + 记忆闭环 | Sleep 已实验（Phase 1/2）后整体删除：无价值 | ✅ **完成（Sleep 不采用）** |
+| v1.4a | 本地 Registry/Guard/Verify + 真实 API + Qwen Code + ntfy | 真实 QQ 出站在该链未验证，按 ntfy 降级 | 🟡 **分阶段签收** |
+| v1.4b/c | 真机入站 + `/ask` + 队列/状态机 + `/cancel` | 优先级队列为可选增强，未排期 | ✅ **签收** |
 | v1.4g | 意图路由 MVP：读文件确认/危险拒绝/纯文本问答真机通过 | 出图/写文件/分类器未做 | ✅ **G1–G8 通过** |
 | v1.4j | CLI Provider 接力 + 同任务继续 | 心跳/accept/staging 由 v1.4k 补齐 | ✅ **合并验收通过** |
 | v1.4k | 心跳续租、accept 完整校验、条件原子提交、启动清理 | 文本检查点未做（已收窄合同） | ✅ **合并验收通过** |
