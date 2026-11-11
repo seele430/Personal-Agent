@@ -18,5 +18,12 @@ class AuthCompatCase(unittest.TestCase):
         self.assertEqual(self.client.get("/api/artifacts").status_code, 401)
 
 
+
+    def test_console_and_monitor_prefixes_reach_router(self):
+        for path in ("/api/console/snapshot", "/api/monitors", "/api/notifications", "/api/usage/summary"):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 401)
+
+
 if __name__ == "__main__":
     unittest.main()

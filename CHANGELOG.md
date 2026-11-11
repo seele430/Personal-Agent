@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.3.1 — 2026-11-11
+
+### 修复
+
+- 补齐 `/api/console`、`/api/monitors`、`/api/notifications`、`/api/inbox`、
+  `/api/teams`、`/api/usage`、`/api/bots` 的前缀兼容重写；修复 v1.3.0 中
+  平台控制台、任务中心等页面返回 404。
+- 新增路由兼容回归测试。
+
+### 验证
+
+```text
+后端：collected 2231 / ran 2225 / passed 2223 / skipped 2 / not-run 6
+```
+
 ## v1.3.0 — 2026-11-11
 
 单用户、本地运行的 Personal Agent 1.3 版本。数据默认不出本机，服务只监听

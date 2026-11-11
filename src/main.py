@@ -499,7 +499,11 @@ app.include_router(video_router)
 async def _compat_api_auth_prefix(request, call_next):
     path = request.url.path
 
-    for prefix in ("/api/auth", "/api/chat", "/api/reminders"):
+    for prefix in (
+        "/api/auth", "/api/chat", "/api/reminders", "/api/console",
+        "/api/monitors", "/api/notifications", "/api/inbox",
+        "/api/teams", "/api/usage", "/api/bots",
+    ):
         if path == prefix or path.startswith(prefix + "/"):
             request.scope["path"] = path[len("/api"):]
             break
