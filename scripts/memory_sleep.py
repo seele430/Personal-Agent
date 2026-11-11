@@ -99,6 +99,14 @@ def main(argv=None) -> int:
             print(json.dumps(restore(store, args.snapshot_id), ensure_ascii=False, indent=2))
             return 0
 
+        if args.command == "ab" and not args.candidate:
+            queries = json.loads(Path(args.queries).read_text(encoding="utf-8"))["queries"]
+            groups = json.loads(Path(args.groups).read_text(encoding="utf-8"))["groups"] if args.groups else None
+            before = ab_retrieval(store, args.owner, queries, as_of=args.as_of)
+            before_groups = group_metrics(store, args.owner, groups, as_of=args.as_of) if groups else None
+            print(json.dumps({"before": before, "before_groups": before_groups}, ensure_ascii=False, indent=2))
+            return 0
+
         candidate = json.loads(Path(args.candidate).read_text(encoding="utf-8"))
         snapshot_id = candidate["base_snapshot_id"]
         snapshot, _ = MemoryVersions(store).get(snapshot_id)
@@ -144,7 +152,7 @@ def main(argv=None) -> int:
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0 if result["passed"] else 3
 
-    except SleepError as error:
+    except (SleepError, MemoryError) as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False))
         return 2
 

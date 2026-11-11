@@ -499,5 +499,84 @@ class SleepCase(unittest.TestCase):
         self.assertEqual(len(result["before_samples_ms"]), 4)
 
 
+
+    def test_as_of_none_rejected_everywhere(self):
+        item = self.add("same")
+        snapshot = self.snapshot()
+        candidate = self._forge(snapshot, [{
+            "op": "expire", "reason": "exact_dedupe", "item_id": item.id,
+            "expected_sha256": sleep.item_hash(item), "evidence_ids": [item.id],
+        }])
+
+        for call in (
+            lambda: sleep.propose(self.store, OWNER, as_of=None, snapshot=snapshot),
+            lambda: sleep.ab_retrieval(self.store, OWNER, [], as_of=None),
+            lambda: sleep.ab_paired(self.store, self.store, OWNER, [], as_of=None),
+        ):
+            with self.assertRaises(sleep.SleepError):
+                call()
+
+        bad = dict(candidate)
+        bad["as_of"] = None
+        bad["candidate_id"] = sleep._sha({k: v for k, v in bad.items() if k != "candidate_id"})
+        result = sleep.validate(self.store, bad, snapshot)
+        self.assertFalse(result["ok"])
+        self.assertIn("as_of_invalid", result["errors"])
+
+    def test_ab_retrieval_normalizes_timezone(self):
+        self.add("alpha project fact", key="a")
+        result = sleep.ab_retrieval(
+            self.store, OWNER, [{"query": "alpha", "expected_keys": ["a"]}],
+            as_of="2026-12-01T08:00:00+08:00",
+        )
+        self.assertEqual(result["as_of"], "2026-12-01T00:00:00+00:00")
+
+    def test_baseline_false_hits_fail_even_if_after_zero(self):
+        before_groups = {"unanswerable": {"recall_at_5": 0.0, "mrr": 0.0, "conflict_top1": None, "unanswerable_false_hits": 1, "revived": 0}}
+        after_groups = {"unanswerable": {"recall_at_5": 0.0, "mrr": 0.0, "conflict_top1": None, "unanswerable_false_hits": 0, "revived": 0}}
+        result = sleep.evaluate_ab(
+            {"recall_at_5": 0.0, "mrr": 0.0}, {"recall_at_5": 0.0, "mrr": 0.0},
+            before_groups=before_groups, after_groups=after_groups,
+        )
+        self.assertFalse(result["passed"])
+        self.assertIn("baseline_unanswerable_false_hits:unanswerable", result["reasons"])
+
+    def test_revived_counted_on_unanswerable(self):
+        self.add("deleted project fact", key="deleted-key")
+        fixture = {
+            "groups": [{
+                "name": "deletion",
+                "queries": [{
+                    "query": "deleted", "expected_keys": [],
+                    "unanswerable": True, "forbidden_keys": ["deleted-key"],
+                }],
+            }],
+        }
+        metrics = sleep.group_metrics(self.store, OWNER, fixture["groups"], as_of=AS_OF)
+        self.assertEqual(metrics["deletion"]["revived"], 1)
+
+    def test_cli_baseline_only_and_invalid_time(self):
+        spec = importlib.util.spec_from_file_location(
+            "memory_sleep_cli",
+            Path(__file__).resolve().parents[2] / "scripts" / "memory_sleep.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.add("alpha project fact", key="a")
+        queries = self.root / "queries.json"
+        queries.write_text(json.dumps({"queries": [{"query": "alpha", "expected_keys": ["a"]}]}), encoding="utf-8")
+
+        code = module.main([
+            "ab", "--replica-db", str(self.store.db_path), "--owner", OWNER,
+            "--queries", str(queries), "--as-of", AS_OF,
+        ])
+        self.assertEqual(code, 0)
+        bad = module.main([
+            "ab", "--replica-db", str(self.store.db_path), "--owner", OWNER,
+            "--queries", str(queries), "--as-of", "not-a-time",
+        ])
+        self.assertEqual(bad, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

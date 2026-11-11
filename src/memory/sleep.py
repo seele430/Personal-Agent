@@ -50,6 +50,23 @@ def _normalize(text: str) -> str:
     return " ".join(str(text).split())
 
 
+def _require_as_of(value) -> str:
+    """as_of 必填：None/空/非法 ISO 一律失败；返回规范化 UTC ISO。"""
+
+    if value is None:
+        raise SleepError("as_of_invalid")
+
+    try:
+        normalized = normalize_time(value, field="as_of")
+    except MemoryError:
+        raise SleepError("as_of_invalid") from None
+
+    if not normalized:
+        raise SleepError("as_of_invalid")
+
+    return normalized
+
+
 def item_hash(item) -> str:
     payload = {field: getattr(item, field) for field in FINGERPRINT_FIELDS}
     payload["deleted_at"] = item.deleted_at
@@ -154,7 +171,7 @@ def _supersede_cycles(items: list) -> set[int]:
 
 
 def propose(store, owner_id: str, *, as_of: str, snapshot) -> dict:
-    as_of = normalize_time(as_of, field="as_of") or ""
+    as_of = _require_as_of(as_of)
     items = store.list_items(owner_id, include_deleted=True, limit=100000)
     active = [item for item in items if _active(item, as_of)]
     by_id = {item.id: item for item in items}
@@ -298,12 +315,12 @@ def validate(store, candidate: dict, snapshot) -> dict:
     as_of = candidate.get("as_of")
 
     try:
-        normalized_as_of = normalize_time(as_of, field="as_of")
-    except MemoryError:
+        normalized_as_of = _require_as_of(as_of)
+    except SleepError:
         normalized_as_of = None
         errors.append("as_of_invalid")
 
-    if normalized_as_of != as_of:
+    if normalized_as_of is not None and normalized_as_of != as_of:
         errors.append("as_of_not_normalized")
 
     ops = candidate.get("ops")
@@ -311,6 +328,9 @@ def validate(store, candidate: dict, snapshot) -> dict:
     if not isinstance(ops, list):
         errors.append("ops")
         ops = []
+
+    if normalized_as_of is None:
+        return {"ok": False, "errors": errors, "ops": ops}
 
     seen: set[int] = set()
 
@@ -490,6 +510,7 @@ def ab_retrieval(store, owner_id: str, queries: list[dict], *, as_of: str, k: in
 
     import src.memory.store as store_module
 
+    as_of = _require_as_of(as_of)
     original = store_module.utc_now
     store_module.utc_now = lambda: as_of
     recall_hits = 0
@@ -555,6 +576,9 @@ def evaluate_ab(before: dict, after: dict, *, before_groups=None, after_groups=N
             if before_top1 is not None and (after_top1 is None or after_top1 < before_top1):
                 reasons.append(f"conflict_top1_regressed:{name}")
 
+            if before_group.get("unanswerable_false_hits", 0) > 0:
+                reasons.append(f"baseline_unanswerable_false_hits:{name}")
+
             if after_group.get("unanswerable_false_hits", 0) > 0:
                 reasons.append(f"unanswerable_false_hits:{name}")
 
@@ -572,6 +596,7 @@ def group_metrics(store, owner_id: str, groups: list[dict], *, as_of: str, k: in
 
     import src.memory.store as store_module
 
+    as_of = _require_as_of(as_of)
     original = store_module.utc_now
     store_module.utc_now = lambda: as_of
     report = {}
@@ -591,6 +616,11 @@ def group_metrics(store, owner_id: str, groups: list[dict], *, as_of: str, k: in
                 response = store.search(owner_id, spec["query"], k=k)
                 keys = [hit.item.key for hit in response["hits"]]
 
+
+
+                if spec.get("forbidden_keys"):
+                    revived += len(set(keys) & set(spec["forbidden_keys"]))
+
                 if spec.get("unanswerable"):
                     false_hits += 1 if keys else 0
                     continue
@@ -604,9 +634,6 @@ def group_metrics(store, owner_id: str, groups: list[dict], *, as_of: str, k: in
                 if expected:
                     conflict_total += 1
                     conflict_top1 += 1 if keys and keys[0] in expected else 0
-
-                if spec.get("forbidden_keys"):
-                    revived += len(set(keys) & set(spec["forbidden_keys"]))
 
             report[group["name"]] = {
                 "total": total,
@@ -626,7 +653,7 @@ def ab_paired(before_store, after_store, owner_id: str, queries: list[dict], *, 
 
     import src.memory.store as store_module
 
-    as_of = normalize_time(as_of, field="as_of") or ""
+    as_of = _require_as_of(as_of)
     original = store_module.utc_now
     store_module.utc_now = lambda: as_of
     order = [("before", before_store), ("after", after_store), ("after", after_store), ("before", before_store)]
