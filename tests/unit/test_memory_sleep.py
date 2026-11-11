@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import sqlite3
 import tempfile
 import unittest
 
@@ -35,6 +36,15 @@ class SleepCase(unittest.TestCase):
         params.update(kwargs)
 
         return self.store.add_item(OWNER, **params)
+
+    def sql(self, statement, params=()):
+        connection = sqlite3.connect(self.store.db_path)
+
+        try:
+            connection.execute(statement, params)
+            connection.commit()
+        finally:
+            connection.close()
 
     def snapshot(self):
         return self.versions.create("test-base")
@@ -193,7 +203,7 @@ class SleepCase(unittest.TestCase):
             {"query": "alpha", "expected_keys": ["a"]},
             {"query": "beta", "expected_keys": ["b"]},
         ]
-        result = sleep.ab_retrieval(self.store, OWNER, queries)
+        result = sleep.ab_retrieval(self.store, OWNER, queries, as_of=AS_OF)
         self.assertEqual(result["total"], 2)
         self.assertEqual(result["recall_at_5"], 1.0)
         self.assertGreater(result["mrr"], 0)
@@ -255,7 +265,7 @@ class SleepCase(unittest.TestCase):
             self.store.add_item(owner, **spec)
 
         queries = [query for context in fixture["contexts"] for query in context["queries"]]
-        result = sleep.ab_retrieval(self.store, owner, queries)
+        result = sleep.ab_retrieval(self.store, owner, queries, as_of=fixture["as_of"])
         self.assertEqual(result["total"], 90)
         self.assertGreaterEqual(result["recall_at_5"], 0.9)
 
@@ -275,11 +285,136 @@ class SleepCase(unittest.TestCase):
         snapshot = self.versions.create("fixture-base")
         candidate = sleep.propose(self.store, owner, as_of=fixture["as_of"], snapshot=snapshot)
         self.assertEqual(len(candidate["ops"]), 5)
-        before = sleep.ab_retrieval(self.store, owner, queries)
+        before = sleep.ab_retrieval(self.store, owner, queries, as_of=fixture["as_of"])
         sleep.apply(self.store, candidate, snapshot)
-        after = sleep.ab_retrieval(self.store, owner, queries)
+        after = sleep.ab_retrieval(self.store, owner, queries, as_of=fixture["as_of"])
         self.assertEqual(before["recall_at_5"], after["recall_at_5"])
         self.assertEqual(after["recall_at_5"], 1.0)
+
+
+
+    def _forge(self, snapshot, ops):
+        candidate = {
+            "schema_version": sleep.SCHEMA_VERSION,
+            "ruleset_version": sleep.RULESET_VERSION,
+            "base_snapshot_id": snapshot.id,
+            "base_sha256": snapshot.sha256,
+            "owner_id": OWNER,
+            "as_of": AS_OF,
+            "ops": ops,
+            "reports": {},
+        }
+        candidate["candidate_id"] = sleep._sha(candidate)
+
+        return candidate
+
+    def test_forged_expire_without_duplicate_rejected(self):
+        item = self.add("solo")
+        snapshot = self.snapshot()
+        candidate = self._forge(snapshot, [{
+            "op": "expire", "reason": "exact_dedupe", "item_id": item.id,
+            "expected_sha256": sleep.item_hash(item), "evidence_ids": [999],
+        }])
+        result = sleep.validate(self.store, candidate, snapshot)
+        self.assertFalse(result["ok"])
+        self.assertIn("semantic_mismatch", result["errors"])
+
+        with self.assertRaises(sleep.SleepError):
+            sleep.apply(self.store, candidate, snapshot)
+
+        self.assertIsNone(self.store.get_item(item.id).valid_to)
+
+    def test_supersede_cycle_fails_closed(self):
+        first = self.add("a")
+        second = self.add("b", supersedes_id=first.id)
+        self.sql(
+            "UPDATE memory_items SET supersedes_id = ? WHERE id = ?",
+            (second.id, first.id),
+        )
+        snapshot = self.snapshot()
+        candidate = sleep.propose(self.store, OWNER, as_of=AS_OF, snapshot=snapshot)
+        self.assertEqual(candidate["ops"], [])
+        self.assertEqual(sorted(candidate["reports"]["supersede_cycles"]), sorted([first.id, second.id]))
+
+    def test_base_drift_rejected(self):
+        self.add("same")
+        self.add("same")
+        candidate, snapshot = self.plan()
+        self.add("new after snapshot")
+
+        with self.assertRaises(sleep.SleepError) as caught:
+            sleep.apply(self.store, candidate, snapshot)
+
+        self.assertIn("base_mismatch", str(caught.exception))
+
+    def test_target_changed_after_plan_rejected(self):
+        item = self.add("same")
+        self.add("same")
+        candidate, snapshot = self.plan()
+        self.sql(
+            "UPDATE memory_items SET text = ? WHERE id = ?", ("changed", item.id)
+        )
+
+        with self.assertRaises(sleep.SleepError):
+            sleep.apply(self.store, candidate, snapshot)
+
+        self.assertIsNone(self.store.get_item(item.id).valid_to)
+
+    def test_ab_regression_gate_fails(self):
+        before = {"recall_at_5": 1.0, "mrr": 1.0}
+        after = {"recall_at_5": 0.0, "mrr": 0.0}
+        result = sleep.evaluate_ab(before, after)
+        self.assertFalse(result["passed"])
+        self.assertIn("recall_regressed", result["reasons"])
+
+    def test_ab_latency_samples_recorded(self):
+        self.add("alpha project fact", key="a")
+        queries = [{"query": "alpha", "expected_keys": ["a"]}]
+        result = sleep.ab_retrieval(self.store, OWNER, queries, as_of=AS_OF)
+        self.assertEqual(len(result["latency"]["samples_ms"]), 1)
+        self.assertIn("p50_ms", result["latency"])
+
+    def test_restore_report_fields(self):
+        item = self.add("same")
+        self.add("same")
+        candidate, snapshot = self.plan()
+        sleep.apply(self.store, candidate, snapshot)
+        result = sleep.restore(self.store, snapshot.id)
+        self.assertIn("items_restored", result)
+        self.assertTrue(result["fts_view_restored"])
+        self.assertFalse(result["events_snapshot_included"])
+
+    def test_source_digest_missing_table_fails_closed(self):
+        empty = self.root / "empty.db"
+        import sqlite3
+
+        sqlite3.connect(empty).close()
+
+        with self.assertRaises(sleep.SleepError):
+            sleep.source_digest(empty)
+
+
+
+    def test_group_metrics_fixture(self):
+        fixture = json.loads(
+            (Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "memory" / "sleep_ab_groups.json")
+            .read_text(encoding="utf-8")
+        )
+        owner = fixture["owner_id"]
+
+        for spec in fixture["items"]:
+            item = self.store.add_item(owner, **spec)
+
+            if spec["key"] in fixture["deleted_keys"]:
+                self.store.delete_item(item.id)
+
+        metrics = sleep.group_metrics(
+            self.store, owner, fixture["groups"], as_of=fixture["as_of"]
+        )
+        self.assertEqual(metrics["recall"]["recall_at_5"], 1.0)
+        self.assertEqual(metrics["conflict"]["conflict_top1"], 1.0)
+        self.assertEqual(metrics["unanswerable"]["unanswerable_false_hits"], 0)
+        self.assertEqual(metrics["deletion"]["revived"], 0)
 
 
 if __name__ == "__main__":

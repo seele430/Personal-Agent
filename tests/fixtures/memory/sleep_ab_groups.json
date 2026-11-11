@@ -1,0 +1,168 @@
+{
+  "as_of": "2026-12-01T00:00:00Z",
+  "deleted_keys": [
+    "deleted-key"
+  ],
+  "generator": "groups-v1",
+  "groups": [
+    {
+      "name": "recall",
+      "queries": [
+        {
+          "expected_keys": [
+            "active-a"
+          ],
+          "query": "alpha"
+        },
+        {
+          "expected_keys": [
+            "active-b"
+          ],
+          "query": "beta"
+        },
+        {
+          "expected_keys": [
+            "supersede-new"
+          ],
+          "query": "canonical"
+        }
+      ]
+    },
+    {
+      "name": "conflict",
+      "queries": [
+        {
+          "expected_keys": [
+            "conflict-key"
+          ],
+          "query": "conflict"
+        },
+        {
+          "expected_keys": [
+            "conflict-key"
+          ],
+          "query": "variant"
+        },
+        {
+          "expected_keys": [
+            "conflict-key"
+          ],
+          "query": "one"
+        }
+      ]
+    },
+    {
+      "name": "deletion",
+      "queries": [
+        {
+          "expected_keys": [],
+          "forbidden_keys": [
+            "deleted-key"
+          ],
+          "query": "deleted",
+          "unanswerable": true
+        },
+        {
+          "expected_keys": [],
+          "forbidden_keys": [
+            "deleted-key"
+          ],
+          "query": "deleted project",
+          "unanswerable": true
+        },
+        {
+          "expected_keys": [],
+          "forbidden_keys": [
+            "deleted-key"
+          ],
+          "query": "gone",
+          "unanswerable": true
+        }
+      ]
+    },
+    {
+      "name": "unanswerable",
+      "queries": [
+        {
+          "expected_keys": [],
+          "query": "zzz-nothing",
+          "unanswerable": true
+        },
+        {
+          "expected_keys": [],
+          "query": "qqq-nothing",
+          "unanswerable": true
+        },
+        {
+          "expected_keys": [],
+          "query": "xxx-nothing",
+          "unanswerable": true
+        }
+      ]
+    }
+  ],
+  "items": [
+    {
+      "key": "active-a",
+      "kind": "project_fact",
+      "layer": "project",
+      "text": "active alpha project",
+      "trust": "user_confirmed"
+    },
+    {
+      "key": "active-b",
+      "kind": "project_fact",
+      "layer": "project",
+      "text": "active beta project",
+      "trust": "user_confirmed"
+    },
+    {
+      "key": "supersede-new",
+      "kind": "project_fact",
+      "layer": "project",
+      "text": "new canonical project fact",
+      "trust": "user_confirmed"
+    },
+    {
+      "key": "conflict-key",
+      "kind": "project_fact",
+      "layer": "project",
+      "text": "conflict variant one",
+      "trust": "user_confirmed"
+    },
+    {
+      "key": "conflict-key",
+      "kind": "project_fact",
+      "layer": "project",
+      "text": "conflict variant two",
+      "trust": "user_confirmed"
+    },
+    {
+      "key": "expired-key",
+      "kind": "project_fact",
+      "layer": "project",
+      "text": "expired project fact",
+      "trust": "user_confirmed",
+      "valid_from": "2025-01-01T00:00:00Z",
+      "valid_to": "2026-01-01T00:00:00Z"
+    },
+    {
+      "key": "future-key",
+      "kind": "project_fact",
+      "layer": "project",
+      "text": "future project fact",
+      "trust": "user_confirmed",
+      "valid_from": "2027-01-01T00:00:00Z"
+    },
+    {
+      "key": "deleted-key",
+      "kind": "project_fact",
+      "layer": "project",
+      "text": "deleted project fact",
+      "trust": "user_confirmed"
+    }
+  ],
+  "owner_id": "owner-sleep-groups",
+  "sha256": "a14b319f2a86329da3c69797ff1d4abbf331b7890bc170b26cca5ec78a902d25",
+  "version": 1
+}

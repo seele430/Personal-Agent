@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 
 from src import config  # noqa: E402
 from src.memory.sleep import (  # noqa: E402
-    SleepError, ab_retrieval, apply, propose, replica_freeze, restore, validate,
+    SleepError, ab_retrieval, apply, evaluate_ab, propose, replica_freeze, restore, validate,
 )
 from src.memory.store import MemoryStore  # noqa: E402
 from src.memory.versions import MemoryVersions  # noqa: E402
@@ -57,6 +57,7 @@ def main(argv=None) -> int:
     publish = sub.add_parser("publish")
     publish.add_argument("--replica-db", required=True)
     publish.add_argument("--candidate", required=True)
+    publish.add_argument("--base-sha", required=True)
 
     rollback = sub.add_parser("rollback")
     rollback.add_argument("--replica-db", required=True)
@@ -66,6 +67,7 @@ def main(argv=None) -> int:
     ab.add_argument("--replica-db", required=True)
     ab.add_argument("--owner", required=True)
     ab.add_argument("--queries", required=True)
+    ab.add_argument("--as-of", required=True)
     ab.add_argument("--candidate")
 
     args = parser.parse_args(argv)
@@ -103,19 +105,23 @@ def main(argv=None) -> int:
             return 0
 
         if args.command == "publish":
+            if args.base_sha != candidate["base_sha256"] or args.base_sha != snapshot.sha256:
+                raise SleepError("base-sha 不匹配")
+
             print(json.dumps(apply(store, candidate, snapshot), ensure_ascii=False, indent=2))
             return 0
 
         if args.command == "ab":
             queries = json.loads(Path(args.queries).read_text(encoding="utf-8"))["queries"]
-            before = ab_retrieval(store, args.owner, queries)
+            before = ab_retrieval(store, args.owner, queries, as_of=args.as_of)
 
             if args.candidate:
                 apply(store, candidate, snapshot)
 
-            after = ab_retrieval(store, args.owner, queries)
-            print(json.dumps({"before": before, "after": after}, ensure_ascii=False, indent=2))
-            return 0
+            after = ab_retrieval(store, args.owner, queries, as_of=args.as_of)
+            result = evaluate_ab(before, after)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0 if result["passed"] else 3
 
     except SleepError as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False))

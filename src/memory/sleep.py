@@ -1,13 +1,13 @@
 """Sleep-time Compute Phase 1：确定性候选、临时副本、检索 A/B。
 
-严格边界（按复审 v1.1）：
+安全合同（复审 v1.1 + 返修）：
 
-- 生产库只读；所有写操作只发生在显式临时副本；
-- 候选只做完整重复去重与显式 supersedes 过期；
-- 同 key 不同正文只报告，不自动取代；
-- base 快照 / 行哈希不匹配则整批失败关闭；
-- apply 单事务（BEGIN IMMEDIATE），事件同事务写入；
-- 快照不含 memory_events，回滚只承诺条目 + FTS 视图。
+- 生产库只读；写只发生在显式临时副本；
+- 候选必须等于「同一 base 上重新生成的确定性 ops」，否则整批拒绝；
+- supersedes 成环、缺失 evidence、矛盾 op 失败关闭；
+- apply 在 BEGIN IMMEDIATE 内重新核对 base 与每行前置哈希；
+- 单事务写事件；restore 只承诺条目 + FTS，events 不入快照；
+- A/B 固定 as_of，Recall/MRR 任一下降即失败。
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import time
 
 from contextlib import closing
 from pathlib import Path
@@ -50,13 +51,15 @@ def _normalize(text: str) -> str:
 
 
 def item_hash(item) -> str:
-    """一条记忆的完整语义哈希（用于候选绑定与前置状态校验）。"""
-
-    payload = {
-        field: getattr(item, field)
-        for field in FINGERPRINT_FIELDS
-    }
+    payload = {field: getattr(item, field) for field in FINGERPRINT_FIELDS}
     payload["deleted_at"] = item.deleted_at
+
+    return _sha(payload)
+
+
+def _dict_hash(item: dict) -> str:
+    payload = {field: item.get(field) for field in FINGERPRINT_FIELDS}
+    payload["deleted_at"] = item.get("deleted_at")
 
     return _sha(payload)
 
@@ -78,33 +81,30 @@ def _active(item, as_of: str) -> bool:
 
 
 def source_digest(db_path: str | Path) -> str:
-    """对记忆三表做内容哈希；用于证明源库没有被写。"""
+    """三表净内容哈希；缺表失败关闭。"""
 
     digest = hashlib.sha256()
 
     with closing(sqlite3.connect(db_path)) as connection:
-        connection.row_factory = sqlite3.Row
-
         for table in ("memory_items", "memory_events", "memory_snapshots"):
             try:
-                rows = connection.execute(
-                    f"SELECT * FROM {table} ORDER BY rowid"
-                ).fetchall()
-            except sqlite3.OperationalError:
-                rows = []
+                rows = connection.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
+                columns = [column[0] for column in connection.execute(
+                    f"SELECT * FROM {table} LIMIT 0"
+                ).description]
+            except sqlite3.OperationalError as error:
+                raise SleepError(f"缺少表：{table}") from error
 
             digest.update(table.encode())
             digest.update(str(len(rows)).encode())
 
             for row in rows:
-                digest.update(_canonical(dict(row)).encode("utf-8"))
+                digest.update(_canonical(dict(zip(columns, row))).encode("utf-8"))
 
     return digest.hexdigest()
 
 
 def replica_freeze(source_db: str | Path, replica_db: str | Path) -> dict:
-    """SQLite backup API 建一致性副本；返回源库前后摘要。"""
-
     source = Path(source_db)
     replica = Path(replica_db)
 
@@ -134,12 +134,30 @@ def replica_freeze(source_db: str | Path, replica_db: str | Path) -> dict:
     }
 
 
-def propose(store, owner_id: str, *, as_of: str, snapshot) -> dict:
-    """生成确定性候选；只读，不写库。"""
+def _supersede_cycles(items: list) -> set[int]:
+    links = {item.id: item.supersedes_id for item in items if item.supersedes_id is not None}
+    cycles: set[int] = set()
 
+    for start in links:
+        seen: list[int] = []
+        current = start
+
+        while current in links and current not in seen:
+            seen.append(current)
+            current = links[current]
+
+        if current in seen:
+            for node in seen[seen.index(current):]:
+                cycles.add(node)
+
+    return cycles
+
+
+def propose(store, owner_id: str, *, as_of: str, snapshot) -> dict:
     items = store.list_items(owner_id, include_deleted=True, limit=100000)
     active = [item for item in items if _active(item, as_of)]
     by_id = {item.id: item for item in items}
+    cycles = _supersede_cycles(items)
     ops: list[dict] = []
     reports: dict = {
         "already_expired": 0,
@@ -147,6 +165,7 @@ def propose(store, owner_id: str, *, as_of: str, snapshot) -> dict:
         "orphan_supersedes": [],
         "duplicate_groups": 0,
         "supersede_chains": 0,
+        "supersede_cycles": sorted(cycles),
     }
 
     for item in items:
@@ -186,18 +205,14 @@ def propose(store, owner_id: str, *, as_of: str, snapshot) -> dict:
 
         old = by_id.get(new.supersedes_id)
 
-        if old is None:
+        if old is None or old.owner_id != owner_id or old.deleted_at is not None:
             reports["orphan_supersedes"].append(new.id)
             continue
 
-        if old.owner_id != owner_id or old.deleted_at is not None:
-            reports["orphan_supersedes"].append(new.id)
+        if new.id in cycles or old.id in cycles:
             continue
 
-        if not _active(old, as_of) or old.id in planned:
-            continue
-
-        if old.valid_from > as_of:
+        if not _active(old, as_of) or old.id in planned or old.valid_from > as_of:
             continue
 
         ops.append({
@@ -223,6 +238,7 @@ def propose(store, owner_id: str, *, as_of: str, snapshot) -> dict:
         if len(texts) > 1
     ]
 
+    ops.sort(key=lambda op: (op["item_id"], op["reason"]))
     candidate = {
         "schema_version": SCHEMA_VERSION,
         "ruleset_version": RULESET_VERSION,
@@ -238,8 +254,21 @@ def propose(store, owner_id: str, *, as_of: str, snapshot) -> dict:
     return candidate
 
 
+def _ops_signature(ops: list[dict]) -> list[tuple]:
+    return sorted(
+        (
+            op.get("item_id"),
+            op.get("reason"),
+            op.get("expected_sha256"),
+            tuple(op.get("evidence_ids") or []),
+        )
+        for op in ops
+        if isinstance(op, dict)
+    )
+
+
 def validate(store, candidate: dict, snapshot) -> dict:
-    """发布前校验；返回 {ok, errors, ops}，不写库。"""
+    """候选语义校验：必须在同一 base 上重算并严格相等。"""
 
     errors: list[str] = []
 
@@ -270,12 +299,13 @@ def validate(store, candidate: dict, snapshot) -> dict:
     if not isinstance(as_of, str) or not as_of.strip():
         errors.append("as_of")
 
-    seen: set[int] = set()
-    ops = candidate.get("ops") or []
+    ops = candidate.get("ops")
 
     if not isinstance(ops, list):
         errors.append("ops")
         ops = []
+
+    seen: set[int] = set()
 
     for op in ops:
         if not isinstance(op, dict) or op.get("op") != "expire":
@@ -313,21 +343,49 @@ def validate(store, candidate: dict, snapshot) -> dict:
 
         if item.valid_to is not None and item.valid_to <= as_of:
             errors.append(f"already_expired:{item_id}")
-            continue
 
-        if op.get("reason") not in ("exact_dedupe", "explicit_supersede"):
-            errors.append(f"reason:{item_id}")
+    if not errors:
+        expected = propose(store, owner_id, as_of=as_of, snapshot=snapshot)
+
+        if _ops_signature(ops) != _ops_signature(expected["ops"]):
+            errors.append("semantic_mismatch")
+
+        if expected["reports"]["supersede_cycles"]:
+            errors.append("supersede_cycle")
 
     return {"ok": not errors, "errors": errors, "ops": ops}
 
 
+def _snapshot_matches(connection, snapshot_items: list[dict]) -> bool:
+    rows = connection.execute("SELECT * FROM memory_items ORDER BY id").fetchall()
+    columns = [column[0] for column in connection.execute(
+        "SELECT * FROM memory_items LIMIT 0"
+    ).description]
+    current = {row[0]: dict(zip(columns, row)) for row in rows}
+
+    if set(current) != {item["id"] for item in snapshot_items}:
+        return False
+
+    for item in snapshot_items:
+        if _dict_hash(current[item["id"]]) != _dict_hash(item):
+            return False
+
+    return True
+
+
 def apply(store, candidate: dict, snapshot) -> dict:
-    """在临时副本上单事务 apply；失败整批回滚。"""
+    """临时副本单事务 apply：base 与行哈希都在 BEGIN IMMEDIATE 内核对。"""
 
     check = validate(store, candidate, snapshot)
 
     if not check["ok"]:
         raise SleepError("候选校验失败：" + ", ".join(check["errors"]))
+
+    versions = MemoryVersions(store)
+    stored_snapshot, snapshot_items = versions.get(snapshot.id)
+
+    if stored_snapshot.sha256 != snapshot.sha256:
+        raise SleepError("快照 SHA 不一致")
 
     now = utc_now()
     applied: list[int] = []
@@ -336,12 +394,29 @@ def apply(store, candidate: dict, snapshot) -> dict:
     try:
         connection.execute("BEGIN IMMEDIATE")
 
+        if not _snapshot_matches(connection, snapshot_items):
+            raise SleepError("base_mismatch：当前副本已偏离 base snapshot")
+
         for op in check["ops"]:
+            row = connection.execute(
+                "SELECT * FROM memory_items WHERE id = ?", (op["item_id"],)
+            ).fetchone()
+            columns = [column[0] for column in connection.execute(
+                "SELECT * FROM memory_items LIMIT 0"
+            ).description]
+            current = dict(zip(columns, row))
+
+            if _dict_hash(current) != op["expected_sha256"]:
+                raise SleepError(f"stale_item：{op['item_id']}")
+
             cursor = connection.execute(
                 "UPDATE memory_items SET valid_to = ?, updated_at = ? "
                 "WHERE id = ? AND owner_id = ? AND deleted_at IS NULL "
-                "AND (valid_to IS NULL OR valid_to > ?)",
-                (candidate["as_of"], now, op["item_id"], candidate["owner_id"], candidate["as_of"]),
+                "AND updated_at = ? AND (valid_to IS ?)",
+                (
+                    candidate["as_of"], now, op["item_id"], candidate["owner_id"],
+                    current["updated_at"], current["valid_to"],
+                ),
             )
 
             if cursor.rowcount != 1:
@@ -354,6 +429,14 @@ def apply(store, candidate: dict, snapshot) -> dict:
             )
             applied.append(op["item_id"])
 
+        for item_id in applied:
+            row = connection.execute(
+                "SELECT valid_to FROM memory_items WHERE id = ?", (item_id,)
+            ).fetchone()
+
+            if row is None or row[0] != candidate["as_of"]:
+                raise SleepError(f"提交前复核失败：{item_id}")
+
         connection.commit()
     except Exception:
         connection.rollback()
@@ -365,43 +448,137 @@ def apply(store, candidate: dict, snapshot) -> dict:
 
 
 def restore(store, snapshot_id: int) -> dict:
-    """恢复条目与 FTS 视图；明确 events 不在快照内。"""
-
     versions = MemoryVersions(store)
     result = versions.restore(snapshot_id)
+
+    with closing(sqlite3.connect(store.db_path)) as connection:
+        fts_count = connection.execute("SELECT COUNT(*) FROM memory_items_fts").fetchone()[0]
+        live = connection.execute(
+            "SELECT COUNT(*) FROM memory_items WHERE deleted_at IS NULL"
+        ).fetchone()[0]
+
+    result["items_restored"] = result.pop("restored")
+    result["fts_view_restored"] = fts_count == live
     result["events_snapshot_included"] = False
 
     return result
 
 
-def ab_retrieval(store, owner_id: str, queries: list[dict], *, k: int = 5) -> dict:
-    """检索层 A/B 指标（0 模型调用）。"""
+def _latency(samples: list[float]) -> dict:
+    ordered = sorted(samples)
 
+    def percentile(ratio: float) -> float:
+        if not ordered:
+            return 0.0
+
+        index = min(len(ordered) - 1, int(round((len(ordered) - 1) * ratio)))
+
+        return ordered[index]
+
+    return {"p50_ms": percentile(0.5), "p95_ms": percentile(0.95), "samples_ms": samples}
+
+
+def ab_retrieval(store, owner_id: str, queries: list[dict], *, as_of: str, k: int = 5) -> dict:
+    """检索层 A/B；显式固定 as_of（评测侧时钟注入）。"""
+
+    import src.memory.store as store_module
+
+    original = store_module.utc_now
+    store_module.utc_now = lambda: as_of
     recall_hits = 0
-    recall_total = 0
     reciprocal = 0.0
     samples = []
+    timings = []
 
-    for spec in queries:
-        expected = set(spec.get("expected_keys") or [])
-        response = store.search(owner_id, spec["query"], k=k)
-        keys = [hit.item.key for hit in response["hits"]]
-        hit = bool(expected & set(keys))
-        rank = next((index + 1 for index, key in enumerate(keys) if key in expected), None)
-        recall_total += 1
-        recall_hits += 1 if hit else 0
-        reciprocal += (1.0 / rank) if rank else 0.0
-        samples.append({
-            "query": spec["query"],
-            "expected_keys": sorted(expected),
-            "top_keys": keys,
-            "hit": hit,
-            "rank": rank,
-        })
+    try:
+        for spec in queries:
+            expected = set(spec.get("expected_keys") or [])
+            started = time.perf_counter()
+            response = store.search(owner_id, spec["query"], k=k)
+            timings.append((time.perf_counter() - started) * 1000)
+            keys = [hit.item.key for hit in response["hits"]]
+            hit = bool(expected & set(keys))
+            rank = next((index + 1 for index, key in enumerate(keys) if key in expected), None)
+            recall_hits += 1 if hit else 0
+            reciprocal += (1.0 / rank) if rank else 0.0
+            samples.append({
+                "query": spec["query"],
+                "expected_keys": sorted(expected),
+                "top_keys": keys,
+                "hit": hit,
+                "rank": rank,
+            })
+    finally:
+        store_module.utc_now = original
+
+    total = len(queries)
 
     return {
-        "recall_at_5": (recall_hits / recall_total) if recall_total else 0.0,
-        "mrr": (reciprocal / recall_total) if recall_total else 0.0,
-        "total": recall_total,
+        "recall_at_5": (recall_hits / total) if total else 0.0,
+        "mrr": (reciprocal / total) if total else 0.0,
+        "total": total,
         "samples": samples,
+        "latency": _latency(timings),
+        "as_of": as_of,
     }
+
+
+def evaluate_ab(before: dict, after: dict) -> dict:
+    reasons = []
+
+    if after["recall_at_5"] < before["recall_at_5"]:
+        reasons.append("recall_regressed")
+
+    if after["mrr"] < before["mrr"]:
+        reasons.append("mrr_regressed")
+
+    return {"passed": not reasons, "reasons": reasons, "before": before, "after": after}
+
+def group_metrics(store, owner_id: str, groups: list[dict], *, as_of: str, k: int = 5) -> dict:
+    """按组统计 recall / 冲突 top1 / 不可回答误命中 / 删除复活。"""
+
+    import src.memory.store as store_module
+
+    original = store_module.utc_now
+    store_module.utc_now = lambda: as_of
+    report = {}
+
+    try:
+        for group in groups:
+            expected_hits = 0
+            total = 0
+            conflict_top1 = 0
+            conflict_total = 0
+            false_hits = 0
+            revived = 0
+
+            for spec in group.get("queries", []):
+                expected = set(spec.get("expected_keys") or [])
+                response = store.search(owner_id, spec["query"], k=k)
+                keys = [hit.item.key for hit in response["hits"]]
+
+                if spec.get("unanswerable"):
+                    false_hits += 1 if keys else 0
+                    continue
+
+                total += 1
+                expected_hits += 1 if expected & set(keys) else 0
+
+                if expected:
+                    conflict_total += 1
+                    conflict_top1 += 1 if keys and keys[0] in expected else 0
+
+                if spec.get("forbidden_keys"):
+                    revived += len(set(keys) & set(spec["forbidden_keys"]))
+
+            report[group["name"]] = {
+                "total": total,
+                "recall_at_5": (expected_hits / total) if total else 0.0,
+                "conflict_top1": (conflict_top1 / conflict_total) if conflict_total else None,
+                "unanswerable_false_hits": false_hits,
+                "revived": revived,
+            }
+    finally:
+        store_module.utc_now = original
+
+    return report
