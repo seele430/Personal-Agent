@@ -18,7 +18,9 @@ async function memoryTexts(page: Page, query: string): Promise<string[]> {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      throw new Error(`memory query failed: ${response.status}`);
+    }
 
     const data = await response.json();
     return (data.items ?? []).map((item: { text: string }) => item.text);
@@ -50,13 +52,14 @@ test.describe("记忆审批浏览器闭环", () => {
 
   test("拒绝后零写入", async ({ page }) => {
     await login(page);
+    const before = (await memoryTexts(page, "测试记住")).length;
     await send(page, "记住：拒绝写入的测试内容");
 
     const dialog = page.getByRole("alertdialog", { name: "工具审批" });
     await expect(dialog).toBeVisible();
     await page.getByRole("button", { name: "拒绝" }).click();
+    await expect(dialog).toBeHidden();
 
-    await page.waitForTimeout(1000);
-    expect(await memoryTexts(page, "拒绝写入的测试内容")).toEqual([]);
+    expect((await memoryTexts(page, "测试记住")).length).toBe(before);
   });
 });
