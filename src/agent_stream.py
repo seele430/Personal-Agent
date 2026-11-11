@@ -402,6 +402,7 @@ def run_chat_stream(
                         on_started=on_started,
                         on_cancel_requested=on_cancel_requested,
                         require_allow=False,
+                        approved=True,
                         traceparent=exec_traceparent,
                     )
                     result = _finish_platform_exec(

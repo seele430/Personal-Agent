@@ -148,5 +148,66 @@ class MemoryServiceCase(unittest.TestCase):
         self.assertEqual(history["items"][0]["version_status"], "deleted")
 
 
+
+    def test_remember_supersedes_resolved_current_not_max_id(self):
+        high = service.remember("u1", "高信任旧值", key="k", trust="user_confirmed")
+        low = service.remember("u1", "低信任新值", key="k", trust="model_inferred")
+        resolved = service.list_current("u1")["items"][0]
+        self.assertEqual(resolved["id"], high.id)
+
+        new = service.remember("u1", "再次更新", key="k")
+        self.assertEqual(new.supersedes_id, high.id)
+        self.assertNotEqual(new.supersedes_id, low.id)
+
+    def test_delete_newest_deletes_whole_chain(self):
+        old = service.remember("u1", "旧", key="k")
+        new = service.remember("u1", "新", key="k")
+        self.assertTrue(service.delete("u1", new.id))
+        self.assertEqual(service.list_current("u1")["total"], 0)
+        self.assertIsNotNone(service.get_item("u1", old.id).deleted_at)
+
+    def test_history_no_key_single_is_current(self):
+        item = service.remember("u1", "独立事实")
+        result = service.history("u1", item.id)
+        self.assertEqual(result["current_id"], item.id)
+        self.assertEqual(result["items"][0]["version_status"], "current")
+
+    def test_history_detects_ancestor_fork(self):
+        root = service.remember("u1", "root", key="k")
+        child = service.remember("u1", "child", key="k")
+        import sqlite3
+        connection = sqlite3.connect(self.store.db_path)
+        connection.execute(
+            "INSERT INTO memory_items (owner_id,kind,layer,trust,key,value,text,source_ref,"
+            "valid_from,supersedes_id,conflict_group,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("u1", "project_fact", "project", "user_confirmed", "k2", "", "sibling",
+             "api:test", "2020-01-01T00:00:00+00:00", root.id, "g", "2020-01-01T00:00:00+00:00", "2020-01-01T00:00:00+00:00"),
+        )
+        connection.commit()
+        connection.close()
+
+        with self.assertRaises(service.HistoryError) as caught:
+            service.history("u1", child.id)
+
+        self.assertEqual(caught.exception.code, "history_forked")
+
+    def test_history_detects_cross_owner_successor(self):
+        root = service.remember("u1", "root", key="k")
+        other = service.remember("u2", "other", key="k")
+        import sqlite3
+        connection = sqlite3.connect(self.store.db_path)
+        connection.execute(
+            "UPDATE memory_items SET supersedes_id=? WHERE id=?", (root.id, other.id)
+        )
+        connection.commit()
+        connection.close()
+
+        with self.assertRaises(service.HistoryError) as caught:
+            service.history("u1", root.id)
+
+        self.assertEqual(caught.exception.code, "history_owner_mismatch")
+
+
 if __name__ == "__main__":
     unittest.main()

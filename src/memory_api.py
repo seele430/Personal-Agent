@@ -138,7 +138,7 @@ def delete_item(
     if not service.delete(owner, item_id):
         raise HTTPException(status_code=404, detail="memory_not_found")
 
-    return Response(status_code=204)
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/items/{item_id}/history")

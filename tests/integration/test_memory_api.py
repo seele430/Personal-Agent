@@ -93,7 +93,9 @@ class MemoryApiCase(unittest.TestCase):
 
     def test_delete_endpoint(self):
         item_id = self._request("POST", "/api/memory/items", json={"text": "删我"}).json()["id"]
-        self.assertEqual(self._request("DELETE", f"/api/memory/items/{item_id}").status_code, 204)
+        response = self._request("DELETE", f"/api/memory/items/{item_id}")
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.headers.get("Cache-Control"), "no-store")
         self.assertEqual(self._request("GET", f"/api/memory/items/{item_id}").status_code, 200)
         self.assertIsNotNone(self._request("GET", f"/api/memory/items/{item_id}").json()["text"])
 

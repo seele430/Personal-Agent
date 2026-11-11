@@ -222,6 +222,48 @@ class ApprovalGateTest(unittest.TestCase):
         )
         self.assertIn("tool_denied", [event["type"] for event in self.events])
 
+
+    # ------------------------------------------------------------------
+    # 记忆写入：批准前零写入、拒绝零写入、批准后恰好一条
+    # ------------------------------------------------------------------
+
+    def _memory_count(self) -> int:
+        from src.memory.store import MemoryStore
+        from src.config import paths
+
+        store = MemoryStore(paths.knowledge_db)
+        return store.count_items("alice", include_deleted=False)
+
+    def test_memory_remember_requires_approval(self):
+        future = self.start(
+            "memory_remember", '{"text": "记住我 12 月 1 日交项目", "key": "deadline"}'
+        )
+        approval = self.wait_pending()
+        self.assertEqual(self.exec_rows(), [])
+        self.assertEqual(self._memory_count(), 0)
+        self.store().decide_approval(
+            approval["id"], decision="reject", decided_by="alice"
+        )
+        future.result(timeout=30)
+        self.assertEqual(self._memory_count(), 0)
+
+    def test_memory_remember_approved_writes_once(self):
+        future = self.start(
+            "memory_remember", '{"text": "记住我 12 月 1 日交项目", "key": "deadline"}'
+        )
+        approval = self.wait_pending()
+        self.assertEqual(self._memory_count(), 0)
+        self.store().decide_approval(
+            approval["id"], decision="approve", decided_by="alice"
+        )
+        future.result(timeout=60)
+        import sqlite3 as _sqlite
+        with closing(_sqlite.connect(self.db_path)) as _conn:
+            _rows = _conn.execute("SELECT * FROM agent_execs").fetchall()
+            _cols = [c[0] for c in _conn.execute("SELECT * FROM agent_execs LIMIT 0").description]
+        self.assertEqual(self._memory_count(), 1)
+        self.assertEqual(len(self.exec_rows()), 1)
+
     # ------------------------------------------------------------------
     # 2. 批准后恰好执行一次
     # ------------------------------------------------------------------

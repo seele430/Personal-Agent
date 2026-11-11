@@ -63,6 +63,7 @@ export default function MemoryView({ authToken }: { authToken?: string }) {
   const [editText, setEditText] = useState("");
   const [busy, setBusy] = useState(false);
   const requestRef = useRef(0);
+  const detailRef = useRef(0);
 
   const load = useCallback(async (nextMode: "list" | "search", nextQuery: string, nextOffset: number) => {
     const requestId = requestRef.current + 1;
@@ -111,6 +112,8 @@ export default function MemoryView({ authToken }: { authToken?: string }) {
   }, [load]);
 
   async function openDetail(item: MemoryItem) {
+    const requestId = detailRef.current + 1;
+    detailRef.current = requestId;
     setDetail(item);
     setHistory(null);
     setHistoryError("");
@@ -122,6 +125,8 @@ export default function MemoryView({ authToken }: { authToken?: string }) {
         fetch(`/api/memory/items/${item.id}`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`/api/memory/items/${item.id}/history`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
+
+      if (detailRef.current !== requestId) return;
 
       if (detailResponse.ok) {
         setDetail(await detailResponse.json());
@@ -160,6 +165,14 @@ export default function MemoryView({ authToken }: { authToken?: string }) {
       const created = await response.json();
       setEditing(false);
       setDetail({ ...detail, ...created, text: editText });
+      const historyResponse = await fetch(`/api/memory/items/${created.id}/history`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (historyResponse.ok) {
+        setHistory(await historyResponse.json());
+      }
+
       void load("list", "", 0);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "保存失败");
@@ -221,7 +234,7 @@ export default function MemoryView({ authToken }: { authToken?: string }) {
       <header className="memory-head">
         <div>
           <h2>记忆</h2>
-          <p className="memory-hint">当前事实列表；旧版本从历史链进入。这里只读。</p>
+          <p className="memory-hint">当前事实列表；旧版本从历史链进入。可编辑或软删除。</p>
         </div>
         <button type="button" onClick={() => void load(mode, query, offset)} disabled={loading}>
           {loading ? "加载中…" : "刷新"}
@@ -296,7 +309,7 @@ export default function MemoryView({ authToken }: { authToken?: string }) {
           <header>
             <h3>记忆 #{detail.id}</h3>
             <div className="memory-actions">
-              <button type="button" onClick={() => { setEditing(true); setEditText(detail.text); }} disabled={busy}>编辑</button>
+              <button type="button" onClick={() => { setEditing(true); setEditText(detail.text); }} disabled={busy || !detail.key} title={detail.key ? "" : "无 key 的记忆不能编辑版本"}>编辑</button>
               <button type="button" onClick={() => void removeItem()} disabled={busy}>删除</button>
               <button type="button" onClick={() => { setDetail(null); setHistory(null); }}>关闭</button>
             </div>
@@ -312,6 +325,7 @@ export default function MemoryView({ authToken }: { authToken?: string }) {
           ) : (
             <p className="memory-full">{detail.text}</p>
           )}
+          {!detail.key && <p className="memory-hint">无 key 的记忆不能编辑版本；如需更新，请重新记住一条。</p>}
           <p>key：{detail.key || "无"}；类型：{detail.kind}；层：{detail.layer}</p>
           <p>信任：{TRUST_TEXT[detail.trust] ?? detail.trust}</p>
           <p>生效：{detail.valid_from}{detail.valid_to ? ` → ${detail.valid_to}` : ""}</p>

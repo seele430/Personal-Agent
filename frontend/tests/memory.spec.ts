@@ -156,6 +156,13 @@ test.describe("记忆编辑与删除", () => {
         body: JSON.stringify({ anchor_id: 2, current_id: 2, items: [], count: 0, total_count: 0, truncated: false, window_has_current: true }),
       });
     });
+    await page.route("**/api/memory/items/3/history", async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ anchor_id: 3, current_id: 3, items: [], count: 0, total_count: 0, truncated: false, window_has_current: true }),
+      });
+    });
     await page.route("**/api/memory/items", async (route: Route) => {
       if (route.request().method() !== "POST") {
         return route.continue();
@@ -217,6 +224,37 @@ test.describe("记忆编辑与删除", () => {
     await page.getByRole("button", { name: "删除" }).click();
     await expect.poll(() => deletes.length).toBe(1);
     expect(accepted).toBe(true);
+    expectNoUnmockedApi(unexpected);
+  });
+});
+
+test.describe("记忆边界", () => {
+  test("无 key 条目禁止编辑", async ({ page }) => {
+    const unexpected = await setupPage(page);
+    const item = { ...ITEM, key: "" };
+    await page.route("**/api/memory/items?*", async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ mode: "list", items: [item], total: 1, limit: 20, offset: 0, has_more: false }),
+      });
+    });
+    await page.route("**/api/memory/items/2", async (route: Route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(item) });
+    });
+    await page.route("**/api/memory/items/2/history", async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ anchor_id: 2, current_id: 2, items: [], count: 0, total_count: 0, truncated: false, window_has_current: true }),
+      });
+    });
+
+    await login(page);
+    await openMemory(page);
+    await page.locator(".memory-table tbody tr").first().click();
+    await expect(page.getByRole("button", { name: "编辑" })).toBeDisabled();
+    await expect(page.getByText("无 key 的记忆不能编辑版本")).toBeVisible();
     expectNoUnmockedApi(unexpected);
   });
 });

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import sqlite3
+
+from contextlib import closing
+
 from src.memory.models import MemoryError, utc_now
 from src.memory.resolve import resolve_current
 from src.memory.store import get_memory_store
@@ -156,6 +160,21 @@ def history(owner_id: str, item_id: int, *, limit: int = 50) -> dict:
 
     chain = list(reversed(ancestors)) + [anchor] + descendants
 
+    for node in chain:
+        if len(children.get(node.id, [])) > 1:
+            raise HistoryError("history_forked")
+
+    with closing(sqlite3.connect(store.db_path)) as connection:
+        placeholders = ",".join("?" for _ in chain)
+        rows = connection.execute(
+            f"SELECT id, owner_id FROM memory_items WHERE supersedes_id IN ({placeholders})",
+            [node.id for node in chain],
+        ).fetchall()
+
+        for _child_id, child_owner in rows:
+            if child_owner != owner_id:
+                raise HistoryError("history_owner_mismatch")
+
     if len(chain) > 500:
         raise HistoryError("history_too_long")
 
@@ -172,9 +191,14 @@ def history(owner_id: str, item_id: int, *, limit: int = 50) -> dict:
         window = chain
         truncation_reason = ""
 
-    group_items = [item for item in items if item.conflict_group and item.conflict_group == anchor.conflict_group]
-    resolution = resolve_current(group_items, at=utc_now()) if anchor.conflict_group else None
-    current_id = resolution.item.id if resolution is not None and resolution.item is not None else None
+    moment = utc_now()
+
+    if anchor.conflict_group:
+        group_items = [item for item in items if item.conflict_group == anchor.conflict_group]
+        resolution = resolve_current(group_items, at=moment)
+        current_id = resolution.item.id if resolution.item is not None else None
+    else:
+        current_id = anchor.id if anchor.is_effective(moment) and anchor.deleted_at is None else None
     now = utc_now()
     rows = []
 
@@ -203,11 +227,23 @@ def history(owner_id: str, item_id: int, *, limit: int = 50) -> dict:
     }
 
 def delete(owner_id: str, item_id: int) -> bool:
+    """删除一条记忆链：有 conflict_group 时软删整组，避免旧版复活。"""
+
     store = get_memory_store()
     item = store.get_item(item_id)
 
     if item is None or item.owner_id != owner_id:
         return False
 
-    store.delete_item(item_id)
+    if item.conflict_group:
+        members = [
+            member for member in store.list_items(owner_id, include_deleted=False, limit=100000)
+            if member.conflict_group == item.conflict_group
+        ]
+    else:
+        members = [item]
+
+    for member in members:
+        store.delete_item(member.id)
+
     return True

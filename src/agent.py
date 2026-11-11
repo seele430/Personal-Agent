@@ -795,6 +795,7 @@ def execute_tool_on_platform(
     on_started=None,
     on_cancel_requested=None,
     require_allow: bool = True,
+    approved: bool = False,
     traceparent: str | None = None,
 ):
     """把一次工具调用交给 tier1 平台执行层。
@@ -816,7 +817,7 @@ def execute_tool_on_platform(
     if definition is None:
         raise ToolDenied(f"工具被拒绝：{name}")
 
-    if name == "memory_remember" and not require_allow:
+    if name == "memory_remember" and not require_allow and not approved:
         raise ToolDenied("旧 JSON 链路不允许写记忆")
 
     if require_allow and definition.policy != "allow":

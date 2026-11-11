@@ -245,14 +245,16 @@ class MemoryStore:
                 old = None
 
                 if key:
-                    row = connection.execute(
+                    rows = connection.execute(
                         "SELECT * FROM memory_items WHERE owner_id=? AND kind=? AND key=? "
                         "AND deleted_at IS NULL AND valid_from<=? "
-                        "AND (valid_to IS NULL OR valid_to>?) "
-                        "ORDER BY id DESC LIMIT 1",
+                        "AND (valid_to IS NULL OR valid_to>?)",
                         (owner_id, kind, key, now, now),
-                    ).fetchone()
-                    old = _to_item(row) if row is not None else None
+                    ).fetchall()
+                    members = [_to_item(row) for row in rows]
+
+                    if members:
+                        old = resolve_current(members, at=now).item
 
                 group = ""
 
