@@ -396,19 +396,29 @@ def convert_artifact(
             page_count=pages,
             duration_ms=int(getattr(outcome, "duration_ms", 0) or 0),
         )
-    except Exception:
+    except Exception as error:
+        try:
+            _cleanup_sandbox(executor, sandbox_id)
+        except OfficeError as cleanup_error:
+            raise cleanup_error from error
+
         try:
             _ensure_source_unchanged(source, source_hash)
         except OfficeError as source_error:
-            raise source_error from None
+            if office_root is not None and office_root.exists():
+                shutil.rmtree(office_root, ignore_errors=True)
 
-        raise
-    finally:
-        if not cleaned:
-            try:
-                executor.destroy(sandbox_id)
-            except Exception:
-                pass
+            raise source_error from error
 
         if office_root is not None and not registered:
             shutil.rmtree(office_root, ignore_errors=True)
+
+            if office_root.exists():
+                raise OfficeError("artifact_cleanup_failed", 500) from error
+
+        raise
+    finally:
+        if office_root is not None and not registered and office_root.exists():
+            shutil.rmtree(office_root, ignore_errors=True)
+
+

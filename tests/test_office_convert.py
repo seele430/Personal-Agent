@@ -506,6 +506,183 @@ class OfficeCoreCase(unittest.TestCase):
         if office.exists():
             self.assertEqual(list(office.iterdir()), [])
 
+    def _patched(self, name, value):
+        return patch.object(office_convert, name, value)
+
+    def test_input_size_budget(self):
+        with self._patched("MAX_INPUT_BYTES", 5):
+            with self.assertRaises(office_convert.OfficeError) as caught:
+                office_convert.preflight(self.source)
+
+        self.assertEqual(caught.exception.code, "source_too_large")
+
+    def test_zip_entry_budget(self):
+        with self._patched("MAX_ZIP_ENTRIES", 1):
+            with self.assertRaises(office_convert.OfficeError) as caught:
+                office_convert.preflight(self.source)
+
+        self.assertEqual(caught.exception.code, "zip_too_many_entries")
+
+    def test_uncompressed_budget(self):
+        with self._patched("MAX_UNCOMPRESSED", 1):
+            with self.assertRaises(office_convert.OfficeError):
+                office_convert.preflight(self.source)
+
+    def test_single_entry_budget(self):
+        with self._patched("MAX_ENTRY_UNCOMPRESSED", 1):
+            with self.assertRaises(office_convert.OfficeError):
+                office_convert.preflight(self.source)
+
+    def test_encrypted_zip_rejected(self):
+        source = self.registry.root / "encrypted.docx"
+        make_docx(source)
+
+        import struct
+
+        data = bytearray(source.read_bytes())
+        offset = 0
+
+        while True:
+            offset = data.find(b"PK\x03\x04", offset)
+
+            if offset < 0:
+                break
+
+            struct.pack_into("<H", data, offset + 6, 1)
+            offset += 4
+
+        offset = 0
+
+        while True:
+            offset = data.find(b"PK\x01\x02", offset)
+
+            if offset < 0:
+                break
+
+            struct.pack_into("<H", data, offset + 8, 1)
+            offset += 4
+
+        source.write_bytes(bytes(data))
+
+        with self.assertRaises(office_convert.OfficeError) as caught:
+            office_convert.preflight(source)
+
+        self.assertEqual(caught.exception.code, "encrypted_document")
+
+    def test_zip_traversal_rejected(self):
+        source = self.registry.root / "traversal.docx"
+        make_docx(source)
+
+        with zipfile.ZipFile(source, "a") as archive:
+            archive.writestr("../evil.bin", b"x")
+
+        with self.assertRaises(office_convert.OfficeError) as caught:
+            office_convert.preflight(source)
+
+        self.assertEqual(caught.exception.code, "zip_path_traversal")
+
+    def test_ole_object_rejected(self):
+        source = self.registry.root / "ole.docx"
+        make_docx(source)
+
+        with zipfile.ZipFile(source, "a") as archive:
+            archive.writestr("word/oleObject1.bin", b"x")
+
+        with self.assertRaises(office_convert.OfficeError) as caught:
+            office_convert.preflight(source)
+
+        self.assertEqual(caught.exception.code, "unsupported_active_content")
+
+    def test_pdf_size_budget(self):
+        with self._patched("MAX_PDF_BYTES", 10):
+            with self.assertRaises(office_convert.OfficeError) as caught:
+                self.convert()
+
+        self.assertEqual(caught.exception.code, "pdf_too_large")
+
+    def test_nonzero_exit_mapping(self):
+        class FailedExecutor(FakeExecutor):
+            def execute_command(self, argv, **kwargs):
+                return SimpleNamespace(status="failed", error_code="RUNNER_FAILED", duration_ms=1)
+
+        with self.assertRaises(office_convert.OfficeError) as caught:
+            self.convert(FailedExecutor(self.root / "n1"))
+
+        self.assertEqual(caught.exception.code, "convert_failed")
+        self.assertEqual(self.registry.registered, [])
+
+    def test_timeout_leftover_cleanup_fails_closed(self):
+        class Leftover(FakeExecutor):
+            def execute_command(self, argv, **kwargs):
+                return SimpleNamespace(status="timed_out", error_code="EXEC_TIMED_OUT", duration_ms=1)
+
+            def destroy(self, sandbox_id):
+                self.destroyed.append(sandbox_id)
+
+        with self.assertRaises(office_convert.OfficeError) as caught:
+            self.convert(Leftover(self.root / "n2"))
+
+        self.assertEqual(caught.exception.code, "sandbox_cleanup_failed")
+
+    def test_convert_failed_destroy_raises(self):
+        class Broken(FakeExecutor):
+            def execute_command(self, argv, **kwargs):
+                return SimpleNamespace(status="failed", error_code="RUNNER_FAILED", duration_ms=1)
+
+            def destroy(self, sandbox_id):
+                raise RuntimeError("cannot remove")
+
+        with self.assertRaises(office_convert.OfficeError) as caught:
+            self.convert(Broken(self.root / "n3"))
+
+        self.assertEqual(caught.exception.code, "sandbox_cleanup_failed")
+        self.assertEqual(self.registry.registered, [])
+
+    def test_error_messages_have_no_paths_or_secrets(self):
+        with self.assertRaises(office_convert.OfficeError) as caught:
+            office_convert.preflight(self.registry.root / "missing.docx")
+
+        message = str(caught.exception)
+
+        self.assertNotIn("C:\\", message)
+        self.assertNotIn("SECRET", message)
+        self.assertEqual(message, "path_missing")
+
+    def test_remote_readonly_blocks_post(self):
+        import asyncio
+        import tempfile
+
+        from src.remote.access_log import AccessLog
+        from src.remote.config import RemoteConfig
+        from src.remote.guard import RemoteGuard
+        from tests.unit.test_remote_guard import TOKEN, call, status_of
+
+        class App:
+            async def __call__(self, scope, receive, send):
+                await send({"type": "http.response.start", "status": 200, "headers": []})
+                await send({"type": "http.response.body", "body": b"ok"})
+
+        with tempfile.TemporaryDirectory() as temp:
+            log_path = Path(temp) / "access.jsonl"
+            config = RemoteConfig(enabled=True, token=TOKEN, log_path=log_path)
+            guard = RemoteGuard(App(), config, log=AccessLog(log_path))
+            headers = [(b"authorization", f"Bearer {TOKEN}".encode())]
+
+            blocked = asyncio.run(call(
+                guard, "POST", "/api/office/convert", headers=headers
+            ))
+            allowed = asyncio.run(call(
+                guard, "GET", "/api/artifacts/art_1/content", headers=headers
+            ))
+
+        self.assertEqual(status_of(blocked), 403)
+        self.assertEqual(status_of(allowed), 200)
+
+    def test_no_logs_on_failure(self):
+        with self.assertNoLogs("src.core.office_convert", level="DEBUG"):
+            with self.assertRaises(office_convert.OfficeError):
+                office_convert.preflight(self.registry.root / "missing.docx")
+
 class OfficeApiCase(unittest.TestCase):
     def setUp(self):
         from fastapi.testclient import TestClient
@@ -657,6 +834,8 @@ class OfficeApiCase(unittest.TestCase):
             second = client.post("/api/office/convert", json={"source_artifact_id": "art_ok"})
 
         self.assertEqual(second.status_code, 200)
+
+
 
 
 if __name__ == "__main__":
