@@ -1,0 +1,20 @@
+# Caddy 反向代理模板（部署用；验证脚本会展开端口与 storage 到临时目录）
+#
+# 只监听 loopback，不暴露局域网；不替换 PA 现有 uvicorn TLS。
+# 使用 internal CA 时显式 skip_install_trust，不写系统/Java/Firefox 信任库。
+
+{
+    admin off
+    auto_https disable_redirects
+    local_certs
+    skip_install_trust
+    storage file_system <CADDY_STORAGE>
+}
+
+https://127.0.0.1:<CADDY_PORT> {
+    tls internal
+
+    header Cache-Control "no-store"
+
+    reverse_proxy http://127.0.0.1:<BACKEND_PORT>
+}
