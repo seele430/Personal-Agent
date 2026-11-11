@@ -430,19 +430,35 @@ class SleepCase(unittest.TestCase):
 
 
 
-    def test_created_at_drift_rejected(self):
-        first = self.add("same")
-        self.add("same")
-        candidate, snapshot = self.plan()
-        self.sql(
-            "UPDATE memory_items SET created_at = ? WHERE id = ?",
-            ("2020-01-01T00:00:00+00:00", first.id),
-        )
+    def test_metadata_drift_rejected(self):
+        for field in ("created_at", "updated_at"):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as temp:
+                store = MemoryStore(Path(temp) / "memory.db")
+                item = store.add_item(
+                    OWNER, kind="project_fact", layer="project",
+                    trust="user_confirmed", key="k", text="same",
+                )
+                store.add_item(
+                    OWNER, kind="project_fact", layer="project",
+                    trust="user_confirmed", key="k", text="same",
+                )
+                snapshot = MemoryVersions(store).create("drift-base")
+                candidate = sleep.propose(store, OWNER, as_of=AS_OF, snapshot=snapshot)
+                connection = sqlite3.connect(store.db_path)
 
-        with self.assertRaises(sleep.SleepError) as caught:
-            sleep.apply(self.store, candidate, snapshot)
+                try:
+                    connection.execute(
+                        f"UPDATE memory_items SET {field} = ? WHERE id = ?",
+                        ("2020-01-01T00:00:00+00:00", item.id),
+                    )
+                    connection.commit()
+                finally:
+                    connection.close()
 
-        self.assertIn("base_mismatch", str(caught.exception))
+                with self.assertRaises(sleep.SleepError) as caught:
+                    sleep.apply(store, candidate, snapshot)
+
+                self.assertIn("base_mismatch", str(caught.exception))
 
     def test_invalid_as_of_rejected(self):
         item = self.add("same")
