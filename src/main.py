@@ -494,6 +494,15 @@ app.include_router(tools_router)
 app.include_router(video_router)
 
 
+# 兼容前端历史路径：/api/auth/* → /auth/*
+@app.middleware("http")
+async def _compat_api_auth_prefix(request, call_next):
+    if request.url.path.startswith("/api/auth/"):
+        request.scope["path"] = request.url.path[len("/api"):]
+
+    return await call_next(request)
+
+
 # ==========================================
 # 桌面版：兼容 /api 前缀
 # ==========================================
