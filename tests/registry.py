@@ -1945,6 +1945,16 @@ TEST_SCHEMAS = {
         external_network="mocked",
         risk="medium",
     ),
+
+    # v1.3 Office 转换（test_office_convert.py）
+    "test_office_convert.py": TestSchema(
+        layer="unit",
+        domain="office",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="mocked",
+        risk="high",
+    ),
 }
 
 

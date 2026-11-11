@@ -44,6 +44,7 @@ from src.activity_api import router as activity_router
 from src.tools_api import router as tools_router
 from src.video_api import router as video_router
 from src.artifacts_api import router as artifacts_router
+from src.office_api import router as office_router
 
 from src.usage_api import router as usage_router
 
@@ -479,6 +480,7 @@ app.include_router(qq_router)
 
 # 产物登记、四类预览与安全下载（W4）
 app.include_router(artifacts_router)
+app.include_router(office_router)
 
 # 中文活动摘要卡（W4）
 app.include_router(activity_router)

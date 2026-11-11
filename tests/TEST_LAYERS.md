@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: e5f13c80b943d5c1 -->
+<!-- membership-digest: b1d305ab1bd4f163 -->
 
-## unit — L1 单元测试 (87 files)
+## unit — L1 单元测试 (88 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -31,6 +31,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_elastic_controller.py` | tests/ 根 | platform_elastic | temporary_sqlite | none | low | registered-inferred |
 | `test_intent_router.py` | tests/ 根 | routing | none | none | medium | registered-inferred |
 | `test_netcheck.py` | tests/ 根 | platform_ops | none | none | low | registered-inferred |
+| `test_office_convert.py` | tests/ 根 | office | temporary_sqlite | mocked | high | registered-inferred |
 | `test_outbox_qq.py` | tests/ 根 | notifications | temporary_sqlite | mocked | medium | registered-inferred |
 | `test_qq_notify.py` | tests/ 根 | notifications | none | mocked | medium | registered-inferred |
 | `test_router_eval.py` | tests/ 根 | routing | none | none | medium | registered-inferred |
