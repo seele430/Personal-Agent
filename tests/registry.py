@@ -406,6 +406,24 @@ TEST_SCHEMAS = {
     ),
 
     # L1：记忆条目存储（同库新表、有效期、删除派生）
+    "unit/test_sleep_store.py": TestSchema(
+        layer="unit",
+        domain="sleep",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    "integration/test_sleep_api.py": TestSchema(
+        layer="integration",
+        domain="sleep",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
+
     "unit/test_memory_store.py": TestSchema(
         layer="unit",
         domain="memory",

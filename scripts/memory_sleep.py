@@ -1,4 +1,4 @@
-"""Sleep-time Compute Phase 1 CLI：只在显式临时副本上工作。"""
+"""Sleep-time Compute Phase 1 CLI：只在显式临时副本上工作，并写运行记录。"""
 
 from __future__ import annotations
 
@@ -17,7 +17,9 @@ from src.memory.sleep import (  # noqa: E402
     replica_freeze, restore, validate,
 )
 from src.memory.store import MemoryStore  # noqa: E402
+from src.memory.models import MemoryError  # noqa: E402
 from src.memory.versions import MemoryVersions  # noqa: E402
+from src.sleep_store import SleepRunStore  # noqa: E402
 
 
 def _guard(path: str) -> Path:
@@ -35,6 +37,45 @@ def _guard(path: str) -> Path:
 
 def _store(path: str) -> MemoryStore:
     return MemoryStore(_guard(path))
+
+
+def _key_map(store: MemoryStore, owner: str) -> dict:
+    return {
+        item.id: item.key
+        for item in store.list_items(owner, include_deleted=True, limit=100000)
+    }
+
+
+def _ops_with_keys(candidate: dict, keys: dict) -> list[dict]:
+    ops = []
+
+    for op in candidate.get("ops") or []:
+        ops.append({
+            **op,
+            "item_key": keys.get(op.get("item_id"), ""),
+            "evidence_keys": [keys.get(item, "") for item in op.get("evidence_ids") or []],
+        })
+
+    return ops
+
+
+def _record(**kwargs) -> None:
+    try:
+        SleepRunStore().add_run(**kwargs)
+    except Exception as error:  # noqa: BLE001 - 记录失败不能改写主结果
+        print(f"sleep_run_record_failed:{type(error).__name__}", file=sys.stderr)
+
+
+def _metrics(before: dict | None, after: dict | None = None) -> dict:
+    if before is None:
+        return {}
+
+    return {
+        "recall_before": before.get("recall_at_5"),
+        "recall_after": (after or before).get("recall_at_5"),
+        "mrr_before": before.get("mrr"),
+        "mrr_after": (after or before).get("mrr"),
+    }
 
 
 def main(argv=None) -> int:
@@ -86,6 +127,13 @@ def main(argv=None) -> int:
             snapshot = MemoryVersions(store).create("sleep-m-base")
             candidate = propose(store, args.owner, as_of=args.as_of, snapshot=snapshot)
             Path(args.out).write_text(json.dumps(candidate, ensure_ascii=False, indent=2), encoding="utf-8")
+            _record(
+                owner_id=args.owner, mode="plan", ab_variant="none",
+                base_snapshot_id=snapshot.id, candidate_id=candidate["candidate_id"],
+                ops=_ops_with_keys(candidate, _key_map(store, args.owner)),
+                execution_status="succeeded", gate_status="not_applicable",
+                reports=candidate.get("reports"), metrics={},
+            )
             print(json.dumps({
                 "candidate_id": candidate["candidate_id"],
                 "base_snapshot_id": snapshot.id,
@@ -104,12 +152,19 @@ def main(argv=None) -> int:
             groups = json.loads(Path(args.groups).read_text(encoding="utf-8"))["groups"] if args.groups else None
             before = ab_retrieval(store, args.owner, queries, as_of=args.as_of)
             before_groups = group_metrics(store, args.owner, groups, as_of=args.as_of) if groups else None
+            _record(
+                owner_id=args.owner, mode="ab", ab_variant="baseline_only",
+                execution_status="succeeded", gate_status="not_run",
+                metrics=_metrics(before), reports=before_groups or {},
+            )
             print(json.dumps({"before": before, "before_groups": before_groups}, ensure_ascii=False, indent=2))
             return 0
 
         candidate = json.loads(Path(args.candidate).read_text(encoding="utf-8"))
         snapshot_id = candidate["base_snapshot_id"]
         snapshot, _ = MemoryVersions(store).get(snapshot_id)
+        owner = candidate.get("owner_id") or getattr(args, "owner", "") or ""
+        keys = _key_map(store, owner) if owner else {}
 
         if args.command == "validate":
             print(json.dumps(validate(store, candidate, snapshot), ensure_ascii=False, indent=2))
@@ -119,7 +174,15 @@ def main(argv=None) -> int:
             if args.base_sha != candidate["base_sha256"] or args.base_sha != snapshot.sha256:
                 raise SleepError("base-sha 不匹配")
 
-            print(json.dumps(apply(store, candidate, snapshot), ensure_ascii=False, indent=2))
+            result = apply(store, candidate, snapshot)
+            _record(
+                owner_id=candidate["owner_id"], mode="publish", ab_variant="none",
+                base_snapshot_id=snapshot.id, candidate_id=candidate["candidate_id"],
+                ops=_ops_with_keys(candidate, keys), applied_count=result["count"],
+                execution_status="succeeded", gate_status="not_applicable",
+                reports=candidate.get("reports"), metrics={},
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
 
         if args.command == "ab":
@@ -127,10 +190,6 @@ def main(argv=None) -> int:
             groups = json.loads(Path(args.groups).read_text(encoding="utf-8"))["groups"] if args.groups else None
             before = ab_retrieval(store, args.owner, queries, as_of=args.as_of)
             before_groups = group_metrics(store, args.owner, groups, as_of=args.as_of) if groups else None
-
-            if not args.candidate:
-                print(json.dumps({"before": before, "before_groups": before_groups}, ensure_ascii=False, indent=2))
-                return 0
 
             import tempfile
 
@@ -141,18 +200,32 @@ def main(argv=None) -> int:
                 apply(after_store, candidate, snapshot)
                 after = ab_retrieval(after_store, args.owner, queries, as_of=args.as_of)
                 after_groups = group_metrics(after_store, args.owner, groups, as_of=args.as_of) if groups else None
-                paired = ab_paired(
-                    store, after_store, args.owner, queries,
-                    as_of=args.as_of, rounds=args.rounds,
-                )
-                after_store.close() if hasattr(after_store, "close") else None
+                paired = ab_paired(store, after_store, args.owner, queries, as_of=args.as_of, rounds=args.rounds)
 
             result = evaluate_ab(before, after, before_groups=before_groups, after_groups=after_groups)
             result["paired"] = paired
+            _record(
+                owner_id=candidate["owner_id"], mode="ab", ab_variant="candidate",
+                base_snapshot_id=snapshot.id, candidate_id=candidate["candidate_id"],
+                ops=_ops_with_keys(candidate, keys), applied_count=len(candidate.get("ops") or []),
+                execution_status="succeeded",
+                gate_status="passed" if result["passed"] else "failed",
+                metrics=_metrics(before, after), reports=result,
+                error_code="" if result["passed"] else "gate_failed",
+            )
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0 if result["passed"] else 3
 
     except (SleepError, MemoryError) as error:
+        owner = getattr(args, "owner", "") or ""
+
+        if owner:
+            _record(
+                owner_id=owner, mode=args.command, execution_status="failed",
+                gate_status="not_run", error_code=str(error)[:64],
+                reports={"error": str(error)[:200]},
+            )
+
         print(json.dumps({"error": str(error)}, ensure_ascii=False))
         return 2
 
