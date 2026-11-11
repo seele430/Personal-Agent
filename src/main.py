@@ -497,8 +497,12 @@ app.include_router(video_router)
 # 兼容前端历史路径：/api/auth/* → /auth/*
 @app.middleware("http")
 async def _compat_api_auth_prefix(request, call_next):
-    if request.url.path.startswith("/api/auth/"):
-        request.scope["path"] = request.url.path[len("/api"):]
+    path = request.url.path
+
+    for prefix in ("/api/auth", "/api/chat", "/api/reminders"):
+        if path == prefix or path.startswith(prefix + "/"):
+            request.scope["path"] = path[len("/api"):]
+            break
 
     return await call_next(request)
 
