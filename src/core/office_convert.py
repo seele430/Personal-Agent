@@ -12,9 +12,12 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import shutil
+import stat
 import subprocess
 import uuid
+import xml.etree.ElementTree as ET
 import zipfile
 
 from dataclasses import dataclass
@@ -40,6 +43,7 @@ MAX_UNCOMPRESSED = 100 * 1024 * 1024
 MAX_ENTRY_UNCOMPRESSED = 50 * 1024 * 1024
 MAX_PDF_BYTES = 50 * 1024 * 1024
 TIMEOUT_MS = 120_000
+REPARSE_FLAG = 0x400
 
 
 class OfficeError(ValueError):
@@ -102,6 +106,39 @@ def soffice_version(soffice: Path, *, timeout: float = 10.0) -> str | None:
     return text.splitlines()[0] if text else None
 
 
+def _reject_links(path: Path) -> None:
+    for current in [path, *path.parents]:
+        try:
+            stats = os.lstat(current)
+        except OSError:
+            raise OfficeError("path_missing", 422) from None
+
+        attributes = getattr(stats, "st_file_attributes", 0)
+
+        if stat.S_ISLNK(stats.st_mode) or attributes & REPARSE_FLAG:
+            raise OfficeError("path_link_rejected", 422)
+
+
+def _has_external_relationship(archive: zipfile.ZipFile, names: set[str]) -> bool:
+    for name in names:
+        if not name.endswith(".rels"):
+            continue
+
+        try:
+            root = ET.fromstring(archive.read(name))
+        except ET.ParseError:
+            raise OfficeError("invalid_relationship_xml", 422) from None
+
+        for node in root.iter():
+            if node.tag.rsplit("}", 1)[-1] != "Relationship":
+                continue
+
+            if (node.get("TargetMode") or "").strip().lower() == "external":
+                return True
+
+    return False
+
+
 def _preflight_zip(source: Path, ext: str) -> None:
     kind = ALLOWED_EXTENSIONS[ext]
 
@@ -153,14 +190,8 @@ def _preflight_zip(source: Path, ext: str) -> None:
             if not any(marker in content_types for marker in CONTENT_TYPE_MARKERS[kind]):
                 raise OfficeError("content_type_mismatch", 415)
 
-            for name in names:
-                if not name.endswith(".rels"):
-                    continue
-
-                rels = archive.read(name).decode("utf-8", "ignore")
-
-                if 'targetmode="external"' in rels.lower():
-                    raise OfficeError("external_relationship", 415)
+            if _has_external_relationship(archive, names):
+                raise OfficeError("external_relationship", 415)
 
     except zipfile.BadZipFile:
         raise OfficeError("invalid_ooxml", 422) from None
@@ -172,7 +203,9 @@ def preflight(source: Path) -> str:
     if ext not in ALLOWED_EXTENSIONS:
         raise OfficeError("unsupported_extension", 415)
 
-    if not source.is_file() or source.is_symlink():
+    _reject_links(source)
+
+    if not source.is_file():
         raise OfficeError("source_not_file", 422)
 
     size = source.stat().st_size
@@ -201,7 +234,9 @@ def _sha256(path: Path) -> str:
 def validate_pdf(path: Path) -> tuple[int, str, int]:
     from pypdf import PdfReader
 
-    if not path.is_file() or path.is_symlink():
+    _reject_links(path)
+
+    if not path.is_file():
         raise OfficeError("pdf_missing", 422)
 
     size = path.stat().st_size
@@ -232,6 +267,26 @@ def validate_pdf(path: Path) -> tuple[int, str, int]:
     return size, hashlib.sha256(data).hexdigest(), pages
 
 
+def _ensure_source_unchanged(source: Path, expected: str) -> None:
+    try:
+        current = _sha256(source)
+    except OSError:
+        raise OfficeError("source_modified", 500) from None
+
+    if current != expected:
+        raise OfficeError("source_modified", 500)
+
+
+def _cleanup_sandbox(executor, sandbox_id: str) -> None:
+    try:
+        executor.destroy(sandbox_id)
+    except Exception:
+        raise OfficeError("sandbox_cleanup_failed", 500) from None
+
+    if (Path(executor.root) / sandbox_id).exists():
+        raise OfficeError("sandbox_cleanup_failed", 500)
+
+
 def convert_artifact(
     *,
     source_artifact_id: str,
@@ -246,7 +301,7 @@ def convert_artifact(
         raise OfficeError("office_unavailable", 503)
 
     try:
-        artifact = registry.get(source_artifact_id, owner_id=owner_id)
+        registry.get(source_artifact_id, owner_id=owner_id)
         source = registry.absolute_path(source_artifact_id, owner_id=owner_id)
     except ArtifactNotFound:
         raise OfficeError("artifact_not_found", 404) from None
@@ -256,6 +311,9 @@ def convert_artifact(
     ext = preflight(source)
     source_hash = _sha256(source)
     sandbox_id = executor.open_sandbox()
+    cleaned = False
+    registered = False
+    office_root = None
 
     try:
         workspace = Path(executor.root) / sandbox_id / "workspace"
@@ -265,6 +323,9 @@ def convert_artifact(
         out_dir.mkdir(exist_ok=True)
         input_path = workspace / f"input{ext}"
         shutil.copyfile(source, input_path)
+
+        if _sha256(input_path) != source_hash:
+            raise OfficeError("sandbox_copy_mismatch", 500)
 
         argv = [
             str(soffice),
@@ -292,26 +353,26 @@ def convert_artifact(
         if status != "succeeded":
             raise OfficeError("convert_failed", 422)
 
-        pdfs = [item for item in out_dir.iterdir() if item.suffix.lower() == ".pdf"]
+        entries = list(out_dir.iterdir())
 
-        if len(pdfs) != 1 or pdfs[0].name != "input.pdf":
+        if {item.name for item in entries} != {"input.pdf"}:
             raise OfficeError("unexpected_output", 422)
 
-        size, digest, pages = validate_pdf(pdfs[0])
-
-        if _sha256(source) != source_hash:
-            raise OfficeError("source_modified", 500)
+        pdf = out_dir / "input.pdf"
+        size, digest, pages = validate_pdf(pdf)
+        _ensure_source_unchanged(source, source_hash)
 
         office_root = registry.root / "office" / uuid.uuid4().hex
         office_root.mkdir(parents=True, exist_ok=False)
         target = office_root / "converted.pdf"
         temporary = office_root / "converted.pdf.tmp"
-        shutil.copyfile(pdfs[0], temporary)
+        shutil.copyfile(pdf, temporary)
 
         if _sha256(temporary) != digest:
-            temporary.unlink(missing_ok=True)
             raise OfficeError("pdf_copy_mismatch", 500)
 
+        _cleanup_sandbox(executor, sandbox_id)
+        cleaned = True
         temporary.replace(target)
 
         try:
@@ -322,8 +383,9 @@ def convert_artifact(
                 media_type="application/pdf",
             )
         except Exception:
-            target.unlink(missing_ok=True)
             raise OfficeError("artifact_register_failed", 500) from None
+
+        registered = True
 
         return OfficeResult(
             artifact_id=artifact.id,
@@ -334,5 +396,19 @@ def convert_artifact(
             page_count=pages,
             duration_ms=int(getattr(outcome, "duration_ms", 0) or 0),
         )
+    except Exception:
+        try:
+            _ensure_source_unchanged(source, source_hash)
+        except OfficeError as source_error:
+            raise source_error from None
+
+        raise
     finally:
-        executor.destroy(sandbox_id)
+        if not cleaned:
+            try:
+                executor.destroy(sandbox_id)
+            except Exception:
+                pass
+
+        if office_root is not None and not registered:
+            shutil.rmtree(office_root, ignore_errors=True)

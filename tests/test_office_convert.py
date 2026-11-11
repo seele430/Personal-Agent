@@ -110,6 +110,8 @@ class FakeExecutor:
 
     def destroy(self, sandbox_id):
         self.destroyed.append(sandbox_id)
+        import shutil
+        shutil.rmtree(self.root / sandbox_id, ignore_errors=True)
 
 
 class OfficeCoreCase(unittest.TestCase):
@@ -314,6 +316,196 @@ class OfficeCoreCase(unittest.TestCase):
         self.assertEqual(caught.exception.status, 503)
 
 
+    def _rels_variant(self, rels_xml):
+        source = self.registry.root / "variant.docx"
+        make_docx(source)
+
+        with zipfile.ZipFile(source, "a") as archive:
+            archive.writestr("word/_rels/document.xml.rels", rels_xml)
+
+        return source
+
+    def test_external_single_quotes_rejected(self):
+        source = self._rels_variant(
+            "<Relationships><Relationship TargetMode='External' Target='http://x'/></Relationships>"
+        )
+
+        with self.assertRaises(office_convert.OfficeError):
+            office_convert.preflight(source)
+
+    def test_external_spacing_and_newlines_rejected(self):
+        source = self._rels_variant(
+            "<Relationships><Relationship TargetMode \t=\n 'External' Target='http://x'/></Relationships>"
+        )
+
+        with self.assertRaises(office_convert.OfficeError):
+            office_convert.preflight(source)
+
+    def test_external_uppercase_rejected(self):
+        source = self._rels_variant(
+            '<Relationships><Relationship TargetMode="EXTERNAL" Target="http://x"/></Relationships>'
+        )
+
+        with self.assertRaises(office_convert.OfficeError):
+            office_convert.preflight(source)
+
+    def test_external_utf16_rejected(self):
+        xml = (
+            '<?xml version="1.0" encoding="utf-16"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship TargetMode="External" Target="http://x"/></Relationships>'
+        ).encode("utf-16")
+        source = self.registry.root / "utf16.docx"
+        make_docx(source)
+
+        with zipfile.ZipFile(source, "a") as archive:
+            archive.writestr("word/_rels/document.xml.rels", xml)
+
+        with self.assertRaises(office_convert.OfficeError):
+            office_convert.preflight(source)
+
+    def test_malformed_relationship_xml(self):
+        source = self._rels_variant("<Relationships><Relationship")
+
+        with self.assertRaises(office_convert.OfficeError) as caught:
+            office_convert.preflight(source)
+
+        self.assertEqual(caught.exception.code, "invalid_relationship_xml")
+
+    def _changed_on_failure(self, executor):
+        with self.assertRaises(office_convert.OfficeError) as caught:
+            self.convert(executor)
+
+        self.assertEqual(caught.exception.code, "source_modified")
+
+    def test_timeout_source_modified(self):
+        class TimeoutExecutor(FakeExecutor):
+            def execute_command(self, argv, **kwargs):
+                self.write_source()
+                return SimpleNamespace(status="timed_out", error_code="EXEC_TIMED_OUT", duration_ms=1)
+
+            def write_source(self):
+                self.source_owner.write_text("changed during conversion")
+
+        executor = TimeoutExecutor(self.root / "f1")
+        executor.source_owner = self.source
+        self._changed_on_failure(executor)
+
+    def test_missing_pdf_source_modified(self):
+        def behavior(workspace, out):
+            self.source.write_text("changed during conversion")
+
+        self._changed_on_failure(FakeExecutor(self.root / "f2", behavior=behavior))
+
+    def test_invalid_pdf_source_modified(self):
+        def behavior(workspace, out):
+            self.source.write_text("changed during conversion")
+            (out / "input.pdf").write_bytes(b"bad")
+
+        self._changed_on_failure(FakeExecutor(self.root / "f3", behavior=behavior))
+
+    def test_extra_non_pdf_output_rejected(self):
+        def behavior(workspace, out):
+            make_pdf(out / "input.pdf")
+            (out / "unexpected.txt").write_text("extra")
+
+        with self.assertRaises(office_convert.OfficeError) as caught:
+            self.convert(FakeExecutor(self.root / "f4", behavior=behavior))
+
+        self.assertEqual(caught.exception.code, "unexpected_output")
+
+    def test_destroy_failure(self):
+        class BrokenDestroy(FakeExecutor):
+            def destroy(self, sandbox_id):
+                raise RuntimeError("cannot remove")
+
+        with self.assertRaises(office_convert.OfficeError) as caught:
+            self.convert(BrokenDestroy(self.root / "f5"))
+
+        self.assertEqual(caught.exception.code, "sandbox_cleanup_failed")
+        self.assertEqual(self.registry.registered, [])
+
+    def test_destroy_leaves_directory(self):
+        class LeftoverDestroy(FakeExecutor):
+            def destroy(self, sandbox_id):
+                self.destroyed.append(sandbox_id)
+
+        with self.assertRaises(office_convert.OfficeError) as caught:
+            self.convert(LeftoverDestroy(self.root / "f6"))
+
+        self.assertEqual(caught.exception.code, "sandbox_cleanup_failed")
+
+    def test_directory_source_rejected(self):
+        directory = self.registry.root / "dir.docx"
+        directory.mkdir()
+
+        with self.assertRaises(office_convert.OfficeError):
+            office_convert.preflight(directory)
+
+    def test_junction_ancestor_rejected(self):
+        import subprocess as sp
+
+        real = self.registry.root / "real-dir"
+        real.mkdir(exist_ok=True)
+        make_docx(real / "inner.docx")
+        link = self.registry.root / "link-dir"
+        result = sp.run(["cmd", "/c", "mklink", "/J", str(link), str(real)], capture_output=True)
+
+        if result.returncode != 0:
+            self.skipTest("junction 不可用")
+
+        with self.assertRaises(office_convert.OfficeError) as caught:
+            office_convert.preflight(link / "inner.docx")
+
+        self.assertEqual(caught.exception.code, "path_link_rejected")
+
+    def test_argv_profile_and_no_shell(self):
+        executor = FakeExecutor(self.root / "f7")
+        self.convert(executor)
+        argv, kwargs = executor.calls[0]
+
+        self.assertTrue(argv[0].endswith("soffice.com"))
+        self.assertIn("--headless", argv)
+        self.assertTrue(any(item.startswith("-env:UserInstallation=file:") for item in argv))
+        self.assertNotIn("shell", kwargs)
+
+    def test_encrypted_pdf_rejected(self):
+        def behavior(workspace, out):
+            from pypdf import PdfWriter
+
+            writer = PdfWriter()
+            writer.add_blank_page(width=100, height=100)
+            writer.encrypt("pw")
+
+            with (out / "input.pdf").open("wb") as handle:
+                writer.write(handle)
+
+        with self.assertRaises(office_convert.OfficeError):
+            self.convert(FakeExecutor(self.root / "f8", behavior=behavior))
+
+    def test_eof_outside_window_rejected(self):
+        def behavior(workspace, out):
+            make_pdf(out / "input.pdf")
+            with (out / "input.pdf").open("ab") as handle:
+                handle.write(b"\n" * 3000)
+
+        with self.assertRaises(office_convert.OfficeError) as caught:
+            self.convert(FakeExecutor(self.root / "f9", behavior=behavior))
+
+        self.assertEqual(caught.exception.code, "pdf_missing_eof")
+
+    def test_register_failure_cleans_output(self):
+        self.registry.fail_register = True
+        before = set(self.registry.root.iterdir())
+
+        with self.assertRaises(office_convert.OfficeError):
+            self.convert()
+
+        office = self.registry.root / "office"
+
+        if office.exists():
+            self.assertEqual(list(office.iterdir()), [])
+
 class OfficeApiCase(unittest.TestCase):
     def setUp(self):
         from fastapi.testclient import TestClient
@@ -383,6 +575,88 @@ class OfficeApiCase(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 429)
+
+
+
+
+    def test_unauthenticated_401(self):
+        from src.auth_api import get_current_user
+
+        self.app.dependency_overrides.pop(get_current_user, None)
+
+        try:
+            response = self.client.post(
+                "/api/office/convert", json={"source_artifact_id": "art_123"}
+            )
+        finally:
+            self.app.dependency_overrides[get_current_user] = lambda: {"id": "owner-1", "role": "owner"}
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_per_owner_busy_429(self):
+        from src import office_api
+
+        lock = office_api._acquire("owner-1")
+        self.addCleanup(lambda: office_api._release("owner-1", lock))
+
+        with patch("src.office_api.find_soffice", return_value=Path("soffice.com")):
+            response = self.client.post(
+                "/api/office/convert", json={"source_artifact_id": "art_123"}
+            )
+
+        self.assertEqual(response.status_code, 429)
+
+    def test_lock_released_after_office_error(self):
+        from src.core.office_convert import OfficeError
+
+        with patch("src.office_api.find_soffice", return_value=Path("soffice.com")), patch(
+            "src.office_api.convert_artifact", side_effect=OfficeError("bad", 422)
+        ):
+            first = self.client.post(
+                "/api/office/convert", json={"source_artifact_id": "art_123"}
+            )
+
+        self.assertEqual(first.status_code, 422)
+
+        payload = {"artifact_id": "art_ok", "title": "a.pdf", "kind": "pdf",
+                   "media_type": "application/pdf", "size_bytes": 1, "sha256": "0" * 64,
+                   "page_count": 1, "duration_ms": 1,
+                   "preview_url": "/x", "download_url": "/y"}
+
+        with patch("src.office_api.find_soffice", return_value=Path("soffice.com")), patch(
+            "src.office_api.convert_artifact", return_value=SimpleNamespace(to_dict=lambda: payload)
+        ):
+            second = self.client.post(
+                "/api/office/convert", json={"source_artifact_id": "art_ok"}
+            )
+
+        self.assertEqual(second.status_code, 200)
+
+    def test_lock_released_after_unhandled_error(self):
+        from fastapi.testclient import TestClient
+
+        from src.main import app
+
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("src.office_api.find_soffice", return_value=Path("soffice.com")), patch(
+            "src.office_api.convert_artifact", side_effect=RuntimeError("boom")
+        ):
+            first = client.post("/api/office/convert", json={"source_artifact_id": "art_123"})
+
+        self.assertEqual(first.status_code, 500)
+
+        payload = {"artifact_id": "art_ok", "title": "a.pdf", "kind": "pdf",
+                   "media_type": "application/pdf", "size_bytes": 1, "sha256": "0" * 64,
+                   "page_count": 1, "duration_ms": 1,
+                   "preview_url": "/x", "download_url": "/y"}
+
+        with patch("src.office_api.find_soffice", return_value=Path("soffice.com")), patch(
+            "src.office_api.convert_artifact", return_value=SimpleNamespace(to_dict=lambda: payload)
+        ):
+            second = client.post("/api/office/convert", json={"source_artifact_id": "art_ok"})
+
+        self.assertEqual(second.status_code, 200)
 
 
 if __name__ == "__main__":
