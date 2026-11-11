@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.3.2 — 2026-11-11
+
+### 移除
+
+- 前端撤下「Bot 管理」入口、`BotsView` 组件与「我的 BOT」侧栏区块；
+- `bot_api` 路由与 `bots.db` 数据保留，仅停止 UI 入口，见 `docs/DEPRECATED-bots.md`。
+
+### 验证
+
+```text
+前端 build：exit 0
+Playwright：auth/activity/artifacts/memory 共 18 passed
+```
+
 ## v1.3.1 — 2026-11-11
 
 ### 修复

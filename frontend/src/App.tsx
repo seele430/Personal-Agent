@@ -7,7 +7,6 @@ import {
   type KeyboardEvent,
 } from "react";
 
-import BotsView from "./BotsView";
 import MemoryView from "./MemoryView";
 import PlatformView from "./PlatformView";
 import ActivityTimeline from "./components/ActivityTimeline";
@@ -451,7 +450,6 @@ export default function App(
     | "reminders"
     | "quota"
     | "monitors"
-    | "bots"
     | "memory"
     | "platform"
   >("chat");
@@ -1670,18 +1668,6 @@ export default function App(
             <span>任务中心</span>
           </button>
 
-          <button
-            type="button"
-            className={`nav-item ${
-              view === "bots" ? "selected" : ""
-            }`}
-            onClick={() => setView("bots")}
-            aria-pressed={view === "bots"}
-            aria-label="Bot 管理"
-          >
-            <span className="nav-symbol">✦</span>
-            <span>Bot 管理</span>
-          </button>
         </div>
 
         {/* 收起按钮放这儿：原来挤在标题旁边太抢眼 */}
@@ -1695,21 +1681,6 @@ export default function App(
           >
             «
           </button>
-        </div>
-
-        <div className="sidebar-section">
-          <p className="section-label">
-            我的 BOT
-          </p>
-
-          <div className="bot-item">
-            <div className="bot-avatar">✦</div>
-
-            <div>
-              <strong>默认助手</strong>
-              <span>Personal Assistant</span>
-            </div>
-          </div>
         </div>
 
         <div className="sidebar-footer">
@@ -2213,8 +2184,6 @@ export default function App(
           <MemoryView authToken={authToken} />
         ) : view === "platform" ? (
           <PlatformView authToken={authToken} />
-        ) : view === "bots" ? (
-          <BotsView authToken={authToken} />
         ) : view === "reminders" ? (
           <section
             className="reminder-panel"
