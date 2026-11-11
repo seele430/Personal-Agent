@@ -8,7 +8,6 @@ import {
 } from "react";
 
 import BotsView from "./BotsView";
-import SleepView from "./SleepView";
 import PlatformView from "./PlatformView";
 import ActivityTimeline from "./components/ActivityTimeline";
 import VideoSummaryPanel from "./components/VideoSummaryPanel";
@@ -452,7 +451,6 @@ export default function App(
     | "quota"
     | "monitors"
     | "bots"
-    | "sleep"
     | "platform"
   >("chat");
 
@@ -1634,19 +1632,6 @@ export default function App(
           <button
             type="button"
             className={`nav-item ${
-              view === "sleep" ? "selected" : ""
-            }`}
-            onClick={() => setView("sleep")}
-            aria-pressed={view === "sleep"}
-            aria-label="睡眠"
-          >
-            <span className="nav-symbol">☾</span>
-            <span>睡眠</span>
-          </button>
-
-          <button
-            type="button"
-            className={`nav-item ${
               view === "platform" ? "selected" : ""
             }`}
             onClick={() => setView("platform")}
@@ -2209,8 +2194,6 @@ export default function App(
               </div>
             )}
           </section>
-        ) : view === "sleep" ? (
-          <SleepView authToken={authToken} />
         ) : view === "platform" ? (
           <PlatformView authToken={authToken} />
         ) : view === "bots" ? (

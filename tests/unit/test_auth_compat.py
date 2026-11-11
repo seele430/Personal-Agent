@@ -15,7 +15,7 @@ class AuthCompatCase(unittest.TestCase):
         self.assertEqual(self.client.get("/api/auth/state").status_code, 200)
 
     def test_api_auth_prefix_does_not_swallow_other_routes(self):
-        self.assertEqual(self.client.get("/api/sleep/runs").status_code, 401)
+        self.assertEqual(self.client.get("/api/artifacts").status_code, 401)
 
 
 if __name__ == "__main__":

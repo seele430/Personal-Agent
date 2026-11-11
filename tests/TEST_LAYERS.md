@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: c7fcf1855955907c -->
+<!-- membership-digest: 353841b25eaabeaa -->
 
-## unit — L1 单元测试 (91 files)
+## unit — L1 单元测试 (89 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -65,7 +65,6 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_lifecycle_retention.py` | tests/unit/ | lifecycle | temporary_sqlite | none | high | registered-inferred |
 | `unit/test_memory_eval.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_memory_resolve.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
-| `unit/test_memory_sleep.py` | tests/unit/ | memory | temporary_sqlite | none | high | registered-inferred |
 | `unit/test_memory_store.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_memory_versions.py` | tests/unit/ | memory | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_mock_provider.py` | tests/unit/ | collab | none | mocked | low | registered-inferred |
@@ -105,7 +104,6 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_research_prompts.py` | tests/unit/ | research | none | none | low | registered-inferred |
 | `unit/test_research_report.py` | tests/unit/ | research | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_scorecard.py` | tests/unit/ | eval | none | none | low | registered-inferred |
-| `unit/test_sleep_store.py` | tests/unit/ | sleep | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_url_policy.py` | tests/unit/ | rss | none | mocked | high | registered-inferred |
 | `unit/test_video_asr.py` | tests/unit/ | video | none | none | low | registered-inferred |
 | `unit/test_video_pipeline.py` | tests/unit/ | video | none | none | medium | registered-inferred |
@@ -115,7 +113,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_web_extract.py` | tests/unit/ | web | none | none | low | registered-inferred |
 | `unit/test_web_search.py` | tests/unit/ | web | none | mocked | medium | registered-inferred |
 
-## integration — L2 数据集成测试 (85 files)
+## integration — L2 数据集成测试 (84 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -161,7 +159,6 @@ python scripts/run_tests.py integration       # 运行该层
 | `integration/test_sandbox_state.py` | tests/integration/ | platform_state | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_sandbox_tools.py` | tests/integration/ | platform_exec | temporary_sqlite | none | high | registered-inferred |
 | `integration/test_single_user_surface.py` | tests/integration/ | auth | temporary_sqlite | none | low | registered-inferred |
-| `integration/test_sleep_api.py` | tests/integration/ | sleep | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_task_pipeline.py` | tests/integration/ | monitor | temporary_sqlite | mocked | high | registered-inferred |
 | `integration/test_test_safety.py` | tests/integration/ | test_infra | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_tier1_runner.py` | tests/integration/ | platform_exec | temporary_sqlite | none | high | registered-inferred |
