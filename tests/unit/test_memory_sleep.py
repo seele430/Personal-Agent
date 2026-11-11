@@ -260,5 +260,27 @@ class SleepCase(unittest.TestCase):
         self.assertGreaterEqual(result["recall_at_5"], 0.9)
 
 
+
+    def test_fixture_dedupe_then_ab_not_regressed(self):
+        fixture = json.loads(
+            (Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "memory" / "sleep_ab.json")
+            .read_text(encoding="utf-8")
+        )
+        owner = fixture["owner_id"]
+
+        for spec in fixture["items"]:
+            self.store.add_item(owner, **spec)
+
+        queries = [query for context in fixture["contexts"] for query in context["queries"]]
+        snapshot = self.versions.create("fixture-base")
+        candidate = sleep.propose(self.store, owner, as_of=fixture["as_of"], snapshot=snapshot)
+        self.assertEqual(len(candidate["ops"]), 5)
+        before = sleep.ab_retrieval(self.store, owner, queries)
+        sleep.apply(self.store, candidate, snapshot)
+        after = sleep.ab_retrieval(self.store, owner, queries)
+        self.assertEqual(before["recall_at_5"], after["recall_at_5"])
+        self.assertEqual(after["recall_at_5"], 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()

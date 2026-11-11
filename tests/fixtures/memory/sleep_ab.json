@@ -692,13 +692,27 @@
       ]
     }
   ],
-  "generator": "deterministic-v1",
+  "generator": "deterministic-v2",
   "items": [
     {
       "key": "ctx01",
       "kind": "project_fact",
       "layer": "project",
       "text": "context01 alpha01 beta01 project detail",
+      "trust": "user_confirmed"
+    },
+    {
+      "key": "ctx01",
+      "kind": "project_fact",
+      "layer": "project",
+      "text": "context01 alpha01 beta01 project detail",
+      "trust": "user_confirmed"
+    },
+    {
+      "key": "ctx02",
+      "kind": "project_fact",
+      "layer": "project",
+      "text": "context02 alpha02 beta02 project detail",
       "trust": "user_confirmed"
     },
     {
@@ -716,10 +730,31 @@
       "trust": "user_confirmed"
     },
     {
+      "key": "ctx03",
+      "kind": "project_fact",
+      "layer": "project",
+      "text": "context03 alpha03 beta03 project detail",
+      "trust": "user_confirmed"
+    },
+    {
       "key": "ctx04",
       "kind": "project_fact",
       "layer": "project",
       "text": "context04 alpha04 beta04 project detail",
+      "trust": "user_confirmed"
+    },
+    {
+      "key": "ctx04",
+      "kind": "project_fact",
+      "layer": "project",
+      "text": "context04 alpha04 beta04 project detail",
+      "trust": "user_confirmed"
+    },
+    {
+      "key": "ctx05",
+      "kind": "project_fact",
+      "layer": "project",
+      "text": "context05 alpha05 beta05 project detail",
       "trust": "user_confirmed"
     },
     {
@@ -907,6 +942,6 @@
   ],
   "owner_id": "owner-sleep-ab",
   "seed": 20261111,
-  "sha256": "9632e8f3f26e363d8c2d74008d5e4d0fb5600acf473fe89f9e51f04903b8a245",
+  "sha256": "2cc21175360473f919a44266f468c333e98a220401884fd9d83837f753055715",
   "version": 1
 }
