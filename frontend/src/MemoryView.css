@@ -1,0 +1,125 @@
+.memory-panel {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+}
+
+.memory-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.memory-head h2 {
+  margin: 0 0 6px;
+}
+
+.memory-hint,
+.memory-total {
+  color: var(--muted, #8b8b8b);
+  font-size: 13px;
+}
+
+.memory-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.memory-search input {
+  min-width: 240px;
+  flex: 1;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #333);
+  background: transparent;
+  color: inherit;
+}
+
+.memory-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.memory-table th,
+.memory-table td {
+  border-bottom: 1px solid var(--border, #333);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.memory-table tbody tr {
+  cursor: pointer;
+}
+
+.memory-table tbody tr:hover,
+.memory-table tbody tr.selected {
+  background: var(--hover, rgba(127, 127, 127, 0.12));
+}
+
+.memory-error {
+  padding: 10px 12px;
+  border: 1px solid #a33;
+  border-radius: 8px;
+  color: #d66;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.memory-error-text {
+  color: #d66;
+  font-size: 13px;
+}
+
+.memory-empty {
+  color: var(--muted, #8b8b8b);
+}
+
+.memory-pager {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.memory-detail {
+  border: 1px solid var(--border, #333);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memory-detail header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.memory-full {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.memory-history {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.memory-history li.anchor {
+  background: var(--hover, rgba(127, 127, 127, 0.12));
+  border-radius: 6px;
+  padding: 3px 6px;
+}

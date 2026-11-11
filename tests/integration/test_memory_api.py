@@ -64,5 +64,31 @@ class MemoryApiCase(unittest.TestCase):
         self.assertEqual(self._request("GET", f"/api/memory/items/{item_id}").status_code, 404)
 
 
+
+    def test_list_mode_and_fields(self):
+        self._request("POST", "/api/memory/items", json={"text": "绿茶", "key": "drink"})
+        self._request("POST", "/api/memory/items", json={"text": "红茶", "key": "drink"})
+        response = self._request("GET", "/api/memory/items")
+        body = response.json()
+        self.assertEqual(body["mode"], "list")
+        self.assertEqual(body["total"], 1)
+        self.assertNotIn("owner_id", body["items"][0])
+
+    def test_search_offset_rejected(self):
+        response = self._request("GET", "/api/memory/items?query=x&offset=1")
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"], "search_pagination_unsupported")
+
+    def test_history_endpoint(self):
+        old = self._request("POST", "/api/memory/items", json={"text": "旧", "key": "k"}).json()["id"]
+        new = self._request("POST", "/api/memory/items", json={"text": "新", "key": "k"}).json()["id"]
+        response = self._request("GET", f"/api/memory/items/{old}/history")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["current_id"], new)
+        self.assertEqual([row["id"] for row in body["items"]], [old, new])
+        self.assertNotIn("owner_id", body["items"][0])
+
+
 if __name__ == "__main__":
     unittest.main()

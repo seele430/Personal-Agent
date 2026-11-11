@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import BotsView from "./BotsView";
+import MemoryView from "./MemoryView";
 import PlatformView from "./PlatformView";
 import ActivityTimeline from "./components/ActivityTimeline";
 import VideoSummaryPanel from "./components/VideoSummaryPanel";
@@ -451,6 +452,7 @@ export default function App(
     | "quota"
     | "monitors"
     | "bots"
+    | "memory"
     | "platform"
   >("chat");
 
@@ -1632,6 +1634,19 @@ export default function App(
           <button
             type="button"
             className={`nav-item ${
+              view === "memory" ? "selected" : ""
+            }`}
+            onClick={() => setView("memory")}
+            aria-pressed={view === "memory"}
+            aria-label="记忆"
+          >
+            <span className="nav-symbol">▤</span>
+            <span>记忆</span>
+          </button>
+
+          <button
+            type="button"
+            className={`nav-item ${
               view === "platform" ? "selected" : ""
             }`}
             onClick={() => setView("platform")}
@@ -2194,6 +2209,8 @@ export default function App(
               </div>
             )}
           </section>
+        ) : view === "memory" ? (
+          <MemoryView authToken={authToken} />
         ) : view === "platform" ? (
           <PlatformView authToken={authToken} />
         ) : view === "bots" ? (

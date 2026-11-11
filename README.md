@@ -82,7 +82,7 @@
 | 语音 | Edge TTS（微软神经网络语音，免 key）；转写用 faster-whisper（CPU） |
 | 图像 | ComfyUI（本机，SD 1.5，低显存模式） |
 | 前端 | React 19 · TypeScript · Vite 8 |
-| 测试 | unittest（**2180 个后端用例**）+ Playwright（**71 条前端链路**） |
+| 测试 | unittest（**2180 个后端用例**）+ Playwright（**74 条前端链路**） |
 
 ---
 
@@ -203,7 +203,7 @@ Personal Agent/
 视频管线（probe/音轨/转写/要点采样/关键帧/截断标记）、远程守卫与桥接、协作注册表与验收、
 平台侧的沙箱 / 执行 / 队列 / 调度 / 弹性控制器 / What-if 与回放。
 
-前端 Playwright 71 条（含平台控制台、产物预览与对比、活动时间线、视频总结、图生图面板）：
+前端 Playwright 74 条（含平台控制台、产物预览与对比、活动时间线、视频总结、图生图面板）：
 
 ```powershell
 cd frontend
