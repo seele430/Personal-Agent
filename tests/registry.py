@@ -415,6 +415,15 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    "unit/test_memory_sleep.py": TestSchema(
+        layer="unit",
+        domain="memory",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="high",
+    ),
+
     # L1：冲突解析（当前有效事实、信任等级、supersedes 链）
     "unit/test_memory_resolve.py": TestSchema(
         layer="unit",
