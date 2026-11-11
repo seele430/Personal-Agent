@@ -417,6 +417,33 @@ TEST_SCHEMAS = {
 
 
 
+    "unit/test_memory_service.py": TestSchema(
+        layer="unit",
+        domain="memory",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    "unit/test_memory_tools.py": TestSchema(
+        layer="unit",
+        domain="memory",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
+
+    "integration/test_memory_api.py": TestSchema(
+        layer="integration",
+        domain="memory",
+        database="temporary_sqlite",
+        authentication="mocked",
+        external_network="none",
+        risk="medium",
+    ),
+
     "unit/test_memory_store.py": TestSchema(
         layer="unit",
         domain="memory",

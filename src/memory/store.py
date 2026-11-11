@@ -12,6 +12,7 @@ FTS5 `trigram` 需要 ≥3 个字符，1–2 字查询退 `LIKE` 兜底，并**�
 
 from __future__ import annotations
 
+import hashlib
 import re
 import sqlite3
 
@@ -208,6 +209,91 @@ class MemoryStore:
             self._record_event(
                 connection, item_id, "add", actor=owner_id, reason=""
             )
+
+        return self.get_item(item_id)
+
+    def remember(
+        self,
+        owner_id: str,
+        *,
+        text: str,
+        kind: str = "project_fact",
+        layer: str = "project",
+        key: str = "",
+        trust: str = "user_confirmed",
+        source_ref: str = "",
+    ) -> MemoryItem:
+        """同 key 原子更新：选当前条、写新条、设分组与 supersedes。
+
+        全过程在 BEGIN IMMEDIATE 内完成，避免两个并发写手各指向同一个旧条。
+        """
+
+        owner_id = validate_owner(owner_id)
+        kind = validate_kind(kind)
+        layer = validate_layer(layer)
+        trust = validate_trust(trust)
+        text = validate_text(text)
+        key = validate_short(key, field="key", limit=200)
+        source_ref = validate_short(source_ref, field="source_ref", limit=MAX_REF_CHARS)
+        now = utc_now()
+        stamp = now
+
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+
+            try:
+                old = None
+
+                if key:
+                    row = connection.execute(
+                        "SELECT * FROM memory_items WHERE owner_id=? AND kind=? AND key=? "
+                        "AND deleted_at IS NULL AND valid_from<=? "
+                        "AND (valid_to IS NULL OR valid_to>?) "
+                        "ORDER BY id DESC LIMIT 1",
+                        (owner_id, kind, key, now, now),
+                    ).fetchone()
+                    old = _to_item(row) if row is not None else None
+
+                group = ""
+
+                if old is not None:
+                    group = old.conflict_group or (
+                        "key-v1:" + kind + ":" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+                    )
+
+                    if not old.conflict_group:
+                        connection.execute(
+                            "UPDATE memory_items SET conflict_group=?, updated_at=? WHERE id=?",
+                            (group, stamp, old.id),
+                        )
+                        self._record_event(
+                            connection, old.id, "group_bind", actor=owner_id, reason="same-key"
+                        )
+                elif key:
+                    group = "key-v1:" + kind + ":" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+
+                cursor = connection.execute(
+                    "INSERT INTO memory_items ("
+                    " owner_id, kind, layer, trust, key, value, text,"
+                    " source_ref, source_doc_id, valid_from, valid_to,"
+                    " supersedes_id, conflict_group, created_at, updated_at"
+                    ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        owner_id, kind, layer, trust, key, "", text,
+                        source_ref, None, now, None,
+                        old.id if old is not None else None, group, stamp, stamp,
+                    ),
+                )
+                item_id = int(cursor.lastrowid)
+                connection.execute(
+                    "INSERT INTO memory_items_fts (rowid, text) VALUES (?, ?)",
+                    (item_id, text),
+                )
+                self._record_event(connection, item_id, "add", actor=owner_id, reason="manual")
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
 
         return self.get_item(item_id)
 

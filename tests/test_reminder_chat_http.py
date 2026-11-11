@@ -658,6 +658,9 @@ class TestReminderChatHTTP(unittest.TestCase):
                 # D12：只把安全的只读沙箱工具暴露给模型
                 "read_file",
                 "list_dir",
+                # 记忆闭环：remember 需审批，recall 只读
+                "memory_remember",
+                "memory_recall",
             ],
         )
 

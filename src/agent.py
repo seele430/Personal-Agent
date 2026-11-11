@@ -43,7 +43,7 @@ from src.knowledge.inject import (
     build_retrieval_context,
 )
 from src.tools.reminder import init_db
-from src.tools import comfy_tools, provider_tools, sandbox_tools
+from src.tools import comfy_tools, memory as memory_tools, provider_tools, sandbox_tools
 from src.platform.exec_service import (
     EXEC_CANCELLED,
     EXEC_SUCCEEDED,
@@ -294,6 +294,7 @@ REMINDER_TOOLS = [
     CANCEL_REMINDER_TOOL,
     UPDATE_REMINDER_TOOL,
     *sandbox_tools.MODEL_VISIBLE_TOOLS,
+    *memory_tools.MODEL_VISIBLE_TOOLS,
 ]
 
 
@@ -815,6 +816,9 @@ def execute_tool_on_platform(
     if definition is None:
         raise ToolDenied(f"工具被拒绝：{name}")
 
+    if name == "memory_remember" and not require_allow:
+        raise ToolDenied("旧 JSON 链路不允许写记忆")
+
     if require_allow and definition.policy != "allow":
         raise ToolApprovalRequired(f"工具需要审批，不进入执行：{name}")
 
@@ -1126,6 +1130,12 @@ del _schema, _policy, _handler
 
 # ComfyUI 图生图：会占 GPU，默认 ask。
 for _schema, _policy, _handler in comfy_tools.TOOL_DEFINITIONS:
+    TOOL_REGISTRY.register(_schema, policy=_policy, handler=_handler)
+
+del _schema, _policy, _handler
+
+# 记忆工具：写入默认 ask，召回 allow。
+for _schema, _policy, _handler in memory_tools.TOOL_DEFINITIONS:
     TOOL_REGISTRY.register(_schema, policy=_policy, handler=_handler)
 
 del _schema, _policy, _handler
