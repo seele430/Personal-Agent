@@ -158,6 +158,35 @@ class MemoryServiceCase(unittest.TestCase):
         new = service.remember("u1", "再次更新", key="k")
         self.assertEqual(new.supersedes_id, high.id)
         self.assertNotEqual(new.supersedes_id, low.id)
+        listing = service.list_current("u1")
+        self.assertEqual(listing["total"], 1)
+        self.assertEqual(listing["items"][0]["id"], new.id)
+
+    def test_remember_valid_from_candidate_grouped(self):
+        old = self.store.add_item(
+            "u1", kind="project_fact", layer="project", trust="user_confirmed",
+            key="k", text="较早生效", valid_from="2026-01-01T00:00:00Z",
+        )
+        later = self.store.add_item(
+            "u1", kind="project_fact", layer="project", trust="user_confirmed",
+            key="k", text="较晚生效", valid_from="2026-02-01T00:00:00Z",
+        )
+        new = service.remember("u1", "最新", key="k")
+        current = service.list_current("u1")
+        self.assertEqual(current["total"], 1)
+        self.assertEqual(current["items"][0]["id"], new.id)
+        self.assertNotEqual(old.id, new.id)
+
+    def test_delete_group_rolls_back_on_failure(self):
+        first = service.remember("u1", "旧", key="k")
+        second = service.remember("u1", "新", key="k")
+
+        with patch.object(self.store, "_record_event", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                service.delete("u1", second.id)
+
+        self.assertIsNone(self.store.get_item(first.id).deleted_at)
+        self.assertIsNone(self.store.get_item(second.id).deleted_at)
 
     def test_delete_newest_deletes_whole_chain(self):
         old = service.remember("u1", "旧", key="k")
@@ -207,6 +236,35 @@ class MemoryServiceCase(unittest.TestCase):
             service.history("u1", root.id)
 
         self.assertEqual(caught.exception.code, "history_owner_mismatch")
+
+
+
+    def test_history_cycle_detected(self):
+        first = service.remember("u1", "a", key="k")
+        second = service.remember("u1", "b", key="k")
+        import sqlite3
+        connection = sqlite3.connect(self.store.db_path)
+        connection.execute("UPDATE memory_items SET supersedes_id=? WHERE id=?", (second.id, first.id))
+        connection.commit()
+        connection.close()
+
+        with self.assertRaises(service.HistoryError) as caught:
+            service.history("u1", first.id)
+
+        self.assertEqual(caught.exception.code, "history_cycle")
+
+    def test_history_broken_link_detected(self):
+        item = service.remember("u1", "a", key="k")
+        import sqlite3
+        connection = sqlite3.connect(self.store.db_path)
+        connection.execute("UPDATE memory_items SET supersedes_id=99999 WHERE id=?", (item.id,))
+        connection.commit()
+        connection.close()
+
+        with self.assertRaises(service.HistoryError) as caught:
+            service.history("u1", item.id)
+
+        self.assertEqual(caught.exception.code, "history_broken")
 
 
 if __name__ == "__main__":

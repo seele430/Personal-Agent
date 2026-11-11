@@ -184,7 +184,7 @@ export default function MemoryView({ authToken }: { authToken?: string }) {
   async function removeItem() {
     if (!detail) return;
 
-    if (!window.confirm(`确认删除记忆 #${detail.id}？`)) return;
+    if (!window.confirm(`确认软删这条记忆的全部版本？\n\n· 不再作为当前事实\n· 历史仍保留，可按 ID 读取\n· 不是安全擦除`)) return;
 
     setBusy(true);
 

@@ -236,14 +236,8 @@ def delete(owner_id: str, item_id: int) -> bool:
         return False
 
     if item.conflict_group:
-        members = [
-            member for member in store.list_items(owner_id, include_deleted=False, limit=100000)
-            if member.conflict_group == item.conflict_group
-        ]
+        store.delete_group(owner_id, item.conflict_group)
     else:
-        members = [item]
-
-    for member in members:
-        store.delete_item(member.id)
+        store.delete_item(item.id)
 
     return True

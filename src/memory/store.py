@@ -243,6 +243,7 @@ class MemoryStore:
 
             try:
                 old = None
+                group = ""
 
                 if key:
                     rows = connection.execute(
@@ -252,27 +253,27 @@ class MemoryStore:
                         (owner_id, kind, key, now, now),
                     ).fetchall()
                     members = [_to_item(row) for row in rows]
+                    groups = {member.conflict_group for member in members if member.conflict_group}
 
-                    if members:
-                        old = resolve_current(members, at=now).item
+                    if len(groups) > 1:
+                        raise MemoryError("同 key 条目分组冲突，拒绝自动合并")
 
-                group = ""
-
-                if old is not None:
-                    group = old.conflict_group or (
+                    group = next(iter(groups)) if groups else (
                         "key-v1:" + kind + ":" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
                     )
 
-                    if not old.conflict_group:
-                        connection.execute(
-                            "UPDATE memory_items SET conflict_group=?, updated_at=? WHERE id=?",
-                            (group, stamp, old.id),
-                        )
-                        self._record_event(
-                            connection, old.id, "group_bind", actor=owner_id, reason="same-key"
-                        )
-                elif key:
-                    group = "key-v1:" + kind + ":" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+                    for member in members:
+                        if not member.conflict_group:
+                            connection.execute(
+                                "UPDATE memory_items SET conflict_group=?, updated_at=? WHERE id=?",
+                                (group, stamp, member.id),
+                            )
+                            self._record_event(
+                                connection, member.id, "group_bind", actor=owner_id, reason="same-key"
+                            )
+
+                    if members:
+                        old = resolve_current(members, at=now).item
 
                 cursor = connection.execute(
                     "INSERT INTO memory_items ("
@@ -298,6 +299,46 @@ class MemoryStore:
                 raise
 
         return self.get_item(item_id)
+
+    def delete_group(self, owner_id: str, group: str) -> int:
+        """单事务软删整组；任一失败整体回滚。"""
+
+        if not group:
+            raise MemoryError("group 不能为空")
+
+        now = utc_now()
+        deleted: list[int] = []
+
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+
+            try:
+                rows = connection.execute(
+                    "SELECT id FROM memory_items WHERE owner_id=? AND conflict_group=? "
+                    "AND deleted_at IS NULL",
+                    (owner_id, group),
+                ).fetchall()
+
+                for row in rows:
+                    item_id = int(row[0])
+                    connection.execute(
+                        "UPDATE memory_items SET deleted_at=?, updated_at=?, conflict_group='' WHERE id=?",
+                        (now, now, item_id),
+                    )
+                    connection.execute(
+                        "DELETE FROM memory_items_fts WHERE rowid=?", (item_id,)
+                    )
+                    self._record_event(
+                        connection, item_id, "delete", actor=owner_id, reason="group-delete"
+                    )
+                    deleted.append(item_id)
+
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+
+        return len(deleted)
 
     def expire_item(
         self,
