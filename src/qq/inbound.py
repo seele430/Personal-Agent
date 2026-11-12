@@ -180,9 +180,6 @@ class QQInbound:
 
             answer = (Path(temporary) / "answer.md").read_text(encoding="utf-8").strip()
 
-        if len(answer) > MAX_REPLY_CHARS:
-            answer = answer[:MAX_REPLY_CHARS] + "…（已截断）"
-
         self.audit.append(
             {
                 "ts": self._clock(),

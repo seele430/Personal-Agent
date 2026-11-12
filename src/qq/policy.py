@@ -148,6 +148,70 @@ def truncate_for_qq(text: str, limit: int = 3000) -> str:
     return text[:head] + "\n…（中间已省略）…\n" + text[-tail:]
 
 
+def chunk_for_qq(text: str, limit: int = 800, max_chunks: int = 3) -> list[str]:
+    """把长回答切成若干条私聊；按空行/句末切，超 max_chunks 的尾巴并进最后一条。"""
+
+    text = (text or "").strip()
+
+    if not text:
+        return []
+
+    if len(text) <= limit:
+        return [text]
+
+    max_chunks = max(1, max_chunks)
+    pieces: list[str] = []
+    current = ""
+
+    for block in text.split("\n\n"):
+        block = block.strip("\n")
+
+        if not block:
+            continue
+
+        for part in _split_long_block(block, limit):
+            if not current:
+                current = part
+            elif len(current) + 2 + len(part) <= limit:
+                current = current + "\n\n" + part
+            else:
+                pieces.append(current)
+                current = part
+
+    if current:
+        pieces.append(current)
+
+    if len(pieces) <= max_chunks:
+        return pieces
+
+    head = pieces[: max_chunks - 1]
+    tail = "\n\n".join(pieces[max_chunks - 1:])
+
+    return head + [tail]
+
+
+def _split_long_block(block: str, limit: int) -> list[str]:
+    parts: list[str] = []
+    rest = block
+
+    while len(rest) > limit:
+        window = rest[:limit]
+        cut = max(window.rfind(mark) for mark in "。！？!?；;\n")
+
+        if cut < limit // 2:
+            cut = limit
+        else:
+            cut += 1
+
+        parts.append(rest[:cut].strip("\n"))
+        rest = rest[cut:].lstrip("\n")
+
+    if rest:
+        parts.append(rest)
+
+    return [part for part in parts if part]
+
+
 def decide(*, intent: str, params: dict, route_action: str, workspace: Path) -> dict:
     """把路由结果转成策略决定。"""
 

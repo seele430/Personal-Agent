@@ -296,11 +296,11 @@ class AskCase(unittest.TestCase):
 
         self.assertIn("agent", payload["reply"])
 
-    def test_ask_truncates_long_answer(self):
+    def test_ask_returns_full_long_answer(self):
         _, payload = self.run_ask(FakeProvider("y" * 2000), "/ask hi")
 
-        self.assertLessEqual(len(payload["reply"]), 810)
-        self.assertIn("已截断", payload["reply"])
+        self.assertEqual(len(payload["reply"]), 2000)
+        self.assertNotIn("已截断", payload["reply"])
 
     def test_ask_audited_without_full_text(self):
         handler, _ = self.run_ask(FakeProvider("答案"), "/ask 秘密问题")

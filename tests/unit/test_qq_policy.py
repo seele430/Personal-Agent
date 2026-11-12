@@ -9,6 +9,7 @@ from pathlib import Path
 from src.qq.policy import (
     CONFIRM_ALPHABET,
     PolicyError,
+    chunk_for_qq,
     decide,
     generate_confirmation_id,
     params_hash,
@@ -23,6 +24,37 @@ class ConfirmationCase(unittest.TestCase):
 
         self.assertEqual(len(identifier), 8)
         self.assertTrue(all(char in CONFIRM_ALPHABET for char in identifier))
+
+
+class ChunkCase(unittest.TestCase):
+    def test_short_text_single_chunk(self):
+        self.assertEqual(chunk_for_qq("短回答", 800, 3), ["短回答"])
+
+    def test_empty_text_no_chunk(self):
+        self.assertEqual(chunk_for_qq("   ", 800, 3), [])
+
+    def test_long_text_splits_without_loss(self):
+        text = "\n\n".join(f"第{i}段。" + "内容" * 60 for i in range(6))
+        chunks = chunk_for_qq(text, 300, 3)
+
+        self.assertGreater(len(chunks), 1)
+        self.assertLessEqual(len(chunks), 3)
+        self.assertEqual("".join(chunks).replace("\n", ""), text.replace("\n", ""))
+        for chunk in chunks[:-1]:
+            self.assertLessEqual(len(chunk), 300)
+
+    def test_overflow_merges_into_last_chunk(self):
+        text = "\n\n".join("段落" * 40 for _ in range(12))
+        chunks = chunk_for_qq(text, 200, 3)
+
+        self.assertEqual(len(chunks), 3)
+        self.assertEqual("".join(chunks).replace("\n", ""), text.replace("\n", ""))
+
+    def test_cuts_on_sentence_end(self):
+        text = "第一句。" * 100
+        chunks = chunk_for_qq(text, 200, 3)
+
+        self.assertTrue(all(chunk.endswith("。") for chunk in chunks[:-1]))
 
     def test_ids_are_unique_enough(self):
         ids = {generate_confirmation_id() for _ in range(200)}

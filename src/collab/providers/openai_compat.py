@@ -4,7 +4,8 @@
 
 - 只做**一次非流式补全**，产出文本产物；
 - 不声称是"外部 Agent"：没有任务状态机、没有工具调用、没有远端产物目录；
-- 用量上限 `MAX_TOKENS`，超时 30 s、不重试（避免悄悄烧钱）；
+- 用量上限 `MAX_TOKENS`（可用 `PA_PROVIDER_MAX_TOKENS` 覆盖），超时 30 s、不重试（避免悄悄烧钱）；
+- `finish_reason=length` 时在产物末尾加明确标记，并返回 `truncated=True`，绝不静默截断；
 - key 不进日志、不进异常消息。
 """
 
@@ -19,10 +20,21 @@ import urllib.request
 from pathlib import Path
 
 
-MAX_TOKENS = 400
+MAX_TOKENS = 1200
 TIMEOUT_SECONDS = 30.0
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-flash"
+TRUNCATION_MARKER = "…（已达单次输出上限，回答被截断）"
+MAX_TOKENS_ENV = "PA_PROVIDER_MAX_TOKENS"
+
+
+def _max_tokens() -> int:
+    raw = (os.getenv(MAX_TOKENS_ENV) or "").strip()
+
+    if raw.isdigit() and int(raw) > 0:
+        return int(raw)
+
+    return MAX_TOKENS
 
 
 class ProviderError(RuntimeError):
@@ -71,7 +83,7 @@ class OpenAICompatProvider:
                 },
                 {"role": "user", "content": text},
             ],
-            "max_tokens": MAX_TOKENS,
+            "max_tokens": _max_tokens(),
             "stream": False,
         }
 
@@ -79,10 +91,15 @@ class OpenAICompatProvider:
         body = self._post("/chat/completions", payload)
         elapsed = round(time.perf_counter() - started, 2)
 
-        content = self._content_of(body)
+        content, finish_reason = self._content_of(body)
 
         if not content.strip():
             raise ProviderError("Provider 返回了空内容")
+
+        truncated = finish_reason == "length"
+
+        if truncated:
+            content = content.rstrip() + "\n\n" + TRUNCATION_MARKER
 
         target = Path(out_dir) / artifact_name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -100,6 +117,8 @@ class OpenAICompatProvider:
             "model": self.model,
             "artifact": str(target),
             "duration_s": elapsed,
+            "truncated": truncated,
+            "finish_reason": finish_reason,
             "usage": {
                 "prompt": int(usage.get("prompt_tokens") or 0),
                 "completion": int(usage.get("completion_tokens") or 0),
@@ -137,13 +156,16 @@ class OpenAICompatProvider:
             raise ProviderError("Provider 返回的不是 JSON") from None
 
     @staticmethod
-    def _content_of(body: dict) -> str:
+    def _content_of(body: dict) -> tuple[str, str]:
         choices = body.get("choices") or []
 
         if not choices:
             reason = json.dumps(body, ensure_ascii=False)[:200]
             raise ProviderError(f"Provider 没有返回 choices：{reason}")
 
-        message = choices[0].get("message") or {}
+        choice = choices[0]
+        message = choice.get("message") or {}
+        content = str(message.get("content") or "")
+        finish_reason = str(choice.get("finish_reason") or "")
 
-        return str(message.get("content") or "")
+        return content, finish_reason

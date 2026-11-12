@@ -7,6 +7,7 @@ import unittest
 import urllib.error
 
 from pathlib import Path
+from unittest.mock import patch
 
 from src.collab.providers import openai_compat as mod
 from src.collab.providers.openai_compat import OpenAICompatProvider, ProviderError
@@ -90,6 +91,36 @@ class TestSuccess(ProviderCase):
         headers = {k.lower(): v for k, v in opener.requests[0].headers.items()}
 
         self.assertIn("authorization", headers)
+
+    def test_length_finish_marks_truncation(self):
+        payload = self.payload(content="半句话")
+        payload["choices"][0]["finish_reason"] = "length"
+        result = self.provider(FakeOpener(payload)).submit(
+            "x", artifact_name="a.md", out_dir=self.out
+        )
+
+        self.assertTrue(result["truncated"])
+        text = (self.out / "a.md").read_text(encoding="utf-8")
+        self.assertIn(mod.TRUNCATION_MARKER, text)
+
+    def test_stop_finish_is_complete(self):
+        payload = self.payload()
+        payload["choices"][0]["finish_reason"] = "stop"
+        result = self.provider(FakeOpener(payload)).submit(
+            "x", artifact_name="a.md", out_dir=self.out
+        )
+
+        self.assertFalse(result["truncated"])
+
+    def test_env_overrides_max_tokens(self):
+        opener = FakeOpener(self.payload())
+
+        with patch.dict("os.environ", {mod.MAX_TOKENS_ENV: "999"}, clear=False):
+            self.provider(opener).submit("x", artifact_name="a.md", out_dir=self.out)
+
+        body = json.loads(opener.requests[0].data.decode("utf-8"))
+
+        self.assertEqual(body["max_tokens"], 999)
 
 
 class TestErrors(ProviderCase):

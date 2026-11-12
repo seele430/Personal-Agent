@@ -112,6 +112,31 @@ class TaskWorkerCase(WorkerCase):
 
         self.assertEqual(self.client.sent[0][1], "2")
 
+    def test_long_answer_splits_into_messages(self):
+        self.enqueue("1+1 等于几")
+        self.pending()
+        answer = "\n\n".join("段落内容。" * 50 for _ in range(4))
+
+        with patch.object(self.handler, "reply_for", return_value=answer):
+            self.task_worker().run_once()
+
+        self.assertGreaterEqual(len(self.client.sent), 2)
+        row = self.outbox.get("1")
+        self.assertEqual(row["state"], "sent")
+        self.assertGreater(len(row["reply"]), 800)
+
+    def test_split_can_be_disabled(self):
+        self.enqueue("1+1 等于几")
+        self.pending()
+
+        with patch.dict("os.environ", {"PA_QQ_SPLIT_REPLY": "0"}, clear=False):
+            with patch.object(self.handler, "reply_for", return_value="长" * 900):
+                self.task_worker().run_once()
+
+        self.assertEqual(len(self.client.sent), 1)
+        self.assertLessEqual(len(self.client.sent[0][1]), 820)
+        self.assertIn("已省略", self.client.sent[0][1])
+
     def test_cancel_during_run_prevents_send(self):
         self.enqueue("1+1 等于几")
         self.pending()
@@ -482,12 +507,14 @@ class ContractCase(WorkerCase):
                 outbox=self.outbox, client=self.client, handler=self.handler, threads=threads
             ).run_once()
 
-        sent_text = self.client.sent[0][1]
+        sent_texts = [text for _, text in self.client.sent]
+        joined = "\n".join(sent_texts)
         turn = threads.latest_turn(7)
 
-        self.assertEqual(turn["answer"], sent_text)
-        self.assertEqual(self.outbox.get("1")["reply"], sent_text)
-        self.assertLessEqual(len(sent_text), MAX_REPLY_CHARS + 30)
+        self.assertGreaterEqual(len(sent_texts), 2)
+        self.assertTrue(all(len(text) <= MAX_REPLY_CHARS for text in sent_texts))
+        self.assertEqual(turn["answer"], joined)
+        self.assertEqual(self.outbox.get("1")["reply"], joined)
 
 
 
