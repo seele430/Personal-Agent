@@ -214,6 +214,7 @@ class ReviewBusCase(unittest.TestCase):
 
         self.assertIn("**已发送**", text)
         self.assertNotIn("状态：**草稿**", text)
+        self.assertNotIn("（草稿）", text)
 
     def test_confirm_send_requires_fixing(self):
         self.set_state(round=1, status="waiting_kimi")

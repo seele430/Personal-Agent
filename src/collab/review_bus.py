@@ -570,13 +570,15 @@ def _mark_request_sent(path: Path, round_number: int) -> bool:
     replaced = False
 
     for index, line in enumerate(lines):
-        if line.startswith(marker):
+        if line.startswith("# 复审请求") and line.endswith("（草稿）"):
+            lines[index] = line[: -len("（草稿）")] + "（已发送）"
+            replaced = True
+        elif line.startswith(marker):
             lines[index] = (
                 f"> 状态：**已发送**（{_now()}，round-{round_number:03d}）"
                 f"——本文件已在 `kimi/inbox/`，等待复审。"
             )
             replaced = True
-            break
 
     if not replaced:
         return False
