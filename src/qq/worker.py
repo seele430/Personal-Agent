@@ -143,6 +143,18 @@ class BaseWorker:
 
         return True
 
+    def _record_assistant(self, job: dict, text: str) -> None:
+        try:
+            from src.sessions import SessionStore
+
+            store = SessionStore()
+            session = store.active_session(int(job.get("sender") or 0))
+
+            if session is not None:
+                store.add_message(session["id"], "assistant", text)
+        except Exception:  # noqa: BLE001 - 会话记录失败不影响发送
+            pass
+
     def reply(self, job: dict, text: str) -> bool:
         message_id = job["message_id"]
 
@@ -168,6 +180,7 @@ class BaseWorker:
 
         self.outbox.mark_sent(message_id, reply=text, state=self.terminal_state)
         self.handler.record_audit(job, "sent")
+        self._record_assistant(job, text)
 
         return True
 
@@ -209,6 +222,7 @@ class BaseWorker:
             message_id, reply="\n".join(chunks), state=self.terminal_state
         )
         self.handler.record_audit(job, "sent")
+        self._record_assistant(job, "\n".join(chunks))
 
         return True
 
@@ -360,6 +374,51 @@ class TaskWorker(BaseWorker):
                     target=orchestrator.run, args=(state["run_id"],), daemon=True
                 ).start()
                 text = f"已接单 {state['run_id']}：计划→评审→写码→验收，每步会通知你。"
+        elif decision["intent"] == "sessions":
+            try:
+                from src.sessions import SessionStore
+
+                rows = SessionStore().list(limit=10)
+                lines = [
+                    f"{row['id'][:8]} · {row['title'] or row['source']} · "
+                    f"{time.strftime('%m-%d %H:%M', time.localtime(row['updated_at']))}"
+                    for row in rows
+                ]
+                text = "最近会话：\n" + ("\n".join(lines) if lines else "（暂无）")
+            except Exception as error:  # noqa: BLE001
+                text = f"读取会话失败：{error}"
+        elif decision["intent"] == "use_session":
+            try:
+                from src.sessions import SessionError, SessionStore
+
+                store = SessionStore()
+                matches = store.find_by_prefix(decision["params"]["prefix"])
+
+                if not matches:
+                    text = "没找到匹配的会话。"
+                elif len(matches) > 1:
+                    text = "前缀有歧义，候选：\n" + "\n".join(
+                        f"{row['id'][:8]} · {row['title'] or row['source']}"
+                        for row in matches
+                    )
+                else:
+                    target = matches[0]
+                    store.set_active(int(job.get("sender") or 0), target["id"])
+                    text = f"已切换到会话 {target['id'][:8]}（{target['title'] or target['source']}）"
+            except SessionError as error:
+                text = f"用法：/use <会话id 前缀至少 6 位>（{error}）"
+            except Exception as error:  # noqa: BLE001
+                text = f"切换失败：{error}"
+        elif decision["intent"] == "new_session":
+            try:
+                from src.sessions import SessionStore
+
+                store = SessionStore()
+                session = store.create("qq", "QQ · " + time.strftime("%H:%M"))
+                store.set_active(int(job.get("sender") or 0), session["id"])
+                text = f"已开新会话 {session['id'][:8]}"
+            except Exception as error:  # noqa: BLE001
+                text = f"新建会话失败：{error}"
         elif decision["intent"] == "ask":
             question = decision["params"].get("question", "")
 

@@ -453,6 +453,15 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    "unit/test_sessions.py": TestSchema(
+        layer="unit",
+        domain="knowledge",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     "unit/test_dsh_runner.py": TestSchema(
         layer="unit",
         domain="collab",

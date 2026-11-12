@@ -32,6 +32,20 @@ class ClassifyCase(unittest.TestCase):
         self.assertEqual(result["intent"], "unknown")
         self.assertEqual(result["action"], "clarify")
 
+    def test_sessions_command(self):
+        result = classify("/sessions")
+
+        self.assertEqual(result["intent"], "sessions")
+        self.assertEqual(result["action"], "execute")
+
+    def test_use_session_requires_long_prefix(self):
+        self.assertEqual(classify("/use abc")["intent"], "unknown")
+        self.assertEqual(classify("/use abcdef12")["intent"], "use_session")
+        self.assertEqual(classify("/use abcdef12")["params"]["prefix"], "abcdef12")
+
+    def test_new_session_command(self):
+        self.assertEqual(classify("/new")["intent"], "new_session")
+
     def test_cancel_command(self):
         result = classify("/cancel 123")
 

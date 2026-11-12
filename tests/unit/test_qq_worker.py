@@ -166,6 +166,54 @@ class TaskWorkerCase(WorkerCase):
         self.assertIn("已接单", self.client.sent[0][1])
         self.assertEqual(created["task"], "做一个扫雷")
 
+    def test_sessions_list_command(self):
+        with patch.dict("os.environ", {"PERSONAL_AGENT_DATA_DIR": str(self.root)}):
+            self.enqueue("/sessions")
+            self.pending("1", intent="sessions")
+            self.task_worker().run_once()
+
+        self.assertIn("最近会话", self.client.sent[0][1])
+
+    def test_use_session_command(self):
+        from src.sessions import SessionStore
+
+        with patch.dict("os.environ", {"PERSONAL_AGENT_DATA_DIR": str(self.root)}):
+            store = SessionStore()
+            session = store.create("qq", "旧会话")
+            self.enqueue(f"/use {session['id'][:8]}")
+            self.pending("1", intent="use_session")
+            self.task_worker().run_once()
+            active = store.active_session(7)
+
+        self.assertIn("已切换", self.client.sent[0][1])
+        self.assertEqual(active["id"], session["id"])
+
+    def test_new_session_command(self):
+        with patch.dict("os.environ", {"PERSONAL_AGENT_DATA_DIR": str(self.root)}):
+            self.enqueue("/new")
+            self.pending("1", intent="new_session")
+            self.task_worker().run_once()
+
+        self.assertIn("已开新会话", self.client.sent[0][1])
+
+    def test_reply_is_recorded_in_session(self):
+        from src.sessions import SessionStore
+
+        with patch.dict("os.environ", {"PERSONAL_AGENT_DATA_DIR": str(self.root)}):
+            store = SessionStore()
+            session = store.create("qq", "记录")
+            store.set_active(7, session["id"])
+            self.enqueue("你好")
+            self.pending()
+
+            with patch.object(self.handler, "reply_for", return_value="你好呀"):
+                self.task_worker().run_once()
+
+            messages = store.messages(session["id"])
+
+        self.assertEqual([m["role"] for m in messages], ["assistant"])
+        self.assertEqual(messages[0]["content"], "你好呀")
+
     def test_cancel_during_run_prevents_send(self):
         self.enqueue("1+1 等于几")
         self.pending()

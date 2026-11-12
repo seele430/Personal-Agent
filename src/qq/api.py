@@ -118,6 +118,11 @@ async def onebot_event(request: Request):
     except (UnicodeDecodeError, json.JSONDecodeError):
         return JSONResponse(status_code=400, content={"error": "bad json"})
 
+    if event.get("post_type") == "meta_event":
+        handler.handle_meta(event)
+
+        return Response(status_code=204)
+
     if event.get("post_type") != "message" or event.get("message_type") != "private":
         return Response(status_code=204)
 
@@ -146,5 +151,15 @@ async def onebot_event(request: Request):
         event,
         "enqueued" if enqueued else "duplicate_ignored",
     )
+
+    if enqueued:
+        try:
+            from src.sessions import SessionStore
+
+            store = SessionStore()
+            session = store.ensure_active(sender)
+            store.add_message(session["id"], "user", text, message_id=message_id)
+        except Exception:  # noqa: BLE001 - 会话记录失败不影响入站
+            pass
 
     return Response(status_code=204)

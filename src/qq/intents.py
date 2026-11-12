@@ -62,6 +62,20 @@ class TaskParams(BaseModel):
     task: str = Field(min_length=2, max_length=2000)
 
 
+class SessionsParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class UseSessionParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prefix: str = Field(min_length=6, max_length=36)
+
+
+class NewSessionParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
 @dataclass(frozen=True)
 class IntentSpec:
     name: str
@@ -185,6 +199,43 @@ TASK_SPEC = IntentSpec(
 )
 
 
+SESSIONS_SPEC = IntentSpec(
+    name="sessions",
+    params_schema=SessionsParams,
+    risk="low",
+    policy="allow",
+    handler="sessions",
+    timeout_seconds=5.0,
+    retry_policy="none",
+    output_kind="text",
+    enabled=True,
+)
+
+USE_SESSION_SPEC = IntentSpec(
+    name="use_session",
+    params_schema=UseSessionParams,
+    risk="low",
+    policy="allow",
+    handler="use_session",
+    timeout_seconds=5.0,
+    retry_policy="none",
+    output_kind="text",
+    enabled=True,
+)
+
+NEW_SESSION_SPEC = IntentSpec(
+    name="new_session",
+    params_schema=NewSessionParams,
+    risk="low",
+    policy="allow",
+    handler="new_session",
+    timeout_seconds=5.0,
+    retry_policy="none",
+    output_kind="text",
+    enabled=True,
+)
+
+
 INTENT_REGISTRY: dict[str, IntentSpec] = {
     spec.name: spec
     for spec in (
@@ -197,6 +248,9 @@ INTENT_REGISTRY: dict[str, IntentSpec] = {
         CONTINUE_RUN_SPEC,
         EXEC_SPEC,
         TASK_SPEC,
+        SESSIONS_SPEC,
+        USE_SESSION_SPEC,
+        NEW_SESSION_SPEC,
     )
 }
 

@@ -81,6 +81,23 @@ class QQInbound:
 
     # ---------- 事件 → 任务 ----------
 
+    def handle_meta(self, event: dict) -> None:
+        """元事件：lifecycle.connect 视为「小号上线」→ 开一个新会话。"""
+
+        meta = str(event.get("meta_event_type") or "unknown")
+        launched = meta == "lifecycle" and str(event.get("sub_type") or "") == "connect"
+
+        if launched:
+            try:
+                from src.sessions import SessionStore
+
+                launch_id = str(event.get("time") or self._clock())
+                SessionStore().ensure_qq_launch(launch_id, owner_id=self.owner_id)
+            except Exception:  # noqa: BLE001 - 会话创建失败不影响事件处理
+                pass
+
+        self.record(event, f"meta:{meta}" + (":launch" if launched else ""))
+
     def accept(self, event: dict) -> dict | None:
         """校验并生成待执行任务；不通过返回 None。"""
 

@@ -118,6 +118,20 @@ def classify(text: str) -> dict:
 
         return _result("task", {"task": task}, "execute", "task", "command")
 
+    if message in ("/sessions",):
+        return _result("sessions", {}, "execute", "sessions", "command")
+
+    if message.startswith("/use"):
+        prefix = message[len("/use") :].strip()
+
+        if len(prefix) < 6:
+            return _result("unknown", {}, "clarify", "use_usage", "command")
+
+        return _result("use_session", {"prefix": prefix}, "execute", "use_session", "command")
+
+    if message in ("/new",):
+        return _result("new_session", {}, "execute", "new_session", "command")
+
     if message.startswith("/continue"):
         rest = message[len("/continue") :].strip()
         parts = rest.split(None, 1)
