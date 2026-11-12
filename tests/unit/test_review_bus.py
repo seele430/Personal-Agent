@@ -61,7 +61,8 @@ class ReviewBusCase(unittest.TestCase):
             text
             or (
                 f"# 复审请求 round-{round_number:03d}（草稿）\n\n"
-                "> 状态：草稿——移到 kimi/inbox/ 才算发送；发送前必须人工确认。\n\n"
+                "> 状态：**草稿**——本文件位于 `pa/outbox/drafts/`，移到 `kimi/inbox/` 才算发送；"
+                "发送前必须人工确认。\n\n"
                 "## 本轮修了什么\n- 修了 blocker\n- 补了测试\n\n"
                 "## 请复审\n- 目标文件：plans/x.md\n- 范围：全文\n"
                 "- 要求：按结果合同输出 JSON，每条 finding 带 evidence。\n"
@@ -204,6 +205,15 @@ class ReviewBusCase(unittest.TestCase):
         self.assertIsNone(state["draft_file"])
         self.assertFalse(review_bus.draft_path(self.root, 2).exists())
         self.assertTrue(review_bus.inbox_request_path(self.root, 2).is_file())
+
+    def test_confirm_send_marks_request_as_sent(self):
+        self.set_state(round=1, status="fixing")
+        self.draft(2)
+        review_bus.confirm_send(self.root, 2)
+        text = review_bus.inbox_request_path(self.root, 2).read_text(encoding="utf-8")
+
+        self.assertIn("**已发送**", text)
+        self.assertNotIn("状态：**草稿**", text)
 
     def test_confirm_send_requires_fixing(self):
         self.set_state(round=1, status="waiting_kimi")

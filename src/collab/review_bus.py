@@ -557,6 +557,35 @@ def _fail(
     }
 
 
+def _mark_request_sent(path: Path, round_number: int) -> bool:
+    """把请求头「状态：草稿」改成「已发送」，避免归档快照把已发送记成草稿。"""
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+
+    lines = text.splitlines()
+    marker = "> 状态：**草稿**"
+    replaced = False
+
+    for index, line in enumerate(lines):
+        if line.startswith(marker):
+            lines[index] = (
+                f"> 状态：**已发送**（{_now()}，round-{round_number:03d}）"
+                f"——本文件已在 `kimi/inbox/`，等待复审。"
+            )
+            replaced = True
+            break
+
+    if not replaced:
+        return False
+
+    _write_text_atomic(path, "\n".join(lines) + "\n", prefix=".sent-")
+
+    return True
+
+
 def confirm_send(
     root: Path = DEFAULT_ROOT,
     round_number: int | None = None,
@@ -623,6 +652,9 @@ def confirm_send(
         except OSError:
             pass
         raise
+
+    # 文件头改成「已发送」；放在 state 落盘之后，回滚时草稿仍是「草稿」
+    _mark_request_sent(target, expected)
 
     sent, failed = _deliver(notifier, messages)
 
