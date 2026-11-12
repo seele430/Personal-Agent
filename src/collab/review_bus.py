@@ -595,9 +595,17 @@ def confirm_send(
     os.replace(source, target)
 
     try:
+        # 让文件 mtime 也等于发送时刻，避免「文件时间」与「state 时间」两个口径打架
+        os.utime(target, None)
+    except OSError:
+        pass
+
+    try:
         state["round"] = expected
         state["request_file"] = target.name
-        state["request_sent_at"] = _iso(target.stat().st_mtime)
+        # 计时起点用「发送动作时刻」：os.replace 会保留草稿的 mtime，
+        # 拿它当发送时间会把等人工确认的时间也算进超时。
+        state["request_sent_at"] = _now()
         state["draft_file"] = None
         state["status"] = "waiting_kimi"
         state["updated_at"] = _now()

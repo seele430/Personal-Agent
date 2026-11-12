@@ -1,6 +1,7 @@
 """M1 + M2 review bus tests。"""
 
 import json
+import os
 import tempfile
 import unittest
 
@@ -230,6 +231,23 @@ class ReviewBusCase(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["action"], "draft_invalid")
         self.assertIn("draft_too_small", result["errors"])
+
+    def test_confirm_send_timeout_starts_at_send_time(self):
+        """草稿放旧了再发，不能把等待确认的时间算进超时。"""
+
+        self.set_state(round=1, status="fixing")
+        path = self.draft(2)
+        old = datetime.now(timezone.utc) - timedelta(hours=3)
+        stamp = old.timestamp()
+        os.utime(path, (stamp, stamp))
+
+        review_bus.confirm_send(self.root, 2)
+        state = review_bus.load_state(self.root)
+        sent_at = datetime.fromisoformat(state["request_sent_at"])
+
+        self.assertLess((datetime.now(timezone.utc) - sent_at).total_seconds(), 60)
+        timeout = review_bus.check_timeout(self.root, timeout=600)
+        self.assertEqual(timeout["action"], "waiting")
 
     def test_reconcile_recovers_manual_request(self):
         self.set_state(round=1, status="fixing")
