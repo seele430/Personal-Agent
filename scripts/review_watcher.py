@@ -10,7 +10,8 @@
 - ``--timeout 600``     等待结果超时秒数（自 request mtime 起算）
 - ``--max-rounds 3``    同一复审对象的轮次上限
 
-QQ 通知只在 ``PA_QQ_OWNER`` + OneBot 已配置时启用；未配置时静默跳过。
+QQ 通知在 `.env` 里 `PA_QQ_OWNER` + `PA_ONEBOT_URL` 都配好时启用（复用
+`src/core/qq_notify.send_qq_notification`）；NapCat 不在线时发送失败只记 stderr。
 """
 
 from __future__ import annotations
@@ -30,25 +31,33 @@ from src.collab import review_bus  # noqa: E402
 
 
 def build_notifier():
-    owner = int(os.getenv("PA_QQ_OWNER") or 0)
+    """QQ 通知：读项目 .env，复用 src/core/qq_notify；未配置返回 None。
 
-    if not owner:
+    NapCat（OneBot）不在线时发送会抛 OneBotError，由 review_bus 记录为
+    notify_failed，不影响状态机。
+    """
+
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(ROOT / ".env")
+    except ImportError:
+        pass
+
+    owner = (os.getenv("PA_QQ_OWNER") or "").strip()
+
+    if not owner.isdigit() or int(owner) <= 0:
+        return None
+
+    if not (os.getenv("PA_ONEBOT_URL") or "").strip():
         return None
 
     try:
-        from src.qq.api import build_client
+        from src.core.qq_notify import send_qq_notification
     except Exception:  # noqa: BLE001 - 通知是可选能力，导入失败就跳过
         return None
 
-    client = build_client()
-
-    if not client.configured():
-        return None
-
-    def notify(text: str) -> None:
-        client.send_private_msg(owner, text)
-
-    return notify
+    return send_qq_notification
 
 
 def run_once(root: Path, args, notifier) -> dict:
