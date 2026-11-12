@@ -22,9 +22,11 @@ class FakeQwen:
         self.plans = list(plans or [PLAN])
         self.verdicts = list(verdicts or ["VERDICT: PASS"])
         self.calls = []
+        self.timeouts = []
 
     def __call__(self, prompt, workspace, *, timeout=600):
         self.calls.append(prompt)
+        self.timeouts.append(timeout)
 
         if "验收者" in prompt:
             return QwenResult(True, "验收理由\n" + self.verdicts.pop(0), 0, 0.1)
@@ -40,9 +42,11 @@ class FakeDsh:
         self.writes_code = writes_code
         self.ok = ok
         self.calls = []
+        self.timeouts = []
 
     def __call__(self, prompt, workspace, *, timeout=600, extra_env=None):
         self.calls.append(prompt)
+        self.timeouts.append(timeout)
         workspace = Path(workspace)
 
         if "评审" in prompt:
@@ -166,6 +170,39 @@ class OrchestratorCase(unittest.TestCase):
 
         self.assertEqual(info["run_id"], state["run_id"])
         self.assertEqual(info["state"], "created")
+
+    def test_per_step_timeouts(self):
+        qwen = FakeQwen()
+        dsh = FakeDsh()
+        orchestrator = self.build(qwen=qwen, dsh=dsh)
+        state = orchestrator.create("做一个扫雷")
+
+        orchestrator.run(state["run_id"])
+
+        self.assertIn(600.0, qwen.timeouts)   # planning
+        self.assertIn(900.0, qwen.timeouts)   # verifying
+        self.assertIn(1800.0, dsh.timeouts)   # coding
+
+    def test_status_reports_stop_reason(self):
+        orchestrator = self.build(dsh=FakeDsh(verdicts=["FAIL", "FAIL", "FAIL"]))
+        state = orchestrator.create("做一个扫雷")
+
+        orchestrator.run(state["run_id"])
+        info = orchestrator.status()
+
+        self.assertEqual(info["state"], "stopped")
+        self.assertEqual(info["stop_reason"], "max_revisions")
+        self.assertIn("max_revisions", info["message"])
+
+    def test_stop_notification_mentions_artifacts(self):
+        orchestrator = self.build(dsh=FakeDsh(writes_code=False))
+        state = orchestrator.create("做一个扫雷")
+
+        orchestrator.run(state["run_id"])
+
+        self.assertTrue(
+            any("停止" in note and "产物" in note for note in self.notes)
+        )
 
 
 class VerdictCase(unittest.TestCase):

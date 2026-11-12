@@ -30,6 +30,13 @@ DEFAULT_QWEN = r"C:\Users\123\AppData\Roaming\npm\qwen.cmd"
 VERDICT_RE = re.compile(r"^VERDICT:\s*(PASS|FAIL)\s*$", re.IGNORECASE | re.MULTILINE)
 MAX_REVISIONS = 2
 DEFAULT_TIMEOUT = 600.0
+STEP_TIMEOUTS = {
+    "planning": 600.0,
+    "revising": 600.0,
+    "reviewing": 600.0,
+    "coding": 1800.0,
+    "verifying": 900.0,
+}
 MIN_PLAN_CHARS = 80
 RUNS_DIRNAME = "runs"
 
@@ -206,15 +213,27 @@ class Orchestrator:
         qwen: Callable[..., QwenResult] = call_qwen,
         dsh: Callable[..., dsh_runner.RunResult] = dsh_runner.run,
         notifier: Callable[[str], None] | None = None,
-        timeout: float = DEFAULT_TIMEOUT,
+        timeout: float | None = None,
+        step_timeouts: dict | None = None,
         max_revisions: int = MAX_REVISIONS,
     ):
         self.root = Path(root) if root else data_root() / RUNS_DIRNAME
         self.qwen = qwen
         self.dsh = dsh
         self.notifier = notifier
-        self.timeout = timeout
         self.max_revisions = max_revisions
+
+        self.step_timeouts = dict(STEP_TIMEOUTS)
+
+        if step_timeouts:
+            self.step_timeouts.update(step_timeouts)
+
+        if timeout is not None:
+            # 显式传 timeout 时统一覆盖所有步骤（测试/临时调试用）
+            self.step_timeouts = {name: float(timeout) for name in STEP_TIMEOUTS}
+
+    def _timeout_for(self, step: str) -> float:
+        return float(self.step_timeouts.get(step, DEFAULT_TIMEOUT))
 
     # ---------- 状态持久化 ----------
 
@@ -304,7 +323,7 @@ class Orchestrator:
                 "只输出计划正文，不要解释。\n\n任务：\n" + state["task"]
             )
 
-        result = self.qwen(prompt, directory, timeout=self.timeout)
+        result = self.qwen(prompt, directory, timeout=self._timeout_for(state["step"]))
         state["steps"][step] = {
             "ok": bool(result.ok), "elapsed_s": result.elapsed_s,
             "exit_code": result.exit_code, "chars": len(result.text or ""),
@@ -342,7 +361,7 @@ class Orchestrator:
             "把评审意见写入 review.md，**文件最后一行必须是 `VERDICT: PASS` 或 `VERDICT: FAIL`**。"
             "除这个文件外不要改其他文件。"
         )
-        result = self.dsh(prompt, directory, timeout=self.timeout, extra_env=_dsh_env())
+        result = self.dsh(prompt, directory, timeout=self._timeout_for(state["step"]), extra_env=_dsh_env())
         state["steps"]["reviewing"] = {
             "ok": bool(result.ok), "elapsed_s": result.elapsed_s,
             "exit_code": result.exit_code, "events": result.events,
@@ -377,7 +396,7 @@ class Orchestrator:
             "按当前目录的 plan.md 在 src/ 下实现任务。改完不要动 plan.md 与 review.md。"
             "最后用 3 行以内说明你产出了哪些文件。"
         )
-        result = self.dsh(prompt, directory, timeout=self.timeout, extra_env=_dsh_env())
+        result = self.dsh(prompt, directory, timeout=self._timeout_for(state["step"]), extra_env=_dsh_env())
         state["steps"]["coding"] = {
             "ok": bool(result.ok), "elapsed_s": result.elapsed_s,
             "exit_code": result.exit_code, "summary": (result.text or "")[-300:],
@@ -420,7 +439,7 @@ class Orchestrator:
             "你是验收者。读取 plan.md 与 src/ 下的实现，判断是否满足计划。"
             "最后一行必须写 `VERDICT: PASS` 或 `VERDICT: FAIL`，上面写理由。"
         )
-        result = self.qwen(prompt, directory, timeout=self.timeout)
+        result = self.qwen(prompt, directory, timeout=self._timeout_for(state["step"]))
         state["steps"]["verifying"] = {
             "ok": bool(result.ok), "elapsed_s": result.elapsed_s,
             "exit_code": result.exit_code, "chars": len(result.text or ""),
@@ -502,7 +521,11 @@ class Orchestrator:
         state["stop_reason"] = reason
         self._history(state, "stopped", reason=reason)
         self.save(state)
-        self._notify(f"[编排 {state['run_id']}] 停止：{reason}")
+        artifacts = len(state.get("artifacts") or [])
+        self._notify(
+            f"[编排 {state['run_id']}] 停止：{reason}；已生成产物 {artifacts} 个"
+            f"（{self.run_dir(state['run_id'])}）"
+        )
 
         return state
 
@@ -524,13 +547,38 @@ class Orchestrator:
         except (OrchestratorError, OSError, json.JSONDecodeError):
             return None
 
+        steps = state.get("steps") or {}
+        failed_step = next(
+            (
+                name for name, step in steps.items()
+                if isinstance(step, dict) and step.get("ok") is False
+            ),
+            None,
+        )
+        artifacts = len(state.get("artifacts") or [])
+        stop_reason = state.get("stop_reason") or ""
+
+        if state["state"] == "stopped":
+            message = f"已停止：{stop_reason or 'unknown'}"
+
+            if failed_step:
+                message += f"（失败步骤 {failed_step}）"
+        elif state["state"] == "done":
+            message = f"已完成，产物 {artifacts} 个"
+        else:
+            message = f"{state['state']}/{state.get('step') or '-'}"
+
+        message += f"（返工 {state.get('revisions')}/{state.get('max_revisions')}）"
+
         return {
             "run_id": state["run_id"],
             "state": state["state"],
             "step": state.get("step"),
             "revisions": state.get("revisions"),
-            "message": f"{state['state']}/{state.get('step') or '-'}"
-                       f"（返工 {state.get('revisions')}/{state.get('max_revisions')}）",
+            "stop_reason": stop_reason,
+            "failed_step": failed_step,
+            "artifacts": artifacts,
+            "message": message,
         }
 
 
