@@ -444,6 +444,15 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    "unit/test_review_bus.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     "unit/test_memory_store.py": TestSchema(
         layer="unit",
         domain="memory",
