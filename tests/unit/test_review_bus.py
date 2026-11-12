@@ -273,6 +273,41 @@ class ReviewBusCase(unittest.TestCase):
             any(item["event"] == "request_sent_recovered" for item in state["history"])
         )
 
+    # ---------------------------------------------------------------- M2-11
+
+    def test_start_loop_from_pass_and_send_next_round(self):
+        self.set_state(
+            round=5, status="pass_waiting_human_signoff", loop_round=2, target="old"
+        )
+        result = review_bus.start_loop(self.root, "design v1.3")
+        state = review_bus.load_state(self.root)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(state["status"], "fixing")
+        self.assertEqual(state["loop_round"], 0)
+        self.assertEqual(state["round"], 5)
+        self.assertEqual(state["target"], "design v1.3")
+        self.assertIsNone(state["request_file"])
+
+        self.draft(6)
+        sent = review_bus.confirm_send(self.root, 6)
+        self.assertTrue(sent["ok"])
+        self.assertEqual(review_bus.load_state(self.root)["round"], 6)
+
+    def test_start_loop_refuses_active_loop(self):
+        self.set_state(round=1, status="waiting_kimi")
+        result = review_bus.start_loop(self.root, "x")
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["action"], "loop_active")
+
+    def test_start_loop_requires_target(self):
+        self.set_state(round=1, status="signed_off")
+        result = review_bus.start_loop(self.root, "   ")
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["action"], "target_required")
+
     # ---------------------------------------------------------------- M2-5
 
     def test_notify_once_per_round_event(self):

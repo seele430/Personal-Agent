@@ -729,6 +729,45 @@ def reconcile(
     }
 
 
+def start_loop(root: Path = DEFAULT_ROOT, target: str = "") -> dict:
+    """开始一个新复审对象：pass / stopped / signed_off 之后切 target，loop_round 归零。"""
+
+    root = Path(root)
+    target = (target or "").strip()
+
+    if not target:
+        return {"ok": False, "action": "target_required"}
+
+    state = load_state(root)
+    _ensure_state_defaults(state)
+
+    if state.get("status") in ("waiting_kimi", "fixing"):
+        return {"ok": False, "action": "loop_active", "status": state.get("status")}
+
+    previous = state.get("status")
+    state["target"] = target
+    state["status"] = "fixing"
+    state["loop_round"] = 0
+    state["request_file"] = None
+    state["result_file"] = None
+    state["request_sent_at"] = None
+    state["draft_file"] = None
+    state["fix_task_file"] = None
+    state["updated_at"] = _now()
+    _history(
+        state, int(state.get("round", 0)), "loop_started",
+        target=target, previous_status=previous,
+    )
+    save_state_atomic(root, state)
+
+    return {
+        "ok": True,
+        "action": "loop_started",
+        "target": target,
+        "previous_status": previous,
+    }
+
+
 def stop(
     root: Path = DEFAULT_ROOT, reason: str = "manual", *, notifier: Notifier | None = None
 ) -> dict:

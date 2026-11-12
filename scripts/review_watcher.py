@@ -5,6 +5,7 @@
 - ``--once``            处理一次（对账 → 处理结果 → 超时检查）
 - ``--interval 5``      循环轮询（默认 5 秒）
 - ``--confirm-send N``  人工确认后发送 round-N 草稿（唯一的发送入口）
+- ``--start-loop TARGET`` 开新复审对象（pass/stopped 之后），loop_round 归零
 - ``--stop``            人工停止当前循环
 - ``--timeout 600``     等待结果超时秒数（自 request mtime 起算）
 - ``--max-rounds 3``    同一复审对象的轮次上限
@@ -51,6 +52,9 @@ def build_notifier():
 
 
 def run_once(root: Path, args, notifier) -> dict:
+    if getattr(args, "start_loop", None):
+        return review_bus.start_loop(root, args.start_loop)
+
     if args.confirm_send is not None:
         return review_bus.confirm_send(root, args.confirm_send, notifier=notifier)
 
@@ -77,6 +81,7 @@ def main(argv=None) -> int:
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--interval", type=float, default=5.0)
     parser.add_argument("--confirm-send", type=int, default=None, metavar="N")
+    parser.add_argument("--start-loop", default=None, metavar="TARGET")
     parser.add_argument("--stop", action="store_true")
     parser.add_argument("--timeout", type=float, default=review_bus.DEFAULT_TIMEOUT)
     parser.add_argument("--max-rounds", type=int, default=review_bus.MAX_ROUNDS)
@@ -85,7 +90,7 @@ def main(argv=None) -> int:
     root = Path(args.root)
     notifier = build_notifier()
 
-    if args.once or args.confirm_send is not None or args.stop:
+    if args.once or args.confirm_send is not None or args.stop or args.start_loop:
         result = run_once(root, args, notifier)
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
