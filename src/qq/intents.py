@@ -56,6 +56,12 @@ class DenyParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class TaskParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task: str = Field(min_length=2, max_length=2000)
+
+
 @dataclass(frozen=True)
 class IntentSpec:
     name: str
@@ -166,6 +172,19 @@ EXEC_SPEC = IntentSpec(
 )
 
 
+TASK_SPEC = IntentSpec(
+    name="task",
+    params_schema=TaskParams,
+    risk="high",
+    policy="allow",
+    handler="task",
+    timeout_seconds=10.0,
+    retry_policy="none",
+    output_kind="text",
+    enabled=True,
+)
+
+
 INTENT_REGISTRY: dict[str, IntentSpec] = {
     spec.name: spec
     for spec in (
@@ -177,6 +196,7 @@ INTENT_REGISTRY: dict[str, IntentSpec] = {
         RESET_SPEC,
         CONTINUE_RUN_SPEC,
         EXEC_SPEC,
+        TASK_SPEC,
     )
 }
 

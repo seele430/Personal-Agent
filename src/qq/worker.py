@@ -333,6 +333,33 @@ class TaskWorker(BaseWorker):
 
         if decision["intent"] == "status":
             text = "Personal Agent 在线；QQ 入站已接通。"
+
+            try:
+                from src.collab.orchestrator import Orchestrator
+
+                info = Orchestrator().status()
+            except Exception:  # noqa: BLE001 - 状态附加信息失败不影响主状态
+                info = None
+
+            if info:
+                text += f" 编排：{info['run_id']} {info['message']}"
+        elif decision["intent"] == "task":
+            from src.collab.orchestrator import Orchestrator
+
+            orchestrator = Orchestrator(notifier=lambda note: self.notice(job, note))
+            current = orchestrator.status()
+
+            if current and current["state"] == "running":
+                text = (
+                    f"已有编排在跑：{current['run_id']}（{current['step']}）；"
+                    "完成后再接新任务。"
+                )
+            else:
+                state = orchestrator.create(decision["params"]["task"])
+                threading.Thread(
+                    target=orchestrator.run, args=(state["run_id"],), daemon=True
+                ).start()
+                text = f"已接单 {state['run_id']}：计划→评审→写码→验收，每步会通知你。"
         elif decision["intent"] == "ask":
             question = decision["params"].get("question", "")
 

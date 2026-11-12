@@ -453,6 +453,24 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    "unit/test_dsh_runner.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    "unit/test_orchestrator.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
     "unit/test_memory_store.py": TestSchema(
         layer="unit",
         domain="memory",

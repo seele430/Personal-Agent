@@ -137,6 +137,35 @@ class TaskWorkerCase(WorkerCase):
         self.assertLessEqual(len(self.client.sent[0][1]), 820)
         self.assertIn("已省略", self.client.sent[0][1])
 
+    def test_task_creates_orchestration_run(self):
+        from src.collab import orchestrator as orch_mod
+
+        created = {}
+
+        class FakeOrchestrator:
+            def __init__(self, **kwargs):
+                self.notifier = kwargs.get("notifier")
+
+            def status(self):
+                return None
+
+            def create(self, task):
+                created["task"] = task
+
+                return {"run_id": "run-fake"}
+
+            def run(self, run_id):
+                created["run"] = run_id
+
+        self.enqueue("/task 做一个扫雷")
+        self.pending("1", intent="task", params={"task": "做一个扫雷"})
+
+        with patch.object(orch_mod, "Orchestrator", FakeOrchestrator):
+            self.task_worker().run_once()
+
+        self.assertIn("已接单", self.client.sent[0][1])
+        self.assertEqual(created["task"], "做一个扫雷")
+
     def test_cancel_during_run_prevents_send(self):
         self.enqueue("1+1 等于几")
         self.pending()

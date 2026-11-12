@@ -19,6 +19,19 @@ class ClassifyCase(unittest.TestCase):
         self.assertEqual(result["intent"], "ask")
         self.assertEqual(result["params"]["question"], "1+1 等于几")
 
+    def test_task_command(self):
+        result = classify("/task 做一个扫雷")
+
+        self.assertEqual(result["intent"], "task")
+        self.assertEqual(result["action"], "execute")
+        self.assertEqual(result["params"]["task"], "做一个扫雷")
+
+    def test_task_without_text_needs_clarify(self):
+        result = classify("/task")
+
+        self.assertEqual(result["intent"], "unknown")
+        self.assertEqual(result["action"], "clarify")
+
     def test_cancel_command(self):
         result = classify("/cancel 123")
 
