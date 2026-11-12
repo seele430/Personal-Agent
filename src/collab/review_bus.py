@@ -136,6 +136,10 @@ def _already_processed(state: dict, round_number: int, digest: str) -> bool:
 def process_once(root: Path = DEFAULT_ROOT) -> dict:
     root = Path(root)
     state = load_state(root)
+
+    if state.get("status") != "waiting_kimi":
+        return {"ok": True, "action": "not_waiting", "status": state.get("status")}
+
     round_number = int(state.get("round", 0))
     candidates = [
         path for path in discover_results(root)

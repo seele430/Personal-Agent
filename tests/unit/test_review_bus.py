@@ -63,6 +63,9 @@ class ReviewBusCase(unittest.TestCase):
     def test_duplicate_ignored(self):
         self.result(self.valid())
         review_bus.process_once(self.root)
+        state = review_bus.load_state(self.root)
+        state["status"] = "waiting_kimi"
+        review_bus.save_state_atomic(self.root, state)
         result = review_bus.process_once(self.root)
         self.assertEqual(result["action"], "duplicate")
 
@@ -113,6 +116,15 @@ class ReviewBusCase(unittest.TestCase):
         review_bus.process_once(self.root)
         raw = (self.root / "state" / "review.json").read_text(encoding="utf-8")
         self.assertIsInstance(json.loads(raw), dict)
+
+
+
+    def test_signed_off_not_reprocessed(self):
+        self.result(self.valid())
+        self.set_state(round=1, status="signed_off")
+        result = review_bus.process_once(self.root)
+        self.assertEqual(result["action"], "not_waiting")
+        self.assertEqual(review_bus.load_state(self.root)["status"], "signed_off")
 
 
 if __name__ == "__main__":
