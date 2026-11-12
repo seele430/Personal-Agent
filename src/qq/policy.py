@@ -148,8 +148,10 @@ def truncate_for_qq(text: str, limit: int = 3000) -> str:
     return text[:head] + "\n…（中间已省略）…\n" + text[-tail:]
 
 
-def chunk_for_qq(text: str, limit: int = 800, max_chunks: int = 3) -> list[str]:
-    """把长回答切成若干条私聊；按空行/句末切，超 max_chunks 的尾巴并进最后一条。"""
+def chunk_for_qq(
+    text: str, limit: int = 800, max_chunks: int = 3, max_chars: int = 4500
+) -> list[str]:
+    """把长回答切成若干条私聊；按空行/句末切，条数超上限时按字数均衡重切。"""
 
     text = (text or "").strip()
 
@@ -184,10 +186,14 @@ def chunk_for_qq(text: str, limit: int = 800, max_chunks: int = 3) -> list[str]:
     if len(pieces) <= max_chunks:
         return pieces
 
-    head = pieces[: max_chunks - 1]
-    tail = "\n\n".join(pieces[max_chunks - 1:])
+    # 条数超上限：按字数均衡重切（QQ 单条约 4500 字上限），避免出现一条巨长 + 一条几个字
+    target = min(max(-(-len(text) // max_chunks), limit), max_chars)
+    balanced = _split_long_block(text, target)
 
-    return head + [tail]
+    if len(balanced) <= max_chunks:
+        return balanced
+
+    return balanced[: max_chunks - 1] + ["\n\n".join(balanced[max_chunks - 1:])]
 
 
 def _split_long_block(block: str, limit: int) -> list[str]:

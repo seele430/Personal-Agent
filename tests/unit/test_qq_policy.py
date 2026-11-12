@@ -56,6 +56,14 @@ class ChunkCase(unittest.TestCase):
 
         self.assertTrue(all(chunk.endswith("。") for chunk in chunks[:-1]))
 
+    def test_very_long_text_balances_chunks(self):
+        text = "长" * 12700
+        chunks = chunk_for_qq(text, 800, 3)
+
+        self.assertEqual(len(chunks), 3)
+        self.assertTrue(all(len(chunk) <= 4500 for chunk in chunks))
+        self.assertEqual("".join(chunks), text)
+
     def test_ids_are_unique_enough(self):
         ids = {generate_confirmation_id() for _ in range(200)}
 

@@ -122,6 +122,18 @@ class TestSuccess(ProviderCase):
 
         self.assertEqual(body["max_tokens"], 999)
 
+    def test_reasoning_exhausted_is_explained(self):
+        payload = self.payload(content="")
+        payload["choices"][0]["finish_reason"] = "length"
+        payload["usage"]["completion_tokens_details"] = {"reasoning_tokens": 400}
+
+        with self.assertRaises(ProviderError) as caught:
+            self.provider(FakeOpener(payload)).submit(
+                "x", artifact_name="a.md", out_dir=self.out
+            )
+
+        self.assertIn("思考", str(caught.exception))
+
 
 class TestErrors(ProviderCase):
     def test_missing_key_refuses_without_request(self):

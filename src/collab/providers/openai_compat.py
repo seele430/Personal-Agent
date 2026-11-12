@@ -20,8 +20,8 @@ import urllib.request
 from pathlib import Path
 
 
-MAX_TOKENS = 1200
-TIMEOUT_SECONDS = 30.0
+MAX_TOKENS = 16384
+TIMEOUT_SECONDS = 120.0
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-flash"
 TRUNCATION_MARKER = "…（已达单次输出上限，回答被截断）"
@@ -92,8 +92,18 @@ class OpenAICompatProvider:
         elapsed = round(time.perf_counter() - started, 2)
 
         content, finish_reason = self._content_of(body)
+        usage = body.get("usage") or {}
+        reasoning_tokens = int(
+            (usage.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0
+        )
 
         if not content.strip():
+            if finish_reason == "length" and reasoning_tokens > 0:
+                raise ProviderError(
+                    f"模型把输出预算全用在思考上（reasoning_tokens={reasoning_tokens}），"
+                    "没有产出正文；请调大 PA_PROVIDER_MAX_TOKENS 或关闭 thinking"
+                )
+
             raise ProviderError("Provider 返回了空内容")
 
         truncated = finish_reason == "length"
@@ -105,7 +115,6 @@ class OpenAICompatProvider:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
 
-        usage = body.get("usage") or {}
         task_id = str(body.get("id") or "")
 
         if not task_id:
