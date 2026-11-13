@@ -1,8 +1,21 @@
-# HANDOFF（2026-11-05 更新）
+# HANDOFF（2026-11-13 更新）
 
 > 交接给下一个人 / 下一个会话。读完这份就能接着干，不用翻聊天记录。
 
-## 0. 一句话现状
+> **⚠ 2026-11-13 大瘦身**：弹性控制面（控制器/趋势/What-if/回放/告警）已抽离为独立项目
+> [elastic-agent-platform](https://github.com/seele430/elastic-agent-platform)；qwen 受控 Runner 旧栈与
+> collab v1.4 协作接口层归档到 `legacy/`（留档不可运行，git 历史可复用）；
+> `HANDOFF_D11.md`、`HANDOFF_TEST_ENGINEERING.md` 已删除（内容过期），
+> `TEST_ENGINEERING_REPORT.md` 移到 `docs/`。下文 2026-11-05 的弹性相关内容仅作历史参考；
+> 用例数以 `python scripts/run_tests.py list` 实测为准（下文「812 用例」早已过期）。
+> 最新进展永远以 `docs/STATUS-20261107.md` 最新一节为准。
+
+## 0. 一句话现状（2026-11-13）
+
+单人自用本地工作台：聊天 / 提醒 / 定时任务 / 产物 / QQ 通道 / 编排（plan→review→coding→verify，
+coding 可选走平台沙箱 exec）全部可用；最近一次全量回归与真机全链路 PASS 见 STATUS §138-§139。
+
+## 0.1 历史现状（2026-11-05）
 
 平台主线（执行/取消/审批/轨迹/生命周期/配额/对账/认证/限流/审计/队列/观测/压测）完成；
 **本轮新增**意图路由（规则层 + 评估集 + 审批闸门）与弹性控制面（扩缩容控制器 + 对照实验 + 残留校验）。

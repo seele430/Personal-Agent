@@ -1,5 +1,8 @@
 """接力任务存储：run / revision / step / attempt（SQLite）。
 
+注意区分：`src/core/run_store.py` 是**单用户助手聊天**的 run/turn/step/exec
+数据模型，与本模块的接力任务是两套东西，名字相同纯属历史。
+
 关键不变量：
 
 - 认领只允许 `pending`（或租约过期的 `running`）；影响行数必须为 1；

@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 153fcbe010556c39 -->
+<!-- membership-digest: 4d3059a27719c2e2 -->
 
-## unit — L1 单元测试 (102 files)
+## unit — L1 单元测试 (87 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -27,8 +27,6 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_agent_call_count.py` | tests/ 根 | agent | none | none | low | registered-inferred |
 | `test_agent_fallback.py` | tests/ 根 | agent | none | mocked | medium | registered-inferred |
 | `test_agent_usage.py` | tests/ 根 | agent | none | none | low | registered-inferred |
-| `test_autoscale.py` | tests/ 根 | platform_nodes | none | none | low | registered-inferred |
-| `test_elastic_controller.py` | tests/ 根 | platform_elastic | temporary_sqlite | none | low | registered-inferred |
 | `test_intent_router.py` | tests/ 根 | routing | none | none | medium | registered-inferred |
 | `test_netcheck.py` | tests/ 根 | platform_ops | none | none | low | registered-inferred |
 | `test_office_convert.py` | tests/ 根 | office | temporary_sqlite | mocked | high | registered-inferred |
@@ -38,19 +36,14 @@ python scripts/run_tests.py integration       # 运行该层
 | `test_routing_fallback.py` | tests/ 根 | routing | none | none | medium | registered-inferred |
 | `test_routing_policy.py` | tests/ 根 | routing | none | none | medium | registered-inferred |
 | `test_rss_errors.py` | tests/ 根 | rss | none | mocked | medium | registered-inferred |
-| `test_scale_events.py` | tests/ 根 | platform_elastic | temporary_sqlite | none | low | registered-inferred |
+| `test_team_dispatch.py` | tests/ 根 | team | temporary_sqlite | none | low | registered-inferred |
 | `test_tool_registry.py` | tests/ 根 | tool_policy | none | none | low | registered-inferred |
-| `test_trends.py` | tests/ 根 | platform_elastic | temporary_sqlite | none | low | registered-inferred |
-| `test_whatif.py` | tests/ 根 | platform_elastic | none | none | low | registered-inferred |
 | `unit/test_activity_summary.py` | tests/unit/ | activity | none | none | low | registered-inferred |
 | `unit/test_activity_timeline.py` | tests/unit/ | activity | temporary_sqlite | none | low | registered-inferred |
 | `unit/test_agent_tool_limits.py` | tests/unit/ | reminder | none | mocked | medium | registered |
 | `unit/test_artifact_registry.py` | tests/unit/ | artifacts | temporary_sqlite | none | high | registered-inferred |
 | `unit/test_auth_compat.py` | tests/unit/ | auth | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_chunker.py` | tests/unit/ | knowledge | none | none | low | registered-inferred |
-| `unit/test_collab_capability.py` | tests/unit/ | collab | none | none | medium | registered-inferred |
-| `unit/test_collab_cli.py` | tests/unit/ | collab | temporary_sqlite | none | medium | registered-inferred |
-| `unit/test_collab_registry.py` | tests/unit/ | collab | temporary_sqlite | none | high | registered-inferred |
 | `unit/test_comfy_once.py` | tests/unit/ | tools | none | none | medium | registered-inferred |
 | `unit/test_comfy_tools.py` | tests/unit/ | tools | none | none | medium | registered-inferred |
 | `unit/test_cost_ledger.py` | tests/unit/ | cost | none | none | low | registered-inferred |
@@ -62,7 +55,6 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_fault_matrix.py` | tests/unit/ | faults | temporary_sqlite | mocked | high | registered-inferred |
 | `unit/test_fault_reconcile.py` | tests/unit/ | faults | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_gpu_guard.py` | tests/unit/ | tools | none | none | high | registered-inferred |
-| `unit/test_handoff.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
 | `unit/test_launch_watcher.py` | tests/unit/ | qq | temporary_sqlite | none | low | registered-inferred |
 | `unit/test_lifecycle_files.py` | tests/unit/ | lifecycle | none | none | high | registered-inferred |
 | `unit/test_lifecycle_retention.py` | tests/unit/ | lifecycle | temporary_sqlite | none | high | registered-inferred |
@@ -93,12 +85,6 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_qq_threads.py` | tests/unit/ | qq | temporary_sqlite | mocked | low | registered-inferred |
 | `unit/test_qq_worker.py` | tests/unit/ | qq | temporary_sqlite | mocked | medium | registered-inferred |
 | `unit/test_qwen_agent.py` | tests/unit/ | collab | none | mocked | medium | registered-inferred |
-| `unit/test_qwen_cli.py` | tests/unit/ | collab | none | mocked | medium | registered-inferred |
-| `unit/test_qwen_events.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
-| `unit/test_qwen_pipeline.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
-| `unit/test_qwen_runner.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
-| `unit/test_qwen_watcher.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
-| `unit/test_qwen_workspace.py` | tests/unit/ | collab | none | mocked | medium | registered-inferred |
 | `unit/test_real_provider.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
 | `unit/test_relay.py` | tests/unit/ | collab | temporary_sqlite | mocked | medium | registered-inferred |
 | `unit/test_relay_artifacts.py` | tests/unit/ | collab | none | mocked | low | registered-inferred |
@@ -114,7 +100,6 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_research_llm.py` | tests/unit/ | research | none | mocked | medium | registered-inferred |
 | `unit/test_research_prompts.py` | tests/unit/ | research | none | none | low | registered-inferred |
 | `unit/test_research_report.py` | tests/unit/ | research | temporary_sqlite | none | medium | registered-inferred |
-| `unit/test_review_bus.py` | tests/unit/ | collab | none | none | medium | registered-inferred |
 | `unit/test_scorecard.py` | tests/unit/ | eval | none | none | low | registered-inferred |
 | `unit/test_sessions.py` | tests/unit/ | knowledge | temporary_sqlite | none | medium | registered-inferred |
 | `unit/test_url_policy.py` | tests/unit/ | rss | none | mocked | high | registered-inferred |
@@ -126,7 +111,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_web_extract.py` | tests/unit/ | web | none | none | low | registered-inferred |
 | `unit/test_web_search.py` | tests/unit/ | web | none | mocked | medium | registered-inferred |
 
-## integration — L2 数据集成测试 (86 files)
+## integration — L2 数据集成测试 (83 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -140,8 +125,6 @@ python scripts/run_tests.py integration       # 运行该层
 | `integration/test_console_api.py` | tests/integration/ | platform_http | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_console_cli.py` | tests/integration/ | console | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_console_concurrency.py` | tests/integration/ | platform_http | temporary_sqlite | none | medium | registered-inferred |
-| `integration/test_console_replay.py` | tests/integration/ | platform_http | temporary_sqlite | none | low | registered-inferred |
-| `integration/test_console_simulate.py` | tests/integration/ | platform_http | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_console_snapshot.py` | tests/integration/ | platform_http | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_default_node_renewal.py` | tests/integration/ | platform_nodes | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_diff_api.py` | tests/integration/ | diff | temporary_sqlite | none | medium | registered-inferred |
@@ -151,7 +134,6 @@ python scripts/run_tests.py integration       # 运行该层
 | `integration/test_memory_api.py` | tests/integration/ | memory | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_memory_eval_run.py` | tests/integration/ | memory | temporary_sqlite | mocked | medium | registered-inferred |
 | `integration/test_orch_platform_exec.py` | tests/integration/ | platform_exec | temporary_sqlite | none | medium | registered-inferred |
-| `integration/test_platform_alerts.py` | tests/integration/ | platform_alerts | temporary_sqlite | none | low | registered-inferred |
 | `integration/test_platform_api.py` | tests/integration/ | platform_http | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_platform_audit.py` | tests/integration/ | platform_audit | temporary_sqlite | none | medium | registered-inferred |
 | `integration/test_platform_auth.py` | tests/integration/ | platform_auth | temporary_sqlite | none | medium | registered-inferred |

@@ -10,7 +10,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
-from src.evals.reminder_eval import (
+from src.eval.reminder_eval import (
     EvalCase,
     ToolCall,
     extract_tool_calls,

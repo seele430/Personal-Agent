@@ -444,15 +444,6 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
-    "unit/test_review_bus.py": TestSchema(
-        layer="unit",
-        domain="collab",
-        database="none",
-        authentication="none",
-        external_network="none",
-        risk="medium",
-    ),
-
     "unit/test_launch_watcher.py": TestSchema(
         layer="unit",
         domain="qq",
@@ -874,14 +865,6 @@ TEST_SCHEMAS = {
     ),
 
     # L2：D37 告警闭环（阈值 → 驱逐 → 审计）
-    "integration/test_platform_alerts.py": TestSchema(
-        layer="integration",
-        domain="platform_alerts",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="none",
-        risk="low",
-    ),
     # L2：最小 least-loaded 调度与单用户全局上限（修订版 D19/D21）
     "integration/test_platform_scheduling.py": TestSchema(
         layer="integration",
@@ -999,50 +982,10 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
     # L1：弹性扩缩容（期望容量 + 冷却）
-    "test_autoscale.py": TestSchema(
-        layer="unit",
-        domain="platform_nodes",
-        database="none",
-        authentication="none",
-        external_network="none",
-        risk="low",
-    ),
     # W3：扩缩容事件持久化与动作标签映射
-    "test_scale_events.py": TestSchema(
-        layer="unit",
-        domain="platform_elastic",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="none",
-        risk="low",
-    ),
     # W3：弹性控制器（真实容量口径、决策/事件分离、apply 模式）
-    "test_elastic_controller.py": TestSchema(
-        layer="unit",
-        domain="platform_elastic",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="none",
-        risk="low",
-    ),
     # W3：趋势采样（ring buffer、窗口、样本量）
-    "test_trends.py": TestSchema(
-        layer="unit",
-        domain="platform_elastic",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="none",
-        risk="low",
-    ),
     # W3：What-if 模拟（与真实决策同公式、只算不改）
-    "test_whatif.py": TestSchema(
-        layer="unit",
-        domain="platform_elastic",
-        database="none",
-        authentication="none",
-        external_network="none",
-        risk="low",
-    ),
     # L1：降级不降风险
     "test_routing_fallback.py": TestSchema(
         layer="unit",
@@ -1080,23 +1023,7 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
     # W3：控制台 What-if（默认取真实状态、模拟无副作用）
-    "integration/test_console_simulate.py": TestSchema(
-        layer="integration",
-        domain="platform_http",
-        database="temporary_sqlite",
-        authentication="mocked",
-        external_network="none",
-        risk="low",
-    ),
     # W3：控制台场景回放（只读持久事件、来源隔离）
-    "integration/test_console_replay.py": TestSchema(
-        layer="integration",
-        domain="platform_http",
-        database="temporary_sqlite",
-        authentication="mocked",
-        external_network="none",
-        risk="low",
-    ),
     # W3：控制台并发竞态（重复取消 / 重复销毁 / 终态再取消）
     "integration/test_console_concurrency.py": TestSchema(
         layer="integration",
@@ -1251,6 +1178,16 @@ TEST_SCHEMAS = {
         authentication="none",
         external_network="none",
         risk="medium",
+    ),
+
+    # L1：团队任务分配（存储 + 调度核心，假 planner/executor）
+    "test_team_dispatch.py": TestSchema(
+        layer="unit",
+        domain="team",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
     ),
 
     # L2：任务运行历史记录
@@ -1642,24 +1579,7 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
     # L1：外部 Agent 能力快照（unknown 即拒绝）
-    "unit/test_collab_capability.py": TestSchema(
-        layer="unit",
-        domain="collab",
-        database="none",
-        authentication="none",
-        external_network="none",
-        risk="medium",
-    ),
-
     # L1：任务注册表 / 工作区守卫 / 独立验收
-    "unit/test_collab_registry.py": TestSchema(
-        layer="unit",
-        domain="collab",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="none",
-        risk="high",
-    ),
     # L1：产物 Diff（文本 unified / 二进制摘要）
     "unit/test_diff_compare.py": TestSchema(
         layer="unit",
@@ -1721,15 +1641,6 @@ TEST_SCHEMAS = {
     ),
 
     # L1：外部任务 CLI（登记/列表/查看）
-    "unit/test_collab_cli.py": TestSchema(
-        layer="unit",
-        domain="collab",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="none",
-        risk="medium",
-    ),
-
     # L2：视频总结 API（鉴权/路径/时长/422 语义）
     "integration/test_video_api.py": TestSchema(
         layer="integration",
@@ -1985,64 +1896,6 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
-    # v1.4a-2 Qwen Runner（test_qwen_events.py）
-    "unit/test_qwen_events.py": TestSchema(
-        layer="unit",
-        domain="collab",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="mocked",
-        risk="medium",
-    ),
-    # v1.4a-2 Qwen Runner（test_qwen_workspace.py）
-    "unit/test_qwen_workspace.py": TestSchema(
-        layer="unit",
-        domain="collab",
-        database="none",
-        authentication="none",
-        external_network="mocked",
-        risk="medium",
-    ),
-    # v1.4a-2 Qwen Runner（test_qwen_runner.py）
-    "unit/test_qwen_runner.py": TestSchema(
-        layer="unit",
-        domain="collab",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="mocked",
-        risk="medium",
-    ),
-
-    # v1.4a-3 Qwen CLI（test_qwen_cli.py）
-    "unit/test_qwen_cli.py": TestSchema(
-        layer="unit",
-        domain="collab",
-        database="none",
-        authentication="none",
-        external_network="mocked",
-        risk="medium",
-    ),
-
-    # v1.4a-3 Qwen Registry/Verify/通知（test_qwen_pipeline.py）
-    "unit/test_qwen_pipeline.py": TestSchema(
-        layer="unit",
-        domain="collab",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="mocked",
-        risk="medium",
-    ),
-
-    # v1.4a-4 Qwen 目录监听（test_qwen_watcher.py）
-    "unit/test_qwen_watcher.py": TestSchema(
-        layer="unit",
-        domain="collab",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="mocked",
-        risk="medium",
-    ),
-
     # v1.4b QQ 同任务继续（test_qq_continue.py）
     "unit/test_qq_continue.py": TestSchema(
         layer="unit",
@@ -2054,15 +1907,6 @@ TEST_SCHEMAS = {
     ),
 
     # v1.4c 跨 Agent 工件接力（test_handoff.py）
-    "unit/test_handoff.py": TestSchema(
-        layer="unit",
-        domain="collab",
-        database="temporary_sqlite",
-        authentication="none",
-        external_network="mocked",
-        risk="medium",
-    ),
-
     # v1.3 聊天模型 fallback（test_agent_fallback.py）
     "test_agent_fallback.py": TestSchema(
         layer="unit",

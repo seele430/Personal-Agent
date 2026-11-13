@@ -160,7 +160,6 @@ def _read_platform() -> dict:
 
 
 def _nodes_block() -> dict:
-    from src.platform.elastic_controller import capacity_snapshot
     from src.platform.node_registry import NodeRegistry
     from src.platform.sandbox_service import SandboxService
 
@@ -184,8 +183,20 @@ def _nodes_block() -> dict:
             }
         )
 
+    # 容量口径与原 elastic_controller.capacity_snapshot 相同：
+    # 只有 accepting 的节点算可用容量；cordon/drain/过期单独计数。
+    accepting = [row for row in rows if row["accepting"]]
+
     return {
-        "summary": capacity_snapshot(registry),
+        "summary": {
+            "nodes_total": len(rows),
+            "nodes_accepting": len(accepting),
+            "nodes_cordoned": sum(1 for row in rows if row["cordoned"]),
+            "nodes_draining": sum(1 for row in rows if row["draining"]),
+            "nodes_expired": sum(1 for row in rows if row["expired"]),
+            "slots_accepting": sum(row["capacity"] for row in accepting),
+            "unit": "nodes",
+        },
         "rows": rows,
     }
 
@@ -388,191 +399,6 @@ def _exec_window_empty(window_seconds: int) -> dict:
     }
 
 
-def _elastic_block(queue_snapshot: dict, limit: int) -> dict:
-    from dataclasses import asdict
-
-    from src.platform.autoscale import AutoscalePolicy, desired_capacity
-    from src.platform.elastic_controller import (
-        MODE_COMPUTE_ONLY,
-        capacity_snapshot,
-        get_controller,
-        tick_interval_seconds,
-    )
-    from src.platform.scale_events import ScaleEventStore
-
-    controller = get_controller()
-    policy = controller.policy if controller is not None else AutoscalePolicy()
-
-    running = int(queue_snapshot.get("active", 0))
-    queued = int(queue_snapshot.get("queued", 0))
-
-    desired = desired_capacity(running, queued, policy)
-    capacity = capacity_snapshot(
-        controller.registry if controller is not None else None
-    )
-
-    store = ScaleEventStore()
-    events = store.recent(limit)
-
-    if controller is None:
-        mode = "not_running"
-        last = None
-        message = "控制器未运行：仅按当前负载计算期望容量，未驱动真实容量"
-    else:
-        mode = controller.mode
-        last = controller.last_decision
-        message = (
-            "已计算，未驱动真实容量" if mode == MODE_COMPUTE_ONLY else None
-        )
-
-    stabilization = {
-        "required_samples": int(policy.scale_up_after),
-        "satisfied_count": None,
-        "satisfied": None,
-        "note": "按连续采样次数计，不是秒；未运行控制器时无进度",
-    }
-    cooldown = {
-        "seconds": float(policy.scale_down_cooldown_seconds),
-        "active": None,
-        "note": "冷却期只阻止缩容",
-    }
-
-    if last is not None:
-        reason = str(last.get("reason") or "")
-
-        if reason.startswith("scale_up_pending:"):
-            try:
-                stabilization["satisfied_count"] = int(reason.split(":", 1)[1])
-                stabilization["satisfied"] = False
-            except ValueError:
-                pass
-        elif last.get("detail") == "steady":
-            stabilization["satisfied"] = True
-
-        if last.get("detail") == "cooldown":
-            cooldown["active"] = True
-
-    return {
-        "controller_mode": mode,
-        "controller_running": controller is not None,
-        "tick_interval_seconds": tick_interval_seconds(),
-        "desired_capacity": desired,
-        "actual_capacity": capacity["nodes_accepting"],
-        "capacity_unit": capacity["unit"],
-        "capacity": capacity,
-        "policy": asdict(policy),
-        "inputs": {"running": running, "queued": queued},
-        "last_decision": last,
-        "stabilization": stabilization,
-        "cooldown": cooldown,
-        "events": events,
-        "event_count": store.count(),
-        "message": message,
-    }
-
-
-def _exec_buckets(window_seconds: int) -> list[dict]:
-    """按分钟桶统计终态执行数（与趋势同一窗口）。"""
-
-    db = paths.platform_db
-
-    if not db.is_file():
-        return []
-
-    conn = sqlite3.connect(db)
-    conn.row_factory = sqlite3.Row
-
-    try:
-        rows = conn.execute(
-            """
-            SELECT strftime('%Y-%m-%dT%H:%M:00+00:00', finished_at) AS bucket,
-                   state,
-                   COUNT(*) AS n
-            FROM platform_execs
-            WHERE finished_at IS NOT NULL
-              AND julianday(finished_at) >= julianday('now', ?)
-            GROUP BY bucket, state
-            ORDER BY bucket
-            """,
-            (f"-{int(window_seconds)} seconds",),
-        ).fetchall()
-    finally:
-        conn.close()
-
-    buckets: dict[str, dict] = {}
-
-    for row in rows:
-        key = row["bucket"]
-        item = buckets.setdefault(
-            key,
-            {
-                "at": key,
-                "succeeded": 0,
-                "failed": 0,
-                "cancelled": 0,
-                "timed_out": 0,
-                "total": 0,
-            },
-        )
-
-        if row["state"] in item:
-            item[row["state"]] = int(row["n"])
-
-        item["total"] += int(row["n"])
-
-    return list(buckets.values())
-
-
-def _trends_block() -> dict:
-    from src.platform import trends as trend_store
-
-    rows = trend_store.series(window_seconds=SERIES_WINDOW_SECONDS)
-
-    # 数据年龄：最新/最旧样本距现在多少秒（V2 §6.1-5 要求展示）。
-    ages = []
-
-    for sample in rows:
-        moment = _parse(sample.get("at"))
-
-        if moment is not None:
-            ages.append((datetime.now(timezone.utc) - moment).total_seconds())
-
-    return {
-        "window_seconds": SERIES_WINDOW_SECONDS,
-        "interval_seconds": trend_store.interval_seconds(),
-        "sample_count": len(rows),
-        "latest_sample_age_seconds": round(min(ages), 1) if ages else None,
-        "oldest_sample_age_seconds": round(max(ages), 1) if ages else None,
-        "source": "ring_buffer",
-        "persisted": False,
-        "note": "单进程采样，进程重启即丢；不构成完整历史监控",
-        "series": rows,
-        "exec_buckets": _exec_buckets(SERIES_WINDOW_SECONDS),
-    }
-
-
-def _freshness(elastic: dict) -> tuple[bool, str | None]:
-    """stale 只由「采样年龄」决定（V2 §4.1 / §5）。"""
-
-    last = elastic.get("last_decision")
-
-    if not last:
-        return False, None
-
-    moment = _parse(last.get("at"))
-
-    if moment is None:
-        return True, "decision_timestamp_unparsable"
-
-    age = (datetime.now(timezone.utc) - moment).total_seconds()
-    limit = max(float(elastic.get("tick_interval_seconds") or 30.0) * 3, 90.0)
-
-    if age > limit:
-        return True, f"last_tick_{int(age)}s_ago"
-
-    return False, None
-
-
 # ----------------------------------------------------------------------
 # 路由
 # ----------------------------------------------------------------------
@@ -584,30 +410,14 @@ def snapshot(
     user: dict = Depends(get_current_user),
 ):
     queue_block = _block("queue", get_queue().snapshot)
-    queue_snapshot = queue_block["data"] or {}
-
-    elastic_block = _block("elastic", _elastic_block, queue_snapshot, limit)
-    elastic = elastic_block["data"] or {}
-
-    trends_block = _block("trends", _trends_block)
-    trends = trends_block["data"] or {}
-
-    is_stale, stale_reason = _freshness(elastic) if elastic else (False, None)
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "series_window": SERIES_WINDOW_LABEL,
-        "sample_count": trends.get("sample_count"),
-        "data_source": "live",
-        "is_stale": is_stale,
-        "stale_reason": stale_reason,
         "viewer": user.get("username"),
         "queue": queue_block,
         "nodes": _block("nodes", _nodes_block),
         "sandboxes": _block("sandboxes", _sandboxes_block, limit),
         "executions": _block("executions", _executions_block, limit),
-        "elastic": elastic_block,
-        "trends": trends_block,
     }
 
 
@@ -903,149 +713,4 @@ def _node_view_for_console(row: dict) -> dict:
         "cordoned": bool(row.get("cordoned")),
         "draining": bool(row.get("draining")),
         "accepting": bool(row.get("accepting")),
-    }
-
-# ======================================================================
-# What-if 模拟（P2）
-#
-# 只读：复用 autoscale 的同一个计算入口，不写节点、队列、事件或审计。
-# ======================================================================
-
-
-class SimulateRequest(BaseModel):
-    running: int | None = None
-    queued: int | None = None
-    current_capacity: int | None = None
-    policy: dict | None = None
-
-
-@router.post("/simulate")
-def console_simulate(
-    payload: SimulateRequest,
-    user: dict = Depends(get_current_user),
-):
-    """载入当前状态作为默认输入；任何字段都可以覆盖，但不写回真实状态。"""
-
-    from src.platform import whatif
-    from src.platform.elastic_controller import capacity_snapshot
-
-    queue = get_queue().snapshot()
-
-    running = (
-        int(payload.running)
-        if payload.running is not None
-        else int(queue.get("active", 0))
-    )
-    queued = (
-        int(payload.queued)
-        if payload.queued is not None
-        else int(queue.get("queued", 0))
-    )
-    current = (
-        int(payload.current_capacity)
-        if payload.current_capacity is not None
-        else int(capacity_snapshot()["nodes_accepting"])
-    )
-
-    try:
-        return whatif.simulate(
-            running=running,
-            queued=queued,
-            current_capacity=current,
-            policy_overrides=payload.policy,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-
-# ======================================================================
-# 场景回放（P2 §8.1）
-#
-# 只读持久事件；不重放副作用、不改写审计、不混入实时趋势。
-# ======================================================================
-
-
-@router.get("/replay")
-def console_replay(
-    limit: int = Query(default=50, ge=1, le=200),
-    source: str = Query(default="live"),
-    user: dict = Depends(get_current_user),
-):
-    from src.platform.scale_events import SOURCES, ScaleEventStore
-
-    if source not in SOURCES:
-        raise HTTPException(status_code=400, detail=f"未知 source：{source}")
-
-    store = ScaleEventStore()
-    events = list(reversed(store.recent(limit, source=source)))
-
-    if not events:
-        return {
-            "source": source,
-            "event_count": 0,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "first_at": None,
-            "last_at": None,
-            "span_seconds": 0.0,
-            "steps": [],
-            "summary": {
-                "scale_up": 0,
-                "scale_down": 0,
-                "max_capacity": None,
-                "min_capacity": None,
-            },
-            "note": (
-                "没有该来源的扩缩容事件；可先跑 scripts/demo_elastic_loop.py，"
-                "或打开控制器并施加负载"
-            ),
-        }
-
-    def parse(value):
-        try:
-            return datetime.fromisoformat(str(value))
-        except ValueError:
-            return None
-
-    start = parse(events[0]["at"]) or datetime.now(timezone.utc)
-    end = parse(events[-1]["at"]) or start
-
-    steps = []
-    previous = None
-
-    for index, event in enumerate(events, 1):
-        moment = parse(event["at"])
-        offset = round((moment - start).total_seconds(), 3) if moment else 0.0
-        gap = (
-            round((moment - previous).total_seconds(), 3)
-            if (moment is not None and previous is not None)
-            else 0.0
-        )
-
-        steps.append(
-            {
-                **event,
-                "seq": index,
-                "offset_seconds": offset,
-                "since_previous_seconds": gap,
-            }
-        )
-        previous = moment if moment is not None else previous
-
-    summary = {
-        "scale_up": sum(1 for item in events if item["action"] == "scale_up"),
-        "scale_down": sum(1 for item in events if item["action"] == "scale_down"),
-        "max_capacity": max(int(item["after_capacity"]) for item in events),
-        "min_capacity": min(int(item["before_capacity"]) for item in events),
-        "span_seconds": round((end - start).total_seconds(), 3),
-    }
-
-    return {
-        "source": source,
-        "event_count": len(events),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "first_at": events[0]["at"],
-        "last_at": events[-1]["at"],
-        "span_seconds": summary["span_seconds"],
-        "steps": steps,
-        "summary": summary,
-        "note": "回放来自持久事件表；不改写审计，也不混入实时趋势",
     }

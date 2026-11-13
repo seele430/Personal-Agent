@@ -31,7 +31,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 from src import agent  # noqa: E402
-from src.evals.reminder_eval import (  # noqa: E402
+from src.eval.reminder_eval import (  # noqa: E402
     extract_tool_calls,
     grade,
     load_cases,

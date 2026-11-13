@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 /**
- * 平台控制台（只读版）：总览 / 节点 / 沙箱 / 执行 / 弹性 五个区。
+ * 平台控制台（只读版）：总览 / 节点 / 沙箱 / 执行 四个区。弹性区已随弹性平台抽离（2026-11-13）。
  *
  * 数据只来自 `GET /console/snapshot` 一个入口（V2 §4.1）：
  * 每块都是 `{data, error}`，单块失败只在那一块显示错误，不让整页空白。
@@ -42,71 +42,6 @@ type Capacity = {
   nodes_expired: number;
   slots_accepting: number;
   unit: string;
-};
-
-type PolicyData = {
-  min_nodes: number;
-  max_nodes: number;
-  capacity_per_node: number;
-  headroom: number;
-  scale_up_after: number;
-  scale_down_cooldown_seconds: number;
-};
-
-type Decision = {
-  at: string;
-  action: string;
-  reason: string;
-  label: string;
-  detail: string;
-  title: string;
-  desired_capacity: number;
-  actual_capacity: number;
-  actual_capacity_after: number;
-  running: number;
-  queued: number;
-  applied: boolean;
-  blocked: string | null;
-  controller_mode: string;
-  event_id: string | null;
-};
-
-type ScaleEvent = {
-  id: string;
-  at: string;
-  action: string;
-  reason: string;
-  before_capacity: number;
-  after_capacity: number;
-  running: number;
-  queued: number;
-  capacity_unit: string;
-  source: string;
-  label: string;
-  title: string;
-};
-
-type ElasticData = {
-  controller_mode: string;
-  controller_running: boolean;
-  tick_interval_seconds: number;
-  desired_capacity: number;
-  actual_capacity: number;
-  capacity_unit: string;
-  capacity: Capacity;
-  policy: PolicyData;
-  inputs: { running: number; queued: number };
-  last_decision: Decision | null;
-  stabilization: {
-    required_samples: number;
-    satisfied_count: number | null;
-    satisfied: boolean | null;
-    note: string;
-  };
-  cooldown: { seconds: number; active: boolean | null; note: string };
-  events: ScaleEvent[];
-  event_count: number;
-  message: string | null;
 };
 
 type NodeRow = {
@@ -176,37 +111,6 @@ type ExecutionsData = {
   };
 };
 
-type TrendSample = {
-  at: string;
-  running: number;
-  queued: number;
-  capacity: number;
-  desired: number;
-  action: string;
-};
-
-type TrendBucket = {
-  at: string;
-  succeeded: number;
-  failed: number;
-  cancelled: number;
-  timed_out: number;
-  total: number;
-};
-
-type TrendsData = {
-  window_seconds: number;
-  interval_seconds: number;
-  sample_count: number;
-  latest_sample_age_seconds: number | null;
-  oldest_sample_age_seconds: number | null;
-  source: string;
-  persisted: boolean;
-  note: string;
-  series: TrendSample[];
-  exec_buckets: TrendBucket[];
-};
-
 type ExecutionDetail = {
   exec_id: string;
   sandbox_id: string;
@@ -221,130 +125,23 @@ type ExecutionDetail = {
   traceparent: string | null;
 };
 
-type Simulation = {
-  simulation_id: string;
-  data_source: string;
-  applied: boolean;
-  message: string;
-  inputs: { running: number; queued: number; current_capacity: number };
-  policy: PolicyData;
-  desired_capacity: number;
-  action: string;
-  reason: string;
-  label: string;
-  title: string;
-  delta: number;
-  stabilization: { required_samples: number; note: string };
-  cooldown: { seconds: number; note: string };
-};
-
-type ReplayStep = {
-  id: string;
-  seq: number;
-  at: string;
-  offset_seconds: number;
-  since_previous_seconds: number;
-  action: string;
-  reason: string;
-  label: string;
-  title: string;
-  before_capacity: number;
-  after_capacity: number;
-  running: number;
-  queued: number;
-  source: string;
-};
-
-type ReplayData = {
-  source: string;
-  event_count: number;
-  generated_at: string;
-  first_at: string | null;
-  last_at: string | null;
-  span_seconds: number;
-  steps: ReplayStep[];
-  summary: {
-    scale_up: number;
-    scale_down: number;
-    max_capacity: number | null;
-    min_capacity: number | null;
-  };
-  note: string;
-};
-
 type Snapshot = {
   generated_at: string;
-  series_window: string;
-  sample_count: number | null;
-  data_source: string;
-  is_stale: boolean;
-  stale_reason: string | null;
+  viewer?: string;
   queue: Envelope<QueueData>;
   nodes: Envelope<NodeData>;
   sandboxes: Envelope<SandboxData>;
   executions: Envelope<ExecutionsData>;
-  elastic: Envelope<ElasticData>;
-  trends: Envelope<TrendsData>;
 };
 
-type Zone = "overview" | "nodes" | "sandboxes" | "execs" | "elastic";
+type Zone = "overview" | "nodes" | "sandboxes" | "execs";
 
 const ZONES: Array<{ key: Zone; label: string }> = [
   { key: "overview", label: "总览" },
   { key: "nodes", label: "节点" },
   { key: "sandboxes", label: "沙箱" },
   { key: "execs", label: "执行" },
-  { key: "elastic", label: "弹性" },
 ];
-
-const LABELS: Record<string, string> = {
-  scale_out: "扩容",
-  scale_in: "缩容",
-  hold: "保持",
-};
-
-function labelOf(event: { label?: string; title?: string }): string {
-  const label = LABELS[event.label ?? ""];
-
-  return label ?? event.title ?? "—";
-}
-
-/** 动作名 + （必要时）更细的中文说明，避免出现「扩容 · 扩容」。 */
-function actionDetail(event: { label?: string; title?: string }): string {
-  const label = labelOf(event);
-
-  return event.title && event.title !== label ? ` · ${event.title}` : "";
-}
-
-function modeText(mode: string | undefined): string {
-  if (mode === "apply") return "真实驱动";
-  if (mode === "compute_only") return "已计算，未驱动";
-  return "控制器未运行";
-}
-
-function modeTone(mode: string | undefined): string {
-  if (mode === "apply") return color.ok;
-  if (mode === "compute_only") return color.warn;
-  return color.muted;
-}
-
-/** 数据来源三态：实时 / 采样 / 仿真（V2 §2.5）。 */
-function sourceText(source: string | undefined): string {
-  if (source === "simulation") return "仿真";
-  if (source === "sampled") return "采样";
-  return "实时";
-}
-
-function sourceTone(source: string | undefined): string {
-  if (source === "simulation" || source === "sampled") return color.warn;
-  return color.ok;
-}
-
-function ageText(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined) return "—";
-  if (seconds < 90) return `${Math.round(seconds)} 秒前`;
-  return `${Math.round(seconds / 60)} 分钟前`;
-}
 
 function timeText(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -575,106 +372,6 @@ function ConfirmDialog({
   );
 }
 
-const SERIES_COLORS: Record<string, string> = {
-  running: "#1d4ed8",
-  queued: "#b45309",
-  capacity: "#067647",
-  desired: "#7c3aed",
-};
-
-const SERIES_LABELS: Record<string, string> = {
-  running: "运行中",
-  queued: "排队",
-  capacity: "容量",
-  desired: "目标",
-};
-
-/** 内联 SVG 折线：窗口内队列与容量的关联趋势（V2 §3.1）。 */
-function TrendChart({ series }: { series: TrendSample[] }) {
-  const width = 720;
-  const height = 150;
-  const pad = 10;
-  const keys: Array<keyof TrendSample> = ["running", "queued", "capacity", "desired"];
-
-  const peak = Math.max(
-    1,
-    ...series.map((sample) =>
-      Math.max(
-        Number(sample.running),
-        Number(sample.queued),
-        Number(sample.capacity),
-        Number(sample.desired),
-      ),
-    ),
-  );
-
-  const x = (index: number) =>
-    series.length <= 1
-      ? pad
-      : pad + (index * (width - pad * 2)) / (series.length - 1);
-
-  const y = (value: number) =>
-    height - pad - (value / peak) * (height - pad * 2);
-
-  const path = (key: keyof TrendSample) =>
-    series
-      .map((sample, index) => `${x(index)},${y(Number(sample[key]))}`)
-      .join(" ");
-
-  return (
-    <div>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label="队列与容量趋势"
-        style={{ width: "100%", height: 150, display: "block" }}
-        preserveAspectRatio="none"
-      >
-        {[0, 0.5, 1].map((ratio) => (
-          <line
-            key={ratio}
-            x1={pad}
-            x2={width - pad}
-            y1={pad + ratio * (height - pad * 2)}
-            y2={pad + ratio * (height - pad * 2)}
-            stroke={color.line}
-            strokeWidth={1}
-          />
-        ))}
-
-        {keys.map((key) => (
-          <polyline
-            key={key}
-            points={path(key)}
-            fill="none"
-            stroke={SERIES_COLORS[key]}
-            strokeWidth={key === "capacity" || key === "desired" ? 1.5 : 2}
-            strokeDasharray={key === "desired" ? "5 4" : undefined}
-            strokeLinejoin="round"
-          />
-        ))}
-      </svg>
-
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 6 }}>
-        {keys.map((key) => (
-          <span key={key} style={{ ...muted, display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <span
-              style={{
-                width: 10,
-                height: 3,
-                background: SERIES_COLORS[key],
-                display: "inline-block",
-              }}
-            />
-            {SERIES_LABELS[key]}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** 执行详情：按 ID 读完整 stdout/stderr 与 trace（P0 §6.1-6 下钻）。 */
 function ExecDetailDialog({
   detail,
   onClose,
@@ -793,20 +490,6 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
   // 执行详情下钻
   const [execDetail, setExecDetail] = useState<ExecutionDetail | null>(null);
   const [execDetailBusy, setExecDetailBusy] = useState(false);
-
-  // P2：What-if 模拟（只算不改）
-  const [simRunning, setSimRunning] = useState("");
-  const [simQueued, setSimQueued] = useState("");
-  const [simCurrent, setSimCurrent] = useState("");
-  const [simCapacity, setSimCapacity] = useState("");
-  const [simHeadroom, setSimHeadroom] = useState("");
-  const [simBusy, setSimBusy] = useState(false);
-  const [simulation, setSimulation] = useState<Simulation | null>(null);
-
-  // P2：场景回放（只读持久事件）
-  const [replay, setReplay] = useState<ReplayData | null>(null);
-  const [replayBusy, setReplayBusy] = useState(false);
-  const [replaySource, setReplaySource] = useState("live");
 
   const load = useCallback(async () => {
     if (!authToken) return;
@@ -957,57 +640,6 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
     [load],
   );
 
-  const runSimulation = useCallback(async () => {
-    if (!authToken) return;
-
-    const body: Record<string, unknown> = {};
-
-    if (simRunning !== "") body.running = Number(simRunning);
-    if (simQueued !== "") body.queued = Number(simQueued);
-    if (simCurrent !== "") body.current_capacity = Number(simCurrent);
-
-    const policy: Record<string, unknown> = {};
-
-    if (simCapacity !== "") policy.capacity_per_node = Number(simCapacity);
-    if (simHeadroom !== "") policy.headroom = Number(simHeadroom) / 100;
-    if (Object.keys(policy).length > 0) body.policy = policy;
-
-    setSimBusy(true);
-    setNotice(null);
-
-    try {
-      const response = await fetch("/api/console/simulate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify(body),
-      });
-      const data = (await response.json().catch(() => null)) as
-        | Simulation
-        | { detail?: string }
-        | null;
-
-      if (!response.ok) {
-        const detail =
-          data && "detail" in data ? data.detail : null;
-
-        setNotice({
-          tone: "error",
-          text: `模拟：${detail ?? `请求失败（${response.status}）`}`,
-        });
-        return;
-      }
-
-      setSimulation(data as Simulation);
-    } catch {
-      setNotice({ tone: "error", text: "模拟：无法连接后端" });
-    } finally {
-      setSimBusy(false);
-    }
-  }, [authToken, simRunning, simQueued, simCurrent, simCapacity, simHeadroom]);
-
   const openExecDetail = useCallback(
     async (execId: string) => {
       if (!authToken) return;
@@ -1046,41 +678,10 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
     [authToken],
   );
 
-  const loadReplay = useCallback(async () => {
-    if (!authToken) return;
-
-    setReplayBusy(true);
-    setNotice(null);
-
-    try {
-      const response = await fetch(
-        `/api/console/replay?limit=50&source=${replaySource}`,
-        {
-          headers: { Authorization: `Bearer ${authToken}` },
-          cache: "no-store",
-        },
-      );
-
-      if (!response.ok) {
-        setNotice({ tone: "error", text: `回放：请求失败（${response.status}）` });
-        return;
-      }
-
-      setReplay((await response.json()) as ReplayData);
-    } catch {
-      setNotice({ tone: "error", text: "回放：无法连接后端" });
-    } finally {
-      setReplayBusy(false);
-    }
-  }, [authToken, replaySource]);
-
   const queue = snapshot?.queue.data ?? null;
   const nodes = snapshot?.nodes.data ?? null;
   const sandboxes = snapshot?.sandboxes.data ?? null;
   const executions = snapshot?.executions.data ?? null;
-  const elastic = snapshot?.elastic.data ?? null;
-  const trends = snapshot?.trends.data ?? null;
-  const decision = elastic?.last_decision ?? null;
 
   if (!authToken) {
     return (
@@ -1109,17 +710,12 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
         <div style={{ minWidth: 240 }}>
           <h2 style={{ margin: 0 }}>平台控制台</h2>
           <p style={{ ...muted, margin: "4px 0 0" }}>
-            负载 → 期望容量 → 决策 → 实际容量 → 执行结果；每 {POLL_MS / 1000} 秒刷新，
+            队列 / 节点 / 沙箱 / 执行结果，每 {POLL_MS / 1000} 秒刷新，
             {updatedAt ? ` 最近 ${updatedAt}` : " 尚未取到数据"}。
           </p>
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {snapshot?.is_stale ? (
-            <span style={{ ...muted, color: color.warn }}>
-              数据陈旧{snapshot.stale_reason ? `（${snapshot.stale_reason}）` : ""}
-            </span>
-          ) : null}
           <button type="button" onClick={() => void load()} disabled={loading}>
             {loading ? "刷新中…" : "刷新"}
           </button>
@@ -1193,183 +789,32 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
             <>
               <Card
                 title="当前状态"
-                subtitle="先回答：容量够不够、控制器在做什么、任务是否受影响。"
+                subtitle="先回答：队列堵不堵、执行成功率如何。"
               >
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <Chip
-                    label="实际容量"
-                    value={`${countText(elastic?.actual_capacity)} ${elastic?.capacity_unit ?? ""}`}
-                  />
-                  <Chip
-                    label="期望容量"
-                    value={`${countText(elastic?.desired_capacity)} ${elastic?.capacity_unit ?? ""}`}
+                    label="活跃 / 排队"
+                    value={`${countText(queue?.active)} / ${countText(queue?.queued)}`}
                     tone={
-                      elastic && decision && decision.desired_capacity > decision.actual_capacity
-                        ? color.warn
-                        : color.text
+                      queue && queue.queued > 0 ? color.warn : color.text
                     }
                   />
                   <Chip
-                    label="控制器"
-                    value={modeText(elastic?.controller_mode)}
-                    tone={modeTone(elastic?.controller_mode)}
-                  />
-                  <Chip
-                    label="数据来源"
-                    value={sourceText(snapshot.data_source)}
-                    tone={sourceTone(snapshot.data_source)}
-                  />
-                  <Chip
-                    label="活跃 / 排队"
-                    value={`${countText(queue?.active)} / ${countText(queue?.queued)}`}
-                  />
-                  <Chip
-                    label={`成功率（${snapshot.series_window}）`}
+                    label="成功率（15m）"
                     value={rateText(executions?.window.success_rate.value ?? null)}
                     tone={color.text}
                   />
+                  <Chip
+                    label="节点"
+                    value={`${countText(nodes?.summary.nodes_accepting)} / ${countText(nodes?.summary.nodes_total)} 可用`}
+                  />
+                  <Chip
+                    label="活跃沙箱"
+                    value={countText(sandboxes?.active_total)}
+                  />
                 </div>
 
-                <BlockError error={snapshot.elastic.error} />
-
-                {elastic?.message ? (
-                  <p style={{ ...muted, color: color.warn, margin: "10px 0 0" }}>
-                    {elastic.message}
-                  </p>
-                ) : null}
-              </Card>
-
-              <Card
-                title="最近决策"
-                subtitle="决策每轮都会更新；hold 类不是扩容事件。"
-              >
-                {decision ? (
-                  <>
-                    <div style={row}>
-                      <span>动作</span>
-                      <strong>
-                        {labelOf(decision)}
-                        {actionDetail(decision)}
-                      </strong>
-                    </div>
-                    <div style={row}>
-                      <span>原因</span>
-                      <span style={mono}>{decision.reason}</span>
-                    </div>
-                    <div style={row}>
-                      <span>输入</span>
-                      <span>
-                        运行 {decision.running} · 排队 {decision.queued}
-                      </span>
-                    </div>
-                    <div style={row}>
-                      <span>容量</span>
-                      <span>
-                        {decision.actual_capacity} → {decision.actual_capacity_after}
-                        （期望 {decision.desired_capacity}）
-                      </span>
-                    </div>
-                    <div style={{ ...row, borderBottom: "none" }}>
-                      <span>时间</span>
-                      <span>{timeText(decision.at)}</span>
-                    </div>
-
-                    {decision.applied ? (
-                      <p style={{ ...muted, color: color.ok, margin: "8px 0 0" }}>
-                        已执行：容量 {decision.actual_capacity} → {decision.actual_capacity_after}
-                      </p>
-                    ) : decision.action !== "none" ? (
-                      <p style={{ ...muted, color: color.warn, margin: "8px 0 0" }}>
-                        未执行{decision.blocked ? `（${decision.blocked}）` : ""}
-                      </p>
-                    ) : null}
-                  </>
-                ) : (
-                  <Empty text="暂无决策：控制器未运行，或尚未完成第一次 tick。" />
-                )}
-              </Card>
-
-              <Card title="扩缩容事件" subtitle="只记录真实容量变化；hold 决策不落库。">
-                <BlockError error={snapshot.elastic.error} />
-
-                {elastic && elastic.events.length > 0 ? (
-                  <Scroll>
-                    <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                      <thead>
-                        <tr>
-                          <th style={th}>时间</th>
-                          <th style={th}>动作</th>
-                          <th style={th}>容量</th>
-                          <th style={th}>输入</th>
-                          <th style={th}>来源</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {elastic.events.map((event) => (
-                          <tr key={event.id}>
-                            <td style={td}>{timeText(event.at)}</td>
-                            <td style={td}>{labelOf(event)}</td>
-                            <td style={td}>
-                              {event.before_capacity} → {event.after_capacity}{" "}
-                              {event.capacity_unit}
-                            </td>
-                            <td style={td}>
-                              {event.running} / {event.queued}
-                            </td>
-                            <td style={td}>{event.source}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </Scroll>
-                ) : (
-                  <Empty text="暂无事件：没有真实容量变化（控制器未驱动时这是正常的）。" />
-                )}
-              </Card>
-
-              <Card
-                title="趋势"
-                subtitle="窗口、样本量与曲线一起看；单进程采样，重启即丢。"
-              >
-                <BlockError error={snapshot.trends.error} />
-
-                {trends ? (
-                  <>
-                    <p style={{ ...muted, margin: "0 0 8px" }}>
-                      窗口 {snapshot.series_window} · 采样间隔{" "}
-                      {trends.interval_seconds}s · 样本 {trends.sample_count} ·
-                      最新样本 {ageText(trends.latest_sample_age_seconds)} · 来源
-                      采样（进程内环缓冲）
-                    </p>
-
-                    {trends.series.length >= 2 ? (
-                      <TrendChart series={trends.series} />
-                    ) : (
-                      <Empty text="样本不足：至少需要 2 个采样点，等下一轮刷新。" />
-                    )}
-
-                    {trends.exec_buckets.length > 0 ? (
-                      <p style={{ ...muted, margin: "8px 0 0" }}>
-                        窗口内执行：
-                        {(() => {
-                          const totals = trends.exec_buckets.reduce(
-                            (acc, bucket) => ({
-                              succeeded: acc.succeeded + bucket.succeeded,
-                              failed: acc.failed + bucket.failed,
-                              cancelled: acc.cancelled + bucket.cancelled,
-                              timed_out: acc.timed_out + bucket.timed_out,
-                            }),
-                            { succeeded: 0, failed: 0, cancelled: 0, timed_out: 0 },
-                          );
-
-                          return `成功 ${totals.succeeded} · 失败 ${totals.failed} · 超时 ${totals.timed_out} · 取消 ${totals.cancelled}`;
-                        })()}
-                      </p>
-                    ) : null}
-
-                    <p style={{ ...muted, margin: "8px 0 0" }}>{trends.note}</p>
-                  </>
-                ) : null}
+                <BlockError error={snapshot.queue.error} />
               </Card>
             </>
           ) : null}
@@ -1833,377 +1278,6 @@ export default function PlatformView({ authToken }: { authToken?: string }) {
             </>
           ) : null}
 
-          {zone === "elastic" ? (
-            <>
-              <Card title="控制器" subtitle="决策与事件是两件事：hold 不落库。">
-                <BlockError error={snapshot.elastic.error} />
-
-                {elastic ? (
-                  <>
-                    <div style={row}>
-                      <span>模式</span>
-                      <strong style={{ color: modeTone(elastic.controller_mode) }}>
-                        {modeText(elastic.controller_mode)}
-                      </strong>
-                    </div>
-                    <div style={row}>
-                      <span>tick 周期</span>
-                      <span>{elastic.tick_interval_seconds} s</span>
-                    </div>
-                    <div style={row}>
-                      <span>稳定期</span>
-                      <span>
-                        需连续 {elastic.stabilization.required_samples} 次采样
-                        {elastic.stabilization.satisfied_count === null
-                          ? ""
-                          : `，当前已 ${elastic.stabilization.satisfied_count} 次`}
-                        <span style={muted}> （{elastic.stabilization.note}）</span>
-                      </span>
-                    </div>
-                    <div style={{ ...row, borderBottom: "none" }}>
-                      <span>冷却期</span>
-                      <span>
-                        {elastic.cooldown.seconds} s
-                        {elastic.cooldown.active ? "，当前生效" : ""}
-                        <span style={muted}> （{elastic.cooldown.note}）</span>
-                      </span>
-                    </div>
-
-                    {elastic.message ? (
-                      <p style={{ ...muted, color: color.warn, margin: "10px 0 0" }}>
-                        {elastic.message}
-                      </p>
-                    ) : null}
-                  </>
-                ) : null}
-              </Card>
-
-              <Card title="扩缩容策略">
-                {elastic ? (
-                  <>
-                    <div style={row}>
-                      <span>节点范围</span>
-                      <span>
-                        {elastic.policy.min_nodes} – {elastic.policy.max_nodes}
-                      </span>
-                    </div>
-                    <div style={row}>
-                      <span>每节点容量</span>
-                      <span>{elastic.policy.capacity_per_node} 槽位</span>
-                    </div>
-                    <div style={row}>
-                      <span>预留 headroom</span>
-                      <span>{Math.round(elastic.policy.headroom * 100)}%</span>
-                    </div>
-                    <div style={{ ...row, borderBottom: "none" }}>
-                      <span>扩容稳定采样</span>
-                      <span>{elastic.policy.scale_up_after} 次</span>
-                    </div>
-                  </>
-                ) : (
-                  <Empty text="策略不可用。" />
-                )}
-              </Card>
-
-              <Card
-                title="What-if 模拟"
-                subtitle="只算不改：不改容量、不建任务、不写审计。留空表示用当前真实值。"
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    flexWrap: "wrap",
-                    alignItems: "flex-end",
-                    marginBottom: 12,
-                  }}
-                >
-                  <label style={muted}>
-                    运行中
-                    <input
-                      data-testid="sim-running"
-                      type="number"
-                      min={0}
-                      placeholder={String(queue?.active ?? 0)}
-                      value={simRunning}
-                      onChange={(event) => setSimRunning(event.target.value)}
-                      style={{ display: "block", marginTop: 4, padding: "5px 8px", width: 96 }}
-                    />
-                  </label>
-                  <label style={muted}>
-                    排队
-                    <input
-                      data-testid="sim-queued"
-                      type="number"
-                      min={0}
-                      placeholder={String(queue?.queued ?? 0)}
-                      value={simQueued}
-                      onChange={(event) => setSimQueued(event.target.value)}
-                      style={{ display: "block", marginTop: 4, padding: "5px 8px", width: 96 }}
-                    />
-                  </label>
-                  <label style={muted}>
-                    当前容量
-                    <input
-                      data-testid="sim-current"
-                      type="number"
-                      min={0}
-                      placeholder={String(elastic?.actual_capacity ?? 0)}
-                      value={simCurrent}
-                      onChange={(event) => setSimCurrent(event.target.value)}
-                      style={{ display: "block", marginTop: 4, padding: "5px 8px", width: 96 }}
-                    />
-                  </label>
-                  <label style={muted}>
-                    每节点容量
-                    <input
-                      data-testid="sim-capacity"
-                      type="number"
-                      min={1}
-                      placeholder={String(elastic?.policy.capacity_per_node ?? 8)}
-                      value={simCapacity}
-                      onChange={(event) => setSimCapacity(event.target.value)}
-                      style={{ display: "block", marginTop: 4, padding: "5px 8px", width: 110 }}
-                    />
-                  </label>
-                  <label style={muted}>
-                    headroom（%）
-                    <input
-                      data-testid="sim-headroom"
-                      type="number"
-                      min={0}
-                      placeholder={String(
-                        Math.round((elastic?.policy.headroom ?? 0.2) * 100),
-                      )}
-                      value={simHeadroom}
-                      onChange={(event) => setSimHeadroom(event.target.value)}
-                      style={{ display: "block", marginTop: 4, padding: "5px 8px", width: 110 }}
-                    />
-                  </label>
-                  <button
-                    data-testid="sim-submit"
-                    type="button"
-                    disabled={simBusy}
-                    onClick={() => void runSimulation()}
-                  >
-                    {simBusy ? "计算中…" : "计算"}
-                  </button>
-                </div>
-
-                {simulation ? (
-                  <div
-                    data-testid="sim-result"
-                    style={{
-                      border: `1px solid ${color.line}`,
-                      borderRadius: 10,
-                      padding: "10px 12px",
-                      background: color.soft,
-                    }}
-                  >
-                    <div style={{ ...row, borderBottom: "none", paddingTop: 0 }}>
-                      <span>
-                        <strong>
-                          {LABELS[simulation.label] ?? simulation.title}
-                        </strong>
-                        <span style={{ ...muted, marginLeft: 8 }}>
-                          {simulation.reason}
-                        </span>
-                      </span>
-                      <span>
-                        期望容量 {simulation.desired_capacity}
-                        <span style={muted}>
-                          {" "}
-                          （{simulation.delta >= 0 ? "+" : ""}
-                          {simulation.delta}）
-                        </span>
-                      </span>
-                    </div>
-                    <p style={{ ...muted, margin: "6px 0 0" }}>
-                      输入：运行 {simulation.inputs.running} · 排队{" "}
-                      {simulation.inputs.queued} · 当前容量{" "}
-                      {simulation.inputs.current_capacity}
-                    </p>
-                    <p style={{ ...muted, margin: "4px 0 0" }}>
-                      稳定期：需连续 {simulation.stabilization.required_samples} 次采样
-                    </p>
-                    <p style={{ ...muted, margin: "4px 0 0" }}>
-                      冷却期：{simulation.cooldown.seconds} 秒
-                    </p>
-                    <p
-                      style={{
-                        ...muted,
-                        color: color.warn,
-                        margin: "8px 0 0",
-                      }}
-                    >
-                      仿真 · {simulation.message}（{simulation.simulation_id}）
-                    </p>
-                  </div>
-                ) : null}
-              </Card>
-
-              <Card title="事件" subtitle={`共 ${elastic?.event_count ?? 0} 条，展示最近 10 条。`}>
-                {elastic && elastic.events.length > 0 ? (
-                  <Scroll>
-                    <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                      <thead>
-                        <tr>
-                          <th style={th}>时间</th>
-                          <th style={th}>动作</th>
-                          <th style={th}>原因</th>
-                          <th style={th}>容量</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {elastic.events.map((event) => (
-                          <tr key={event.id}>
-                            <td style={td}>{timeText(event.at)}</td>
-                            <td style={td}>{labelOf(event)}</td>
-                            <td style={{ ...td, ...mono }}>{event.reason}</td>
-                            <td style={td}>
-                              {event.before_capacity} → {event.after_capacity}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </Scroll>
-                ) : (
-                  <Empty text="暂无事件。" />
-                )}
-              </Card>
-
-              <Card
-                title="场景回放"
-                subtitle="按持久事件重放真实扩缩容；只读，不改写审计，也不混入实时趋势。"
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    alignItems: "center",
-                    marginBottom: 10,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <select
-                    data-testid="replay-source"
-                    value={replaySource}
-                    onChange={(event) => setReplaySource(event.target.value)}
-                    style={{ padding: "5px 8px" }}
-                  >
-                    <option value="live">live（真实）</option>
-                    <option value="simulation">simulation（仿真）</option>
-                  </select>
-                  <button
-                    data-testid="replay-load"
-                    type="button"
-                    disabled={replayBusy}
-                    onClick={() => void loadReplay()}
-                  >
-                    {replayBusy ? "加载中…" : "加载回放"}
-                  </button>
-                  <span style={{ ...muted, color: color.warn }}>
-                    回放 · {replaySource}
-                  </span>
-                </div>
-
-                {replay ? (
-                  replay.event_count === 0 ? (
-                    <Empty text={replay.note} />
-                  ) : (
-                    <>
-                      <p style={{ ...muted, margin: "0 0 6px" }}>
-                        共 {replay.event_count} 条 · 跨度{" "}
-                        {Math.round(replay.span_seconds)} 秒 · 扩{" "}
-                        {replay.summary.scale_up} / 缩{" "}
-                        {replay.summary.scale_down} · 容量{" "}
-                        {replay.summary.min_capacity} – {replay.summary.max_capacity}
-                      </p>
-
-                      <div
-                        aria-hidden="true"
-                        style={{
-                          position: "relative",
-                          height: 30,
-                          borderBottom: `1px solid ${color.line}`,
-                          marginBottom: 10,
-                        }}
-                      >
-                        {replay.steps.map((step) => {
-                          const span =
-                            replay.span_seconds > 0 ? replay.span_seconds : 1;
-                          const left = Math.max(
-                            0,
-                            Math.min(100, (step.offset_seconds / span) * 100),
-                          );
-
-                          return (
-                            <span
-                              key={step.id}
-                              title={`${labelOf(step)} ${step.before_capacity} → ${step.after_capacity}`}
-                              style={{
-                                position: "absolute",
-                                left: `${left}%`,
-                                top: 10,
-                                width: 10,
-                                height: 10,
-                                borderRadius: 999,
-                                transform: "translateX(-50%)",
-                                background:
-                                  step.action === "scale_up"
-                                    ? color.ok
-                                    : color.warn,
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-
-                      <Scroll>
-                        <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                          <thead>
-                            <tr>
-                              <th style={th}>#</th>
-                              <th style={th}>偏移（秒）</th>
-                              <th style={th}>动作</th>
-                              <th style={th}>容量</th>
-                              <th style={th}>输入</th>
-                              <th style={th}>距上一步</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {replay.steps.map((step) => (
-                              <tr key={step.id}>
-                                <td style={td}>{step.seq}</td>
-                                <td style={td}>{step.offset_seconds.toFixed(1)}</td>
-                                <td style={td}>
-                                  {labelOf(step)} · {step.title}
-                                </td>
-                                <td style={td}>
-                                  {step.before_capacity} → {step.after_capacity}
-                                </td>
-                                <td style={td}>
-                                  {step.running} / {step.queued}
-                                </td>
-                                <td style={td}>
-                                  {step.since_previous_seconds.toFixed(1)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </Scroll>
-
-                      <p style={{ ...muted, margin: "8px 0 0" }}>{replay.note}</p>
-                    </>
-                  )
-                ) : (
-                  <Empty text="点「加载回放」读取持久事件；没有事件时可先跑 scripts/demo_elastic_loop.py。" />
-                )}
-              </Card>
-            </>
-          ) : null}
         </>
       ) : null}
     </section>

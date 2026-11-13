@@ -1,4 +1,8 @@
-"""控制台快照：区块 envelope、弹性口径、窗口指标与部分失败（V2 §4.1 / §5）。"""
+"""控制台快照：区块 envelope、节点容量口径、窗口指标与部分失败（V2 §4.1 / §5）。
+
+弹性/趋势区块已随弹性平台抽离（2026-11-13，见 docs/STATUS-20261107.md §139），
+本文件只保留与弹性无关的通用快照行为。
+"""
 
 from __future__ import annotations
 
@@ -31,13 +35,6 @@ class ConsoleSnapshotTest(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         isolate_paths(self, self.temp)
 
-        # 采样线程在测试里默认关闭（tests.helper 设 PERSONAL_AGENT_TRENDS=0），
-        # 样本由用例自己喂，避免受到启动时那次采样的干扰。
-        from src.platform import trends
-
-        trends.reset()
-        self.addCleanup(trends.reset)
-
         self.client = TestClient(app)
         self.client.__enter__()
         self.addCleanup(self.client.__exit__, None, None, None)
@@ -69,107 +66,32 @@ class ConsoleSnapshotTest(unittest.TestCase):
 
         for key in (
             "generated_at",
-            "series_window",
-            "sample_count",
-            "data_source",
-            "is_stale",
+            "viewer",
             "queue",
             "nodes",
             "sandboxes",
             "executions",
-            "elastic",
-            "trends",
         ):
             self.assertIn(key, body)
 
-        self.assertEqual(body["series_window"], "15m")
-        self.assertEqual(body["sample_count"], 0)
-        self.assertEqual(body["data_source"], "live")
-
-        for key in ("queue", "nodes", "sandboxes", "executions", "elastic"):
+        for key in ("queue", "nodes", "sandboxes", "executions"):
             self.assertIn("data", body[key], key)
             self.assertIn("error", body[key], key)
             self.assertIsNotNone(body[key]["data"], key)
-
-    def test_trends_report_series_and_sample_count(self):
-        import time as _time
-
-        from src.platform import trends
-
-        self.addCleanup(trends.reset)
-
-        now = _time.time()
-
-        trends.record_sample(
-            running=3, queued=2, capacity=2, desired=3, action="scale_out", at=now - 120
-        )
-        trends.record_sample(
-            running=1, queued=0, capacity=2, desired=1, action="hold", at=now - 60
-        )
-
-        body = self.fetch().json()
-        data = body["trends"]["data"]
-
-        self.assertEqual(data["sample_count"], 2)
-        self.assertEqual(body["sample_count"], 2)
-        self.assertEqual(len(data["series"]), 2)
-        self.assertFalse(data["persisted"])
-        self.assertIn("重启", data["note"])
-        self.assertEqual(data["series"][0]["action"], "scale_out")
-
-        # 数据年龄：最新样本约 60 秒、最旧约 120 秒（V2 §6.1-5）
-        self.assertGreaterEqual(data["latest_sample_age_seconds"], 55)
-        self.assertLessEqual(data["latest_sample_age_seconds"], 75)
-        self.assertGreaterEqual(data["oldest_sample_age_seconds"], 115)
-        self.assertLessEqual(data["oldest_sample_age_seconds"], 135)
-
-    def test_trends_drop_samples_outside_window(self):
-        import time as _time
-
-        from src.platform import trends
-
-        self.addCleanup(trends.reset)
-
-        now = _time.time()
-
-        trends.record_sample(
-            running=9, queued=9, capacity=0, desired=1, at=now - 2000
-        )
-        trends.record_sample(
-            running=1, queued=0, capacity=0, desired=1, at=now - 10
-        )
-
-        data = self.fetch().json()["trends"]["data"]
-
-        self.assertEqual(data["sample_count"], 1)
-        self.assertEqual(data["series"][0]["running"], 1)
-
-    def test_elastic_without_controller_is_compute_only(self):
-        body = self.fetch().json()
-
-        elastic = body["elastic"]["data"]
-
-        self.assertEqual(elastic["controller_mode"], "not_running")
-        self.assertFalse(elastic["controller_running"])
-        self.assertEqual(elastic["desired_capacity"], 1)
-        self.assertEqual(elastic["actual_capacity"], 0)
-        self.assertEqual(elastic["capacity_unit"], "nodes")
-        self.assertIn("未驱动真实容量", elastic["message"])
-        self.assertEqual(elastic["stabilization"]["required_samples"], 2)
-        self.assertIsNone(elastic["stabilization"]["satisfied_count"])
-        self.assertEqual(elastic["events"], [])
 
     def test_cordoned_node_is_not_actual_capacity(self):
         node = NodeRegistry().register(capacity=8)
         NodeRegistry().cordon(node["node_id"])
 
         body = self.fetch().json()
-        elastic = body["elastic"]["data"]
         nodes = body["nodes"]["data"]
 
-        self.assertEqual(elastic["actual_capacity"], 0)
-        self.assertEqual(elastic["capacity"]["nodes_total"], 1)
-        self.assertEqual(elastic["capacity"]["nodes_cordoned"], 1)
+        # 容量口径与原 elastic_controller.capacity_snapshot 相同：
+        # cordon 的节点不算可用容量，但单独计数。
+        self.assertEqual(nodes["summary"]["nodes_total"], 1)
+        self.assertEqual(nodes["summary"]["nodes_accepting"], 0)
+        self.assertEqual(nodes["summary"]["nodes_cordoned"], 1)
+        self.assertEqual(nodes["summary"]["slots_accepting"], 0)
         self.assertEqual(nodes["rows"][0]["accepting"], False)
 
     def test_window_metrics_follow_documented_denominator(self):
@@ -215,9 +137,6 @@ class ConsoleSnapshotTest(unittest.TestCase):
         self.assertTrue(window["queue_wait_ms"]["insufficient_samples"])
         self.assertIsNone(window["queue_wait_ms"]["p50"])
 
-        # 同一窗口的执行结果也要出现在趋势块里
-        self.assertTrue(body["trends"]["data"]["exec_buckets"])
-
     def test_single_block_failure_does_not_blank_the_page(self):
         with patch("src.console_api._nodes_block", side_effect=RuntimeError("boom")):
             response = self.fetch()
@@ -228,7 +147,7 @@ class ConsoleSnapshotTest(unittest.TestCase):
         self.assertIsNone(body["nodes"]["data"])
         self.assertEqual(body["nodes"]["error"]["code"], "BLOCK_FAILED")
         self.assertIn("nodes", body["nodes"]["error"]["message"])
-        self.assertIsNotNone(body["elastic"]["data"])
+        self.assertIsNotNone(body["queue"]["data"])
         self.assertIsNotNone(body["sandboxes"]["data"])
 
 

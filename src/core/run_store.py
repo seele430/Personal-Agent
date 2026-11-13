@@ -1,5 +1,8 @@
 """单用户助手的 run / turn / step / exec SQLite 数据模型。
 
+注意区分：`src/collab/run_store.py` 是**接力任务**的 run/revision/step/attempt
+存储（带 fencing token），与本模块的聊天 run 是两套东西，名字相同纯属历史。
+
 旧版 messages 仅由 run_migration 在数据库副本上迁移；本模块不读取或
 修改旧 stage，也不把历史模型发言伪装成工具 exec。
 """

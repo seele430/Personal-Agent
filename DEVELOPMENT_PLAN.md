@@ -1,5 +1,10 @@
 # Personal Agent — 产品与开发总计划
 
+> **方向裁决（2026-11-13，Jessica 拍板）：本项目定位收敛为「单人自用本地工作台」
+> （与 README 一致）。下文 v2.0 的多用户 / VPS / PostgreSQL / 邀请码 / BYOK 路线
+> 已否决，仅作历史保留，不再作为开发依据。** 弹性计算控制面已抽离为独立项目
+> [elastic-agent-platform](https://github.com/seele430/elastic-agent-platform)。
+
 **版本：** v2.0 roadmap · 2026-10-16  
 **状态：** 产品方向已确认；M0–M2、M4、M7 已完成，M6 半成品（BYOK 未做），M3/M5/M8/M9/M10 未开工  
 **本机项目：** `C:\Users\123\Personal Agent`  
