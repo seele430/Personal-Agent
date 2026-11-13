@@ -115,5 +115,26 @@ class OneBotClient:
             },
         )
 
+    def send_private_image(self, user_id: int, file_path: str) -> dict:
+        """发本地图片：file:// URI 由 NapCat 在本机读取，不走网络上传。"""
+
+        from pathlib import Path
+
+        path = Path(file_path).resolve()
+
+        if not path.is_file():
+            raise OneBotError(f"图片文件不存在：{path.name}")
+
+        return self._call(
+            "send_msg",
+            {
+                "message_type": "private",
+                "user_id": int(user_id),
+                "message": [
+                    {"type": "image", "data": {"file": path.as_uri()}},
+                ],
+            },
+        )
+
     def get_login_info(self) -> dict:
         return self._call("get_login_info")

@@ -226,6 +226,42 @@ class BaseWorker:
 
         return True
 
+    def reply_image(self, job: dict, image_path: str, caption: str = "") -> bool:
+        """发图片（可带一条文字说明）；认领与状态推进和 reply 一致。"""
+
+        message_id = job["message_id"]
+
+        if not self.outbox.claim_send(message_id):
+            current = self.outbox.get(message_id) or {}
+
+            if int(current.get("cancelled") or 0) == 1:
+                self.handler.record_audit(job, "send_skipped_cancelled")
+                self.outbox.mark_cancelled(message_id, error="cancelled before send")
+            else:
+                self.handler.record_audit(job, "send_claim_failed")
+                self.outbox.mark_failed(message_id, error="send claim failed")
+
+            return False
+
+        try:
+            self.client.send_private_image(int(job["sender"]), image_path)
+
+            if caption:
+                time.sleep(REPLY_CHUNK_DELAY)
+                self.client.send_private_msg(int(job["sender"]), caption)
+        except OneBotError as error:
+            self.outbox.mark_failed(message_id, error=str(error))
+            self.handler.record_audit(job, "send-failed", str(error))
+
+            return False
+
+        summary = f"[图片] {caption}".strip()
+        self.outbox.mark_sent(message_id, reply=summary, state=self.terminal_state)
+        self.handler.record_audit(job, "sent")
+        self._record_assistant(job, summary)
+
+        return True
+
 
 class TaskWorker(BaseWorker):
     def run_once(self) -> bool:
@@ -277,6 +313,9 @@ class TaskWorker(BaseWorker):
 
         if action == "execute" and decision["intent"] == "continue_run":
             return self._run_continue(job, decision)
+
+        if action == "execute" and decision["intent"] == "poster":
+            return self._run_poster(job, decision)
 
         if action == "deny":
             self.outbox.set_routing(
@@ -475,6 +514,42 @@ class TaskWorker(BaseWorker):
                 self.handler.record_audit(job, "context_saved", context_info)
             except Exception as error:  # 已发送事实不变；仅记录失败
                 self.handler.record_audit(job, "context_store_failed", str(error)[:120])
+
+        return True
+
+    def _run_poster(self, job: dict, decision: dict) -> bool:
+        message_id = job["message_id"]
+        params = decision["params"]
+
+        self.outbox.set_routing(
+            message_id, intent="poster", params=params,
+            params_hash=params_hash(params), decision_source=decision["source"],
+            state="running", policy_decision="allow",
+        )
+        self.notice(job, "海报生成中，约需 30-60 秒。")
+
+        try:
+            from src.collab.providers import build_provider, provider_name
+            from src.qq.poster import PosterError, make_poster
+
+            if provider_name() == "qwen-agent":
+                raise PosterError("QQ 端不支持 agent 模式出图（会改动文件）")
+
+            png_path = make_poster(
+                params["topic"], message_id, provider=build_provider()
+            )
+        except PosterError as error:
+            self.reply(job, f"海报生成失败：{error}")
+            self.handler.record_audit(job, "poster_failed", str(error)[:200])
+
+            return True
+
+        self.reply_image(
+            job,
+            str(png_path),
+            caption="海报如上；数据口径以图中标注为准，未联网核实的数字仅供参考。",
+        )
+        self.handler.record_audit(job, "poster_sent", str(png_path))
 
         return True
 

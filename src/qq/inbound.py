@@ -30,6 +30,17 @@ AUDIT_SUMMARY_LIMIT = 80
 MAX_QUESTION_CHARS = 500
 MAX_REPLY_CHARS = 800
 
+# QQ 私聊回复风格：纯文本、简洁、数据要标口径——QQ 不渲染 Markdown，
+# 模型凭记忆给的数字必须明说未核实，不许用 emoji 拼"伪海报"。
+QQ_ASK_RULES = (
+    "你在 QQ 私聊里回复，硬性要求：\n"
+    "1. 纯文本：禁止任何 Markdown 标记（标题、加粗、列表符号、代码块、表格）。\n"
+    "2. 简洁：先给结论，最多分 3 个短段，总长不超过 350 字。\n"
+    "3. emoji 最多 1 个；禁止用 emoji、符号拼图或拼装饰边框。\n"
+    "4. 涉及数据、统计、新闻时：注明来源与年份；无法联网核实的数字必须明说"
+    "「未联网核实，仅供参考」。\n"
+)
+
 
 class QQInbound:
     def __init__(
@@ -190,7 +201,11 @@ class QQInbound:
 
         with tempfile.TemporaryDirectory() as temporary:
             try:
-                provider.submit(question, artifact_name="answer.md", out_dir=temporary)
+                provider.submit(
+                    QQ_ASK_RULES + "\n用户消息：" + question,
+                    artifact_name="answer.md",
+                    out_dir=temporary,
+                )
 
             except Exception as error:  # noqa: BLE001 - 外部失败要回给用户
                 return f"调用失败：{error}"

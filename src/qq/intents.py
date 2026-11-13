@@ -76,6 +76,12 @@ class NewSessionParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class PosterParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    topic: str = Field(min_length=2, max_length=500)
+
+
 @dataclass(frozen=True)
 class IntentSpec:
     name: str
@@ -235,6 +241,18 @@ NEW_SESSION_SPEC = IntentSpec(
     enabled=True,
 )
 
+POSTER_SPEC = IntentSpec(
+    name="poster",
+    params_schema=PosterParams,
+    risk="low",
+    policy="allow",
+    handler="poster",
+    timeout_seconds=180.0,
+    retry_policy="none",
+    output_kind="image",
+    enabled=True,
+)
+
 
 INTENT_REGISTRY: dict[str, IntentSpec] = {
     spec.name: spec
@@ -251,6 +269,7 @@ INTENT_REGISTRY: dict[str, IntentSpec] = {
         SESSIONS_SPEC,
         USE_SESSION_SPEC,
         NEW_SESSION_SPEC,
+        POSTER_SPEC,
     )
 }
 

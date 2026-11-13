@@ -17,9 +17,9 @@ python scripts/run_tests.py list integration  # 只列某一层
 python scripts/run_tests.py integration       # 运行该层
 ```
 
-<!-- membership-digest: 4d3059a27719c2e2 -->
+<!-- membership-digest: 19be82c0d2f4ea5a -->
 
-## unit — L1 单元测试 (87 files)
+## unit — L1 单元测试 (88 files)
 
 | File | 物理位置 | Domain | DB | Network | Risk | Status |
 |---|---|---|---|---|---|---|
@@ -81,6 +81,7 @@ python scripts/run_tests.py integration       # 运行该层
 | `unit/test_qq_inbound.py` | tests/unit/ | qq | none | mocked | medium | registered-inferred |
 | `unit/test_qq_outbox.py` | tests/unit/ | qq | temporary_sqlite | mocked | medium | registered-inferred |
 | `unit/test_qq_policy.py` | tests/unit/ | qq | none | mocked | medium | registered-inferred |
+| `unit/test_qq_poster.py` | tests/unit/ | qq | temporary_sqlite | mocked | medium | registered-inferred |
 | `unit/test_qq_router.py` | tests/unit/ | qq | none | mocked | low | registered-inferred |
 | `unit/test_qq_threads.py` | tests/unit/ | qq | temporary_sqlite | mocked | low | registered-inferred |
 | `unit/test_qq_worker.py` | tests/unit/ | qq | temporary_sqlite | mocked | medium | registered-inferred |

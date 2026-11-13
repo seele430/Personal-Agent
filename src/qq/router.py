@@ -4,11 +4,12 @@
 
 1. 危险操作 → deny
 2. 精确命令 /status /cancel /confirm
-3. 读文件意图 + 明确路径 → read_file
-4. 读文件意图但缺路径 → clarify
-5. 已识别但未开放（画图/写文件） → unavailable
-6. 普通文本 → ask
-7. 其余 → clarify
+3. 海报/信息图 → poster（出真图）
+4. 读文件意图 + 明确路径 → read_file
+5. 读文件意图但缺路径 → clarify
+6. 已识别但未开放（画图/写文件） → unavailable
+7. 普通文本 → ask
+8. 其余 → clarify
 """
 
 from __future__ import annotations
@@ -43,6 +44,15 @@ UNAVAILABLE_PATTERNS = (
     r"(写|存|保存)(成|到).*(文件|md|txt)",
 )
 
+# 海报/信息图：可走「LLM 写 HTML → 无头 Edge 截图」管线出真图
+POSTER_PATTERNS = (
+    r"海报",
+    r"宣传图",
+    r"长图",
+    r"信息图",
+    r"一图读懂",
+)
+
 CONTINUE_PREFIXES = (
     "继续",
     "接着",
@@ -65,6 +75,10 @@ def _read_intent(text: str) -> bool:
 
 def _unavailable(text: str) -> bool:
     return any(re.search(pattern, text) for pattern in UNAVAILABLE_PATTERNS)
+
+
+def _poster(text: str) -> bool:
+    return any(re.search(pattern, text) for pattern in POSTER_PATTERNS)
 
 
 def _path_of(text: str) -> str:
@@ -149,6 +163,9 @@ def classify(text: str) -> dict:
 
     if message.startswith("/"):
         return _result("unknown", {}, "clarify", "unknown_command", "command")
+
+    if _poster(message):
+        return _result("poster", {"topic": message}, "execute", "poster", "rule")
 
     if _read_intent(message):
         path = _path_of(message)
