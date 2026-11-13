@@ -81,6 +81,14 @@ async def lifespan(_app: FastAPI):
     except Exception:
         logger.exception("启动对账失败")
 
+    # 小号上线检测：QQ 在线状态翻转时开新会话（configured_workers 未触发前的也覆盖）。
+    try:
+        from src.qq import launch_watcher
+
+        launch_watcher.start()
+    except Exception:
+        logger.exception("小号上线检测启动失败")
+
     # D25：没配令牌就明确说清楚，别让人以为 /v1 已经受保护。
     # 但「设了却全是空白」不算没配 —— 那等于静默关掉认证，必须拒绝启动。
     raw_token = os.getenv(PLATFORM_TOKEN_ENV, "")

@@ -74,6 +74,13 @@ def configured_workers():
         _task_worker.start()
         _control_worker.start()
 
+        try:
+            from src.qq import launch_watcher
+
+            launch_watcher.start()
+        except Exception:  # noqa: BLE001 - 检测线程起不来不影响入站
+            pass
+
     return _outbox, _task_worker, _control_worker
 
 
