@@ -114,6 +114,13 @@ class MakePosterCase(unittest.TestCase):
         self.assertIn("禁止引用任何外部资源", prompt)
         self.assertIn("未联网核实", prompt)
 
+    def test_prompt_contains_chart_rules(self):
+        prompt = build_poster_prompt("x")
+
+        self.assertIn("conic-gradient", prompt)
+        self.assertIn("饼图", prompt)
+        self.assertIn("用户指定了图表类型时必须遵从", prompt)
+
     def test_happy_path(self):
         def fake_renderer(html_path, png_path):
             Path(png_path).write_bytes(b"\x89PNG")
