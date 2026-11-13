@@ -453,6 +453,15 @@ TEST_SCHEMAS = {
         risk="medium",
     ),
 
+    "unit/test_launch_watcher.py": TestSchema(
+        layer="unit",
+        domain="qq",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="low",
+    ),
+
     "unit/test_sessions.py": TestSchema(
         layer="unit",
         domain="knowledge",
@@ -475,6 +484,69 @@ TEST_SCHEMAS = {
         layer="unit",
         domain="collab",
         database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    "unit/test_platform_exec_limits.py": TestSchema(
+        layer="unit",
+        domain="platform_exec",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    "unit/test_platform_exec_env.py": TestSchema(
+        layer="unit",
+        domain="platform_exec",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    "unit/test_platform_ttl_extend.py": TestSchema(
+        layer="unit",
+        domain="platform_ttl",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    "unit/test_platform_runner.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    "unit/test_dsh_exec_wrapper.py": TestSchema(
+        layer="unit",
+        domain="collab",
+        database="none",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    "unit/test_platform_audit.py": TestSchema(
+        layer="unit",
+        domain="platform_audit",
+        database="temporary_sqlite",
+        authentication="none",
+        external_network="none",
+        risk="medium",
+    ),
+
+    "integration/test_orch_platform_exec.py": TestSchema(
+        layer="integration",
+        domain="platform_exec",
+        database="temporary_sqlite",
         authentication="none",
         external_network="none",
         risk="medium",

@@ -43,6 +43,7 @@ from src.platform.process_tree import (
     ProcessTree,
     ProcessTreeError,
 )
+from src.platform.env_injection import validate_env_injection
 from src.platform.trace_context import new_traceparent
 
 logger = logging.getLogger("personal_agent.platform")
@@ -64,6 +65,50 @@ DEFAULT_TIMEOUT_MS = 30_000
 MAX_TIMEOUT_MS = 300_000
 DEFAULT_MAX_OUTPUT_BYTES = 65_536
 MAX_OUTPUT_BYTES = 1_048_576
+
+# 限额可用环境变量放宽（编排 coding 需要 1800 s）：只放宽不收紧，
+# 默认值保持 300 s / 1 MiB 不变，绝对上限 1 h / 4 MiB。
+MAX_TIMEOUT_MS_CEILING = 3_600_000
+MAX_OUTPUT_BYTES_CEILING = 4_194_304
+
+
+def _env_ceiling(name: str, default: int, ceiling: int) -> int:
+    raw = os.getenv(name, "").strip()
+
+    if not raw:
+        return default
+
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("非法 %s=%r，回落默认值 %d", name, raw, default)
+        return default
+
+    if value <= 0:
+        logger.warning("非法 %s=%r，回落默认值 %d", name, raw, default)
+        return default
+
+    return min(value, ceiling)
+
+
+def max_timeout_ms() -> int:
+    """当前生效的 exec 超时上限（默认 300 s，可放宽到 1 h）。"""
+
+    return _env_ceiling(
+        "PERSONAL_AGENT_EXEC_MAX_TIMEOUT_MS",
+        MAX_TIMEOUT_MS,
+        MAX_TIMEOUT_MS_CEILING,
+    )
+
+
+def max_output_bytes_limit() -> int:
+    """当前生效的输出上限（默认 1 MiB，可放宽到 4 MiB）。"""
+
+    return _env_ceiling(
+        "PERSONAL_AGENT_EXEC_MAX_OUTPUT_BYTES",
+        MAX_OUTPUT_BYTES,
+        MAX_OUTPUT_BYTES_CEILING,
+    )
 
 CLEANUP_TIMEOUT_SECONDS = 5.0
 
@@ -314,10 +359,19 @@ class Tier1Executor:
         on_started: Callable[[str], None] | None = None,
         on_cancel_requested: Callable[[str], None] | None = None,
         traceparent: str | None = None,
+        env: dict[str, str] | None = None,
     ) -> ExecOutcome:
+        # 宿主侧校验（runner 侧还会再校验一次）；值只进 stdin 载荷。
+        injected = validate_env_injection(env)
+
+        spec: dict[str, Any] = {"argv": list(argv)}
+
+        if injected:
+            spec["env"] = injected
+
         return self._run(
             kind="command",
-            spec={"argv": list(argv)},
+            spec=spec,
             data_dir=None,
             sandbox_id=sandbox_id,
             cancel_token=cancel_token,
@@ -369,9 +423,9 @@ class Tier1Executor:
         sandbox_id: str | None = None,
         traceparent: str | None = None,
     ) -> ExecOutcome:
-        timeout = clamp(timeout_ms, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS)
+        timeout = clamp(timeout_ms, DEFAULT_TIMEOUT_MS, max_timeout_ms())
         output_limit = clamp(
-            max_output_bytes, DEFAULT_MAX_OUTPUT_BYTES, MAX_OUTPUT_BYTES
+            max_output_bytes, DEFAULT_MAX_OUTPUT_BYTES, max_output_bytes_limit()
         )
 
         if sandbox_id is not None and SANDBOX_ID_PATTERN.fullmatch(sandbox_id) is None:

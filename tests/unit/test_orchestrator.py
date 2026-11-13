@@ -227,5 +227,134 @@ class VerdictCase(unittest.TestCase):
         self.assertIsNone(read_verdict(self.path))
 
 
+class FakePlatformRun:
+    """platform_runner.run_coding 的替身：记录调用、写产物、回填平台字段。"""
+
+    def __init__(self, ok=True, error="", tampered=False):
+        self.ok = ok
+        self.error = error
+        self.tampered = tampered
+        self.calls = []
+
+    def __call__(self, prompt, run_dir, *, run_id, timeout=1800.0,
+                 extra_env=None, attempt=1, **_ignored):
+        self.calls.append({
+            "prompt": prompt, "run_id": run_id,
+            "timeout": timeout, "extra_env": extra_env, "attempt": attempt,
+        })
+
+        if self.ok:
+            target = Path(run_dir) / "src"
+            target.mkdir(parents=True, exist_ok=True)
+            (target / "main.py").write_text("print('hi')\n", encoding="utf-8")
+
+        result = RunResult(
+            ok=self.ok, text="done" if self.ok else "",
+            reason="completed" if self.ok else "",
+            exit_code=0 if self.ok else None,
+            elapsed_s=0.1, error=self.error,
+        )
+        result.sandbox_id = "sbx_" + "1" * 32
+        result.exec_id = "exec_fake"
+        result.platform_status = "succeeded" if self.ok else "timed_out"
+        result.plan_tampered = self.tampered
+
+        return result
+
+
+class PlatformPathCase(OrchestratorCase):
+    """PERSONAL_AGENT_ORCH_PLATFORM=1：coding 走平台通道；默认走旧路径。"""
+
+    def build(self, qwen=None, dsh=None, platform_run=None):
+        return Orchestrator(
+            root=self.root,
+            qwen=qwen or FakeQwen(),
+            dsh=dsh or FakeDsh(),
+            platform_run=platform_run or FakePlatformRun(),
+            notifier=self.notes.append,
+        )
+
+    def test_flag_off_uses_host_dsh(self):
+        import os
+        from unittest.mock import patch
+
+        dsh = FakeDsh()
+        platform = FakePlatformRun()
+        orchestrator = self.build(dsh=dsh, platform_run=platform)
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("PERSONAL_AGENT_ORCH_PLATFORM", None)
+            state = orchestrator.create("做一个扫雷")
+            final = orchestrator.run(state["run_id"])
+
+        self.assertEqual(final["state"], "done")
+        self.assertEqual(platform.calls, [])
+        # review + coding 都走宿主 dsh
+        self.assertEqual(len(dsh.calls), 2)
+        self.assertNotIn("platform", final["steps"]["coding"])
+
+    def test_flag_on_uses_platform_runner(self):
+        import os
+        from unittest.mock import patch
+
+        dsh = FakeDsh()
+        platform = FakePlatformRun()
+        orchestrator = self.build(dsh=dsh, platform_run=platform)
+
+        with patch.dict(
+            os.environ, {"PERSONAL_AGENT_ORCH_PLATFORM": "1"}, clear=False
+        ):
+            state = orchestrator.create("做一个扫雷")
+            final = orchestrator.run(state["run_id"])
+
+        self.assertEqual(final["state"], "done")
+        self.assertEqual(len(platform.calls), 1)
+        # review 仍走宿主 dsh，coding 走平台
+        self.assertEqual(len(dsh.calls), 1)
+
+        coding = final["steps"]["coding"]
+        self.assertEqual(coding["platform"]["exec_id"], "exec_fake")
+        self.assertEqual(coding["platform"]["status"], "succeeded")
+        self.assertEqual(platform.calls[0]["attempt"], 1)
+
+    def test_platform_failure_maps_to_step_error(self):
+        import os
+        from unittest.mock import patch
+
+        platform = FakePlatformRun(ok=False, error="code_timeout")
+        orchestrator = self.build(platform_run=platform)
+
+        with patch.dict(
+            os.environ, {"PERSONAL_AGENT_ORCH_PLATFORM": "1"}, clear=False
+        ):
+            state = orchestrator.create("做一个扫雷")
+            final = orchestrator.run(state["run_id"])
+
+        self.assertEqual(final["state"], "stopped")
+        self.assertEqual(final["stop_reason"], "code_timeout")
+        self.assertEqual(final["steps"]["coding"]["error"], "code_timeout")
+        self.assertEqual(
+            final["steps"]["coding"]["platform"]["status"], "timed_out"
+        )
+
+    def test_plan_tampered_warns_but_continues(self):
+        import os
+        from unittest.mock import patch
+
+        platform = FakePlatformRun(tampered=True)
+        orchestrator = self.build(platform_run=platform)
+
+        with patch.dict(
+            os.environ, {"PERSONAL_AGENT_ORCH_PLATFORM": "1"}, clear=False
+        ):
+            state = orchestrator.create("做一个扫雷")
+            final = orchestrator.run(state["run_id"])
+
+        self.assertEqual(final["state"], "done")
+        self.assertTrue(
+            final["steps"]["coding"]["plan_tampered_warning"]
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

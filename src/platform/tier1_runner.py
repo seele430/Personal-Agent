@@ -39,6 +39,9 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.platform.env_injection import (  # noqa: E402
+    validate_env_injection,
+)
 from src.platform.trace_context import (  # noqa: E402
     TRACEPARENT_ENV,
     is_valid,
@@ -167,6 +170,9 @@ def run_command(spec: dict) -> int:
 
     子进程直接继承本进程的 stdout / stderr，因此平台只看到一个输出流；
     取消时宿主终止整个 job，本进程和这条命令一起结束。
+
+    spec 可带 ``env``（白名单受控注入）：runner 独立再校验一次，
+    不信任宿主的预先校验。
     """
 
     argv = spec.get("argv")
@@ -178,11 +184,18 @@ def run_command(spec: dict) -> int:
     ):
         raise InvalidSpec("argv 必须是非空字符串数组")
 
+    environment = dict(os.environ)
+
+    try:
+        environment.update(validate_env_injection(spec.get("env")))
+    except ValueError as exc:
+        raise InvalidSpec(str(exc)) from exc
+
     completed = subprocess.run(
         argv,
         stdin=subprocess.DEVNULL,
         cwd=os.getcwd(),
-        env=dict(os.environ),
+        env=environment,
         check=False,
     )
 

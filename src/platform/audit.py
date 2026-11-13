@@ -32,6 +32,8 @@ EVENTS = frozenset(
         "alert.fired",
         "auth.denied",
         "rate_limited",
+        "orchestrator.coding_started",
+        "orchestrator.coding_finished",
     }
 )
 

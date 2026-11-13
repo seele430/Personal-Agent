@@ -22,7 +22,9 @@ from typing import Any
 
 from src.core.run_control import CancellationToken
 from src.platform import active_execs
+from src.platform import exec_service
 from src.platform.audit import AuditLog
+from src.platform.env_injection import validate_env_injection
 from src.platform.exec_queue import QueuedExec, get_queue
 from src.platform.exec_service import (
     ERROR_OUTPUT_LIMIT,
@@ -39,6 +41,7 @@ from src.platform.exec_store import (
 )
 from src.platform.node_registry import NodeRegistry
 from src.platform.sandbox_service import (
+    MAX_TTL_SECONDS,
     InvalidArgument,
     InvalidTransition,
     PlatformError,
@@ -50,9 +53,9 @@ from src.platform.trace_context import is_valid, new_traceparent
 
 logger = logging.getLogger("personal_agent.platform.ops")
 
-MAX_TIMEOUT_MS = 300_000
-MAX_OUTPUT_BYTES = 1_048_576
 RUNNABLE_SANDBOX_STATES = ("created", "running", "idle")
+# exec 收尾余量：TTL 至少要盖住 timeout 再加这段，给拷回/落终态留时间。
+TTL_HEADROOM_SECONDS = 120
 
 
 class NoReadyNode(PlatformError):
@@ -180,8 +183,17 @@ def submit_exec(
     run_id: str | None = None,
     step_id: str | None = None,
     traceparent: str | None = None,
+    env: dict[str, str] | None = None,
+    extend_ttl: bool = False,
 ) -> dict[str, Any]:
-    """创建 exec 并交给队列；返回创建出来的行。"""
+    """创建 exec 并交给队列；返回创建出来的行。
+
+    ``env`` 是受控白名单注入（见 env_injection）：只随内存队列项传递，
+    不写 platform_execs、不进 argv。
+
+    ``extend_ttl=True`` 时保证沙箱剩余 TTL ≥ timeout+120 s（长任务防
+    reaper 提前回收）；默认 False，保持调用方自选 TTL 的既有语义。
+    """
 
     sandbox = require_sandbox(sandbox_id)
 
@@ -197,16 +209,47 @@ def submit_exec(
     ):
         raise InvalidArgument("command 必须是非空字符串数组")
 
-    if not 1 <= int(timeout_ms) <= MAX_TIMEOUT_MS:
-        raise InvalidArgument(f"timeout_ms 必须在 1—{MAX_TIMEOUT_MS}")
+    timeout_ceiling = exec_service.max_timeout_ms()
 
-    if not 1 <= int(max_output_bytes) <= MAX_OUTPUT_BYTES:
+    if not 1 <= int(timeout_ms) <= timeout_ceiling:
+        raise InvalidArgument(f"timeout_ms 必须在 1—{timeout_ceiling}")
+
+    output_ceiling = exec_service.max_output_bytes_limit()
+
+    if not 1 <= int(max_output_bytes) <= output_ceiling:
         raise InvalidArgument(
-            f"max_output_bytes 必须在 1—{MAX_OUTPUT_BYTES}"
+            f"max_output_bytes 必须在 1—{output_ceiling}"
         )
+
+    # 长任务保护（显式 opt-in）：剩余 TTL 必须覆盖 timeout + 收尾余量，
+    # 不足则续期，否则 reaper 会在 exec 跑完前把沙箱回收掉。
+    if extend_ttl:
+        needed_ttl = int(timeout_ms / 1000) + TTL_HEADROOM_SECONDS
+
+        expires_at = sandbox.get("expires_at")
+        remaining = 0.0
+
+        if expires_at:
+            try:
+                remaining = (
+                    datetime.fromisoformat(expires_at)
+                    - datetime.now(timezone.utc)
+                ).total_seconds()
+            except ValueError:
+                remaining = 0.0
+
+        if remaining < needed_ttl:
+            SandboxService().extend_ttl(
+                sandbox_id, min(needed_ttl, MAX_TTL_SECONDS)
+            )
 
     if not is_valid(traceparent):
         traceparent = new_traceparent()
+
+    try:
+        injected_env = validate_env_injection(env)
+    except ValueError as exc:
+        raise InvalidArgument(str(exc)) from None
 
     queue = exec_queue()
 
@@ -231,6 +274,7 @@ def submit_exec(
             timeout_ms=timeout_ms,
             max_output_bytes=max_output_bytes,
             traceparent=traceparent,
+            env=injected_env or None,
         )
     )
 
@@ -355,6 +399,7 @@ def run_exec(
     timeout_ms: int,
     max_output_bytes: int,
     traceparent: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> None:
     store = ExecStore()
     token = CancellationToken()
@@ -378,6 +423,7 @@ def run_exec(
             max_output_bytes=max_output_bytes,
             on_started=lambda _sandbox: store.start(exec_id),
             traceparent=traceparent,
+            env=env,
         )
 
         wrote = store.finish(
@@ -435,6 +481,7 @@ def spawn_exec(item) -> None:
             item.timeout_ms,
             item.max_output_bytes,
             item.traceparent,
+            item.env,
         ),
         daemon=True,
     ).start()

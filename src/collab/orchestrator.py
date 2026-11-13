@@ -22,8 +22,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+import logging
+
 from src.collab import dsh_runner
+from src.collab import platform_runner
 from src.collab.dsh_runner import ENV_WHITELIST
+from src.platform.audit import AuditLog
+
+logger = logging.getLogger("personal_agent.collab.orchestrator")
 
 
 DEFAULT_QWEN = r"C:\Users\123\AppData\Roaming\npm\qwen.cmd"
@@ -39,6 +45,17 @@ STEP_TIMEOUTS = {
 }
 MIN_PLAN_CHARS = 80
 RUNS_DIRNAME = "runs"
+PLATFORM_FLAG_ENV = "PERSONAL_AGENT_ORCH_PLATFORM"
+# 平台通道的 coding 失败码：直接作为 stop_reason，其余仍归 code_failed。
+CODE_FAILURE_REASONS = frozenset(
+    {"code_timeout", "code_cancelled", "sandbox_gone", "artifact_escape"}
+)
+
+
+def _platform_enabled() -> bool:
+    """coding 步骤走平台沙箱执行；默认关，行为与旧路径完全一致。"""
+
+    return os.getenv(PLATFORM_FLAG_ENV, "").strip() == "1"
 
 
 class OrchestratorError(RuntimeError):
@@ -212,6 +229,7 @@ class Orchestrator:
         *,
         qwen: Callable[..., QwenResult] = call_qwen,
         dsh: Callable[..., dsh_runner.RunResult] = dsh_runner.run,
+        platform_run: Callable[..., dsh_runner.RunResult] = platform_runner.run_coding,
         notifier: Callable[[str], None] | None = None,
         timeout: float | None = None,
         step_timeouts: dict | None = None,
@@ -220,6 +238,7 @@ class Orchestrator:
         self.root = Path(root) if root else data_root() / RUNS_DIRNAME
         self.qwen = qwen
         self.dsh = dsh
+        self.platform_run = platform_run
         self.notifier = notifier
         self.max_revisions = max_revisions
 
@@ -298,10 +317,37 @@ class Orchestrator:
         except Exception:  # noqa: BLE001 - 通知失败不影响流程
             pass
 
+    def _audit(
+        self,
+        event: str,
+        state: dict,
+        *,
+        outcome: str,
+        code: str | None = None,
+        sandbox_id: str | None = None,
+        exec_id: str | None = None,
+    ) -> None:
+        """编排关键节点落平台审计；审计是旁路，失败不影响流程。"""
+
+        try:
+            AuditLog().record(
+                event,
+                outcome=outcome,
+                code=code,
+                actor="orchestrator",
+                sandbox_id=sandbox_id,
+                exec_id=exec_id,
+                detail={"run_id": state["run_id"], "step": state.get("step")},
+            )
+        except Exception:  # noqa: BLE001 - 与 ops 一致：审计失败不挡主流程
+            logger.exception("审计写入失败 event=%s", event)
+
     # ---------- 单步 ----------
 
     def _step_failed(self, state: dict, step: str, error: str) -> None:
-        state["steps"][step] = {"ok": False, "error": error, "at": _now()}
+        # update 而不是覆盖：保留 coding 已写入的 platform 等诊断字段。
+        entry = state["steps"].setdefault(step, {})
+        entry.update({"ok": False, "error": error, "at": _now()})
         self._history(state, "step_failed", step=step, error=error)
 
     def _plan(self, state: dict, *, revise: bool = False) -> bool:
@@ -396,12 +442,48 @@ class Orchestrator:
             "按当前目录的 plan.md 在 src/ 下实现任务。改完不要动 plan.md 与 review.md。"
             "最后用 3 行以内说明你产出了哪些文件。"
         )
-        result = self.dsh(prompt, directory, timeout=self._timeout_for(state["step"]), extra_env=_dsh_env())
+
+        if _platform_enabled():
+            self._audit("orchestrator.coding_started", state, outcome="ok")
+
+            result = self.platform_run(
+                prompt,
+                directory,
+                run_id=state["run_id"],
+                timeout=self._timeout_for(state["step"]),
+                extra_env=_dsh_env(),
+                attempt=state["revisions"] + 1,
+            )
+
+            self._audit(
+                "orchestrator.coding_finished",
+                state,
+                outcome="ok" if result.ok else "failed",
+                code=result.error or None,
+                sandbox_id=result.sandbox_id or None,
+                exec_id=result.exec_id or None,
+            )
+        else:
+            result = self.dsh(prompt, directory, timeout=self._timeout_for(state["step"]), extra_env=_dsh_env())
+
         state["steps"]["coding"] = {
             "ok": bool(result.ok), "elapsed_s": result.elapsed_s,
             "exit_code": result.exit_code, "summary": (result.text or "")[-300:],
             "error": result.error, "at": _now(),
         }
+
+        if result.sandbox_id or result.exec_id:
+            state["steps"]["coding"]["platform"] = {
+                "sandbox_id": result.sandbox_id,
+                "exec_id": result.exec_id,
+                "status": result.platform_status,
+                "elapsed_s": result.elapsed_s,
+            }
+
+        if result.plan_tampered:
+            # v1.1：只告警不拦截，证据留在 run_dir/_platform/
+            state["steps"]["coding"]["plan_tampered_warning"] = True
+            self._history(state, "plan_tampered_warning", step="coding")
 
         artifacts = sorted(
             str(path.relative_to(directory))
@@ -496,7 +578,12 @@ class Orchestrator:
                     return self._stop(state, "revise_failed")
 
             if not self._code(state):
-                return self._stop(state, "code_failed")
+                error = state["steps"].get("coding", {}).get("error") or ""
+                reason = (
+                    error if error in CODE_FAILURE_REASONS else "code_failed"
+                )
+
+                return self._stop(state, reason)
 
             if self._verify(state) != "PASS":
                 return self._stop(state, "acceptance_failed")

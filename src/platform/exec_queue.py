@@ -97,6 +97,8 @@ class QueuedExec:
     timeout_ms: int
     max_output_bytes: int
     traceparent: str | None = None
+    # 受控 env 注入：只随内存队列项走，不落库、不进 argv。
+    env: dict[str, str] | None = None
     payload: dict = field(default_factory=dict)
     enqueued_at: float = field(default_factory=time.monotonic)
 

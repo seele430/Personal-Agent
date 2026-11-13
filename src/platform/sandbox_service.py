@@ -611,6 +611,56 @@ class SandboxService:
 
         return self.get(sandbox_id)
 
+    def extend_ttl(self, sandbox_id: str, seconds: int) -> dict[str, Any]:
+        """把到期时间推迟到 now+seconds；只延后不提前，重复调用幂等。
+
+        长任务（编排 coding 1800 s）提交 exec 前由 ops 调用，保证
+        reaper 不会在 exec 跑完前回收沙箱。上限仍是 MAX_TTL_SECONDS。
+        """
+
+        if (
+            type(seconds) is not int
+            or not 1 <= seconds <= MAX_TTL_SECONDS
+        ):
+            raise InvalidArgument(
+                f"ttl 续期秒数必须是 1—{MAX_TTL_SECONDS} 的整数"
+            )
+
+        with closing(self.connect()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+
+            try:
+                row = conn.execute(
+                    "SELECT * FROM agent_sandboxes WHERE id = ?", (sandbox_id,)
+                ).fetchone()
+
+                if row is None:
+                    raise SandboxNotFound(sandbox_id)
+
+                if row["state"] == SANDBOX_RECLAIMED:
+                    raise InvalidTransition("沙箱已回收，不能续期")
+
+                current = datetime.fromisoformat(row["expires_at"])
+                now = datetime.now(timezone.utc)
+                target = now + timedelta(seconds=seconds)
+
+                if target > current:
+                    conn.execute(
+                        """
+                        UPDATE agent_sandboxes
+                        SET expires_at = ?, ttl_seconds = ?
+                        WHERE id = ?
+                        """,
+                        (target.isoformat(), seconds, sandbox_id),
+                    )
+
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+
+        return self.get(sandbox_id)
+
     # ------------------------------------------------------------------
     # D20 状态机
     # ------------------------------------------------------------------

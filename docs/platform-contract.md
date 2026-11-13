@@ -320,7 +320,7 @@ failed → reclaimed
 
 - tier1 仅用于受信任代码或开发演示，是受控执行环境，**不是恶意代码安全隔离**。审批也不能替代隔离。
 - 每个沙箱使用平台分配的独立工作区。v1 文件工具只接受相对路径；先解析 real path，再验证仍位于该工作区内。绝对路径、`..` 穿越、指向工作区外的符号链接均拒绝；不能用字符串前缀代替归属判断。
-- runner 不复制宿主完整环境。默认仅传递操作系统 / 运行时所需的最小允许集：`PATH`、`PATHEXT`、`SYSTEMROOT`、`WINDIR`、`COMSPEC`、`TEMP`、`TMP`、`LANG`、`LC_ALL`；不存在则省略。API key、token、`.env`、`PYTHONPATH` 和宿主应用配置默认不继承，v1 exec 不提供任意环境变量注入。
+- runner 不复制宿主完整环境。默认仅传递操作系统 / 运行时所需的最小允许集：`PATH`、`PATHEXT`、`SYSTEMROOT`、`WINDIR`、`COMSPEC`、`TEMP`、`TMP`、`LANG`、`LC_ALL`；不存在则省略。API key、token、`.env`、`PYTHONPATH` 和宿主应用配置默认不继承；v1 exec 不提供任意环境变量注入，只允许 §9.2 的白名单受控注入。
 - 默认不授予自由网络工具；`http` 必须由工具策略显式允许。tier1 没有 OS 级网络隔离，shell / python 仍可能联网，因此该策略不是安全边界，也不得用于不可信代码演示。
 - timeout、输出上限、取消和进程树清理由 runner 强制执行，不能依赖模型或被启动进程配合。
 - 工具参数、结果、日志和 trajectory 只保存调试所需字段；环境变量与敏感值不得原样写入。输出上限同时约束持久化，避免无限放大磁盘。
@@ -334,3 +334,25 @@ failed → reclaimed
 - v1 内可新增可选响应字段，旧调用方必须忽略未知可选响应字段；不得改变既有字段类型、单位、默认值或状态含义。
 - v1 内新增可选请求字段时，省略它的行为必须与旧版本完全一致。新增必填请求字段、删除字段、收紧既有合法输入或改变状态 / 错误语义，必须升级主版本。
 - 本周期只保留 v1 兼容性证据，不承诺并行维护多个主版本。真实训练接入与 trajectory 回放不在契约内。
+
+## 9. 编排接入增补（2026-11-13，向后兼容）
+
+以下三条只放宽、不收紧：省略新参数的行为与旧版本完全一致。
+
+### 9.1 exec 限额可配置
+
+- `timeout_ms` 上限默认仍为 300_000 ms，`max_output_bytes` 上限默认仍为 1_048_576 字节；不设置环境变量时行为与 D2 冻结版一致。
+- 宿主可用 `PERSONAL_AGENT_EXEC_MAX_TIMEOUT_MS`（绝对上限 3_600_000）与 `PERSONAL_AGENT_EXEC_MAX_OUTPUT_BYTES`（绝对上限 4_194_304）放宽；非法值回落默认，超过绝对上限按上限截断。
+- 放宽是进程级配置，不按调用方区分；`/v1/execs` 的请求与响应字段不变。
+
+### 9.2 白名单 env 注入
+
+- command exec 接受可选 `env`（仅内存队列项与 runner stdin 载荷携带；**不落 `platform_execs`、不进 argv**）。
+- 只允许键：`DEEPSEEK_API_KEY`、`USERPROFILE`、`APPDATA`、`LOCALAPPDATA`、`NO_BROWSER`、`NO_PROXY`；宿主与 runner 各自独立校验同一份白名单，其余键一律拒绝。
+- 用途是编排 coding 在沙箱里跑外部 CLI（dsh）所需的凭据与 profile 路径；这不改变 §7 的安全定位：tier1 仍不是恶意代码隔离。
+
+### 9.3 长任务 TTL 续期
+
+- `SandboxService.extend_ttl(sandbox_id, seconds)` 把到期时间推迟到 now+seconds（只延后不提前，上限 86_400 s，已回收沙箱拒绝）。
+- `submit_exec` 传 `extend_ttl=True` 时保证沙箱剩余 TTL ≥ `timeout_ms/1000 + 120 s`，不足自动续期；默认 `False`，不改变调用方自选 TTL 的既有语义（reaper 到期照常回收）。
+- 续期只影响 `expires_at` 与 `ttl_seconds` 两个字段，状态机与 reaper 语义不变。

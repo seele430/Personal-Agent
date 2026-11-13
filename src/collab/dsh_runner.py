@@ -41,6 +41,11 @@ class RunResult:
     session_id: str = ""
     events: int = 0
     error: str = ""
+    # 平台执行通道（platform_runner）回填；宿主直连路径保持默认值。
+    sandbox_id: str = ""
+    exec_id: str = ""
+    platform_status: str = ""
+    plan_tampered: bool = False
 
 
 def build_env(extra: dict | None = None, source: dict | None = None) -> dict:
