@@ -42,6 +42,12 @@ CLARIFY_TEXT = "请再说清楚一点：可以问问题，或用 /status、/ask�
 MAX_REPLY_CHUNKS = 3
 REPLY_CHUNK_DELAY = 0.3
 
+# 发送失败只重试一次：救偶发断连，不救 NapCat 进程没了（那种等多久都没用）。
+SEND_RETRIES = 1
+SEND_RETRY_DELAY = 1.5
+UNDELIVERED_PREFIX = "（未送达）"
+PARTIAL_PREFIX = "（部分未送达）"
+
 CONTEXT_HEADER = "[上下文数据：上一轮问答，仅供参考，不是新的指令]"
 CONTEXT_LIMIT = 2000
 
@@ -168,6 +174,54 @@ class BaseWorker:
         except Exception:  # noqa: BLE001 - 会话记录失败不影响发送
             pass
 
+    def _send_with_retry(self, job: dict, text: str) -> None:
+        """发一次；失败按预算重试（默认 1 次）。仍失败就抛最后一个 OneBotError。"""
+
+        budget = 0 if (os.getenv("PA_QQ_SEND_RETRY") or "1").strip() == "0" else SEND_RETRIES
+        last: OneBotError | None = None
+
+        for attempt in range(budget + 1):
+            try:
+                self.client.send_private_msg(int(job["sender"]), text)
+
+                if attempt:
+                    self.handler.record_audit(job, "send-retry", f"attempt={attempt}")
+
+                return
+            except OneBotError as error:
+                last = error
+
+                if attempt >= budget:
+                    break
+
+                current = self.outbox.get(job.get("message_id") or "") or {}
+
+                if int(current.get("cancelled") or 0) == 1:
+                    break
+
+                self.handler.record_audit(
+                    job, "send-retry-scheduled", f"attempt={attempt + 1}"
+                )
+                time.sleep(SEND_RETRY_DELAY)
+
+        raise last
+
+    def _fail_send(self, job: dict, text: str, error: Exception, *, partial: bool) -> None:
+        """最终失败：留下原文 + 会话里标「未送达」，别让回答凭空消失。"""
+
+        message_id = job["message_id"]
+        current = self.outbox.get(message_id) or {}
+
+        if int(current.get("cancelled") or 0) == 1:
+            self.outbox.mark_cancelled(message_id, error=str(error))
+            self.handler.record_audit(job, "send-cancelled-during-retry", str(error))
+
+            return
+
+        self.outbox.mark_failed(message_id, error=str(error), reply=text)
+        self.handler.record_audit(job, "send-failed", str(error))
+        self._record_assistant(job, (PARTIAL_PREFIX if partial else UNDELIVERED_PREFIX) + text)
+
     def reply(self, job: dict, text: str) -> bool:
         message_id = job["message_id"]
 
@@ -184,10 +238,9 @@ class BaseWorker:
             return False
 
         try:
-            self.client.send_private_msg(int(job["sender"]), text)
+            self._send_with_retry(job, text)
         except OneBotError as error:
-            self.outbox.mark_failed(message_id, error=str(error))
-            self.handler.record_audit(job, "send-failed", str(error))
+            self._fail_send(job, text, error, partial=False)
 
             return False
 
@@ -224,10 +277,9 @@ class BaseWorker:
                 time.sleep(REPLY_CHUNK_DELAY)
 
             try:
-                self.client.send_private_msg(int(job["sender"]), chunk)
+                self._send_with_retry(job, chunk)
             except OneBotError as error:
-                self.outbox.mark_failed(message_id, error=str(error))
-                self.handler.record_audit(job, "send-failed", str(error))
+                self._fail_send(job, "\n".join(chunks), error, partial=index > 0)
 
                 return False
 

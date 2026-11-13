@@ -354,11 +354,19 @@ class QQOutbox:
                 (str(error)[:500], self._clock(), str(message_id)),
             )
 
-    def mark_failed(self, message_id: str, *, error: str) -> None:
+    def mark_failed(self, message_id: str, *, error: str, reply: str = "") -> None:
+        """失败落库；`reply` 可选——发送失败的回答也要留住，别让它凭空消失。"""
+
         with self._session() as connection:
             connection.execute(
-                "UPDATE qq_outbox SET state = 'failed', error = ?, updated_at = ? WHERE message_id = ?",
-                (str(error)[:500], self._clock(), str(message_id)),
+                "UPDATE qq_outbox SET state = 'failed', reply = ?, error = ?, updated_at = ? "
+                "WHERE message_id = ?",
+                (
+                    reply[:2000] if reply else None,
+                    str(error)[:500],
+                    self._clock(),
+                    str(message_id),
+                ),
             )
 
     def mark_unknown(self, message_id: str, *, error: str) -> None:
