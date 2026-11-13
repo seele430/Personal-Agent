@@ -117,8 +117,10 @@ class MakePosterCase(unittest.TestCase):
     def test_prompt_contains_chart_rules(self):
         prompt = build_poster_prompt("x")
 
+        self.assertIn("趋势/逐年/排名对比类数据", prompt)
+        self.assertIn("柱状图或折线图", prompt)
+        self.assertIn("构成/占比/份额类数据", prompt)
         self.assertIn("conic-gradient", prompt)
-        self.assertIn("饼图", prompt)
         self.assertIn("用户指定了图表类型时必须遵从", prompt)
 
     def test_happy_path(self):
