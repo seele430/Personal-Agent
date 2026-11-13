@@ -132,6 +132,44 @@ def _kill_tree(pid: int) -> None:
         pass
 
 
+def _resolve_qwen_cli() -> list[str] | None:
+    """直调 qwen-code 自更新缓存里的当前版 cli.js，返回 argv 前缀。
+
+    背景：qwen.cmd → cli-entry.js（0.27.0 引导层）→ 自更新转发到缓存版
+    cli.js 的链路会把位置参数吞掉（模型实际收到 cli.js 的路径而不是
+    提示词）；直调 active.json 指向的当前版 cli.js 则参数完好。
+    本机没有独立 Node，npm 目录里的 node.exe 是指向 Kimi.exe（Electron）
+    的硬链接，配合 env 里的 ELECTRON_RUN_AS_NODE=1 以纯 Node 模式运行。
+    解析失败返回 None，调用方回退到 qwen.cmd。
+    """
+
+    try:
+        node_exe = Path(os.environ.get("APPDATA", "")) / "npm" / "node.exe"
+        if not node_exe.is_file():
+            return None
+
+        updates = Path.home() / ".qwen" / "updates" / "npm"
+        candidates = sorted(
+            updates.glob("*/active.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for active_file in candidates:
+            try:
+                version = json.loads(active_file.read_text(encoding="utf-8"))["version"]
+            except (OSError, ValueError, KeyError):
+                continue
+            cli_js = (
+                active_file.parent / "versions" / version
+                / "node_modules" / "@qwen-code" / "qwen-code" / "cli.js"
+            )
+            if cli_js.is_file():
+                return [str(node_exe), str(cli_js)]
+        return None
+    except OSError:
+        return None
+
+
 class QwenResult:
     def __init__(self, ok, text="", exit_code=None, elapsed_s=0.0, error=""):
         self.ok = ok
@@ -159,18 +197,26 @@ def call_qwen(
     workspace = Path(workspace)
     workspace.mkdir(parents=True, exist_ok=True)
 
-    command = [
-        qwen_cmd,
+    argv_prefix = _resolve_qwen_cli() or [qwen_cmd]
+    command = argv_prefix + [
+        # qwen-code 0.27.x 的参数解析有两个坑：
+        # 1) --prompt/-p 与 "--" 分隔符都会把提示词吞掉（模型改收到 cli.js 路径）；
+        # 2) --include-directories 是可变参数，会把跟在后面的位置参数（提示词）
+        #    一起吞掉。因此提示词作为纯位置参数放在最前面。
+        text,
         "--approval-mode", "plan",
         "--output-format", "text",
         "--include-directories", str(workspace),
-        "--prompt", text,
     ]
 
     source = os.environ
     env = {key: source[key] for key in ENV_WHITELIST if key in source}
     env["NO_BROWSER"] = "1"
     env["NO_PROXY"] = env.get("NO_PROXY", "*")
+    # npm 全局目录里的 node.exe 是指向 Kimi.exe（Electron）的硬链接，
+    # 机器上没有独立 Node 运行时；ELECTRON_RUN_AS_NODE=1 让它以纯 Node 模式运行。
+    # 若将来安装了独立 Node，此变量无害。
+    env["ELECTRON_RUN_AS_NODE"] = env.get("ELECTRON_RUN_AS_NODE", "1")
 
     for key, value in (extra_env or {}).items():
         if value:
@@ -519,7 +565,9 @@ class Orchestrator:
 
         prompt = (
             "你是验收者。读取 plan.md 与 src/ 下的实现，判断是否满足计划。"
-            "最后一行必须写 `VERDICT: PASS` 或 `VERDICT: FAIL`，上面写理由。"
+            "目录下的 _platform/ 只是平台运行证据，与验收无关，不要读取或评价它。"
+            "你处于只读模式，不要写任何文件，只在回复里输出验收理由；"
+            "回复的最后一行必须是 `VERDICT: PASS` 或 `VERDICT: FAIL`。"
         )
         result = self.qwen(prompt, directory, timeout=self._timeout_for(state["step"]))
         state["steps"]["verifying"] = {
