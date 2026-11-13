@@ -16,6 +16,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 
+from src.qq import router as qq_router
 from src.qq.inbound import QQInbound
 from src.qq.onebot import OneBotClient
 from src.qq.outbox import QQOutbox
@@ -108,6 +109,18 @@ def queue_for(text: str) -> str:
     return "task"
 
 
+def is_conversation(text: str) -> bool:
+    """`/new`、`/use` 这类切换命令不是对话内容，不写进会话消息表。
+
+    它们由入站按「旧会话」落 user 行、由 worker 按「新会话」落助手行，
+    一旦两边都写，一次命令就被劈成两条孤立记录。
+    """
+
+    intent = qq_router.classify(text).get("intent")
+
+    return intent not in qq_router.SESSION_SWITCH_INTENTS
+
+
 @router.post("/api/qq/onebot")
 async def onebot_event(request: Request):
     body = await request.body()
@@ -159,7 +172,7 @@ async def onebot_event(request: Request):
         "enqueued" if enqueued else "duplicate_ignored",
     )
 
-    if enqueued:
+    if enqueued and is_conversation(text):
         try:
             from src.sessions import SessionStore
 

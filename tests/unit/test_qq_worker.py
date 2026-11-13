@@ -471,7 +471,7 @@ class ContractCase(WorkerCase):
         threads.append_turn(sender=7, question="3+3", answer="6", message_id="old")
         captured = {}
 
-        def capture(command, question):
+        def capture(command, question, **_kwargs):
             captured["prompt"] = question
 
             return "答案"
@@ -602,7 +602,7 @@ class ContractCase(WorkerCase):
         threads.append_turn(sender=7, question="3+3", answer="6", message_id="old")
         captured = {}
 
-        def capture(command, question):
+        def capture(command, question, **_kwargs):
             captured["prompt"] = question
 
             return "4"

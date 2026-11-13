@@ -77,6 +77,22 @@ class EndpointCase(unittest.TestCase):
         self.assertEqual(kwargs["queue"], "task")
         self.assertEqual(kwargs["raw_text"], "1+1 等于几")
 
+    def test_session_command_not_written_to_messages(self):
+        """/new、/use 是命令不是对话，落进消息表会被劈成两条孤立记录。"""
+
+        with patch("src.qq.api.configured_workers", return_value=self.workers), \
+                patch("src.sessions.SessionStore") as store_class:
+            self.post(self.event(message="/new"))
+
+        store_class.return_value.add_message.assert_not_called()
+
+    def test_conversation_message_still_recorded(self):
+        with patch("src.qq.api.configured_workers", return_value=self.workers), \
+                patch("src.sessions.SessionStore") as store_class:
+            self.post(self.event(message="/ask 你好"))
+
+        store_class.return_value.add_message.assert_called_once()
+
     def test_confirm_goes_to_control_queue(self):
         with patch("src.qq.api.configured_workers", return_value=self.workers):
             self.post(self.event(message="/confirm K7M2P9QX"))

@@ -273,32 +273,47 @@ class SessionStore:
         *,
         max_messages: int = DEFAULT_CONTEXT_MESSAGES,
         max_chars: int = DEFAULT_CONTEXT_CHARS,
+        exclude_message_id: str | None = None,
     ) -> str:
-        with self._session() as connection:
-            rows = connection.execute(
-                "SELECT role, content FROM session_messages "
-                "WHERE session_id=? ORDER BY id DESC LIMIT ?",
-                (str(session_id), int(max_messages)),
-            ).fetchall()
+        query = (
+            "SELECT role, content FROM session_messages "
+            "WHERE session_id=?"
+        )
+        params: list[object] = [str(session_id)]
 
+        if exclude_message_id:
+            query += " AND message_id != ?"
+            params.append(str(exclude_message_id))
+
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(int(max_messages))
+
+        with self._session() as connection:
+            rows = connection.execute(query, params).fetchall()
+
+        # 从最新消息开始预留预算；超出时丢弃最旧消息。
         pieces: list[str] = []
         used = 0
 
-        for row in reversed(rows):
+        for row in rows:
             label = "用户" if row["role"] == "user" else "助手"
             line = f"{label}：{row['content']}"
-            remaining = max_chars - used
+            separator = 1 if pieces else 0
+            remaining = max_chars - used - separator
 
             if remaining <= 0:
                 break
 
             if len(line) > remaining:
-                line = line[:remaining] + "…"
+                if not pieces:
+                    pieces.append(line[:max(remaining - 1, 0)] + "…")
+
+                break
 
             pieces.append(line)
-            used += len(line)
+            used += len(line) + separator
 
-        return "\n".join(pieces)
+        return "\n".join(reversed(pieces))
 
     # ---------- QQ 当前会话 ----------
 

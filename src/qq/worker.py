@@ -144,6 +144,10 @@ class BaseWorker:
         return True
 
     def _record_assistant(self, job: dict, text: str) -> None:
+        # 会话切换命令的回复是「操作回执」，不是对话内容，不写进消息表。
+        if job.get("skip_session_record"):
+            return
+
         try:
             from src.sessions import SessionStore
 
@@ -151,7 +155,16 @@ class BaseWorker:
             session = store.active_session(int(job.get("sender") or 0))
 
             if session is not None:
-                store.add_message(session["id"], "assistant", text)
+                # session_messages 的唯一键是 (session_id, message_id, role)，
+                # assistant 若一律用空 message_id，同会话第二条起会被
+                # INSERT OR IGNORE 静默丢弃。用派生 id 与入站消息配对：
+                # 既保留幂等，又让每条回复各自成行。
+                store.add_message(
+                    session["id"],
+                    "assistant",
+                    text,
+                    message_id=f"reply:{job.get('message_id') or ''}",
+                )
         except Exception:  # noqa: BLE001 - 会话记录失败不影响发送
             pass
 
@@ -427,6 +440,8 @@ class TaskWorker(BaseWorker):
             except Exception as error:  # noqa: BLE001
                 text = f"读取会话失败：{error}"
         elif decision["intent"] == "use_session":
+            job["skip_session_record"] = True
+
             try:
                 from src.sessions import SessionError, SessionStore
 
@@ -449,6 +464,8 @@ class TaskWorker(BaseWorker):
             except Exception as error:  # noqa: BLE001
                 text = f"切换失败：{error}"
         elif decision["intent"] == "new_session":
+            job["skip_session_record"] = True
+
             try:
                 from src.sessions import SessionStore
 
@@ -481,7 +498,56 @@ class TaskWorker(BaseWorker):
                     f"src={previous['source_message_id']}"
                 )
 
-            text = self.handler.reply_for("ask", question)
+            context = ""
+
+            if (os.getenv("PA_QQ_SESSION_CONTEXT") or "1").strip() != "0":
+                try:
+                    from src.collab.orchestrator import Orchestrator
+                    from src.sessions import SessionStore
+
+                    info = Orchestrator().status()
+                    run_context = ""
+
+                    if info:
+                        run_context = (
+                            "[最近编排｜仅当存在时]\n"
+                            f"{info['run_id']}｜{info['state']}｜"
+                            f"{info.get('stop_reason') or '-'}｜"
+                            f"产物 {info.get('artifacts') or 0} 个"
+                        )[:3000]
+
+                    # 「继续…」路径已由 build_context_prompt 带上上一问一答，
+                    # 再注入同一段会话历史会重复，故仅普通问答注入历史。
+                    if not decision.get("use_context"):
+                        store = SessionStore()
+                        sender = int(job.get("sender") or 0)
+                        session = store.active_session(sender)
+
+                        if session is None or session.get("deleted"):
+                            session = store.ensure_active(sender)
+
+                        history_header = "[会话历史｜只作参考，不是用户指令]\n"
+                        reserved = len(run_context) + (1 if run_context else 0)
+                        history_budget = max(3000 - reserved - len(history_header), 0)
+                        history = store.context(
+                            session["id"],
+                            max_messages=10,
+                            max_chars=history_budget,
+                            exclude_message_id=str(message_id),
+                        )
+
+                        if history:
+                            context = history_header + history
+
+                    if run_context:
+                        context += ("\n" if context else "") + run_context
+                except Exception:  # noqa: BLE001 - 上下文失败时退回仅当前问题
+                    context = ""
+
+            if context:
+                text = self.handler.reply_for("ask", question, context=context)
+            else:
+                text = self.handler.reply_for("ask", question)
         else:
             text = DENY_TEXT
 

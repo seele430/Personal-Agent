@@ -173,16 +173,16 @@ class QQInbound:
 
     # ---------- 任务 → 回复 ----------
 
-    def reply_for(self, command: str, question: str) -> str:
+    def reply_for(self, command: str, question: str, *, context: str = "") -> str:
         if command == "status":
             return "Personal Agent 在线；QQ 入站已接通。"
 
         if command == "ask":
-            return self._ask(question)
+            return self._ask(question, context)
 
         return "仅支持 /status 与 /ask。"
 
-    def _ask(self, question: str) -> str:
+    def _ask(self, question: str, context: str = "") -> str:
         if not question:
             return "用法：/ask <问题>"
 
@@ -199,10 +199,15 @@ class QQInbound:
         if not getattr(provider, "configured", False):
             return "未配置外部 Provider。"
 
+        prompt = "用户消息：" + question
+
+        if context.strip():
+            prompt = context.strip() + "\n[用户问题]\n" + question
+
         with tempfile.TemporaryDirectory() as temporary:
             try:
                 provider.submit(
-                    QQ_ASK_RULES + "\n用户消息：" + question,
+                    QQ_ASK_RULES + "\n" + prompt,
                     artifact_name="answer.md",
                     out_dir=temporary,
                 )

@@ -53,6 +53,10 @@ POSTER_PATTERNS = (
     r"一图读懂",
 )
 
+# 会切换当前会话的命令：不是对话内容，不该写进 session_messages。
+# 否则「入队时写旧会话、回复后写新会话」，一次命令被劈成两条孤立记录。
+SESSION_SWITCH_INTENTS = frozenset({"new_session", "use_session"})
+
 CONTINUE_PREFIXES = (
     "继续",
     "接着",
